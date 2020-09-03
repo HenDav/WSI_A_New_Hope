@@ -6,14 +6,38 @@ import openslide
 import pandas as pd
 import shutil
 import glob
-import tqdm
+from tqdm import tqdm
 from typing import List, Tuple
 import pickle
 from random import sample
 from torch.utils.data import Dataset, DataLoader
+import torch
+from torchvision import transforms
 
 
-def choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
+def get_normalization_values(data_path: 'str'='tcga-data/'):
+    """
+    This function tuns over a set of images and compute mean and variance of each channel
+    :return:
+    """
+
+    # get a list of all directories with images:
+    dirs = _get_tcga_id_list(data_path)
+    # get tissue image values from thumbnail image using the segmentation map:
+    for idx, dir in enumerate(dirs):
+        thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
+        segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
+        tissue = thumb.transpose(2, 0, 1) * segMap
+        tissue_pixels = (tissue[0] != 0).sum()
+        tissue_matter = np.where(tissue[0] != 0)
+        values = tissue[tissue_matter]
+        print('a')
+
+    # TODO: implement!
+    pass
+
+
+def _choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -48,10 +72,10 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int) -> np.ndarr
     # open the .svs file:
     img = openslide.open_slide(file_name)
     tiles_num = len(locations)
-    tiles = np.zeros((tiles_num, tile_sz, tile_sz, 3), dtype=int)
+    tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (256, 256)).convert('RGB'))
+        tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (256, 256)).convert('RGB')).transpose(2, 0, 1)
 
     return tiles
 
@@ -69,7 +93,11 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
     files = list(basic_DF['file'])
     basic_DF.set_index('file', inplace=True)
     tile_nums = []
-    for _, file in enumerate(files):
+    total_tiles =[]
+    print('Starting Grid production...')
+    #for _, file in enumerate(files):
+    for i in tqdm(range(len(files))):
+        file = files[i]
         data_dict = {}
         height = basic_DF.loc[file, 'Height']
         width  = basic_DF.loc[file, 'Width']
@@ -77,6 +105,7 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
         id = basic_DF.loc[file, 'id']
 
         basic_grid = [(row, col) for row in range(0, height, tile_sz) for col in range(0, width, tile_sz)]
+        total_tiles.append((len(basic_grid)))
 
         # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
         legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'segMap.png'),
@@ -94,8 +123,12 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
             pickle.dump(legit_grid, filehandle)
 
     # Adding the number of tiles to the excel file:
-    basic_DF['Tiles 256'] = tile_nums
+    basic_DF['Legitimate tiles 256'] = tile_nums
+    basic_DF['Total tiles 256'] = total_tiles
+    basic_DF['Slide tile usage'] = list(np.array(tile_nums) / np.array(total_tiles))
     basic_DF.to_excel(data_file)
+
+    print('Finished Grid production phase !')
 
 
 def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
@@ -155,8 +188,8 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
     TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
     try:
-        create_file = False
         slides_data = pd.read_excel(os.path.join(path, 'slides_data.xlsx'))
+        create_file = False
     except:
         create_file = True
         print('slides data file is not found')
@@ -164,14 +197,14 @@ def make_slides_xl_file(path: str = 'tcga-data'):
 
     id_list = []
 
-    for idx, (root, dirs, files) in enumerate(tqdm.tqdm(os.walk(path))):
+    for idx, (root, dirs, files) in enumerate(tqdm(os.walk(path))):
         id_dict = {}
         if idx is 0:
             all_dirs = dirs
         else:
-            # Erase al 'logs' path
             if 'logs' in dirs:
-                shutil.rmtree(os.path.join(root, 'logs'))
+                # shutil.rmtree(os.path.join(root, 'logs'))  # Erase all 'logs' path
+                pass
 
             # get all *.svs files in the directory:
             files = glob.glob(os.path.join(root, '*.svs'))
@@ -186,6 +219,8 @@ def make_slides_xl_file(path: str = 'tcga-data'):
                 id_dict['MPP'] = img.properties['aperio.MPP']
                 id_dict['Width'] = img.dimensions[0]
                 id_dict['Height'] = img.dimensions[1]
+                id_dict['Objective Power'] = img.properties['openslide.objective-power']
+                id_dict['Scan Date'] = img.properties['aperio.Date']
                 img.close()
 
                 # Get data from 'TCGA_BRCA.xlsx' and add to the dictionary ER_status, PR_status, Her2_status
@@ -204,22 +239,31 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     print('Finished data preparation')
 
 
-def make_segmentations(path: str = 'tcga-data/'):
+def make_segmentations(path: str = 'tcga-data/', magnification: int = 5):
+    print('Starting in making Segmentation Maps for each .svs file...')
     dirs = _get_tcga_id_list(path)
-    for _, dir in enumerate(dirs):
+    #for _, dir in enumerate(dirs):
+    for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
+        dir = dirs[i]
         slide = _get_slide(os.path.join(path, dir))
+        #slide = _get_slide(glob.glob(os.path.join(path, '*.svs')))
         if slide is not None:
             # Get a thunmbnail image to create the segmentation for:
-            thumb = slide.get_thumbnail((2048, 2048))
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb)
+            objective_pwr = int(slide.properties['openslide.objective-power'])
+            height = slide.dimensions[1]
+            width = slide.dimensions[0]
+            thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
 
-            # Saving segmentation map and segmentation image:
+            # Saving segmentation map, segmentation image and thumbnail:
+            thumb.save(os.path.join(path, dir, 'thumb.png'))
             thmb_seg_map.save(os.path.join(path, dir, 'segMap.png'))
             thmb_seg_image.save(os.path.join(path, dir, 'segImage.png'))
 
         else:
             # TODO: implement a case for a slide that cannot be opened.
-            continue
+            pass
+    print('Segmentation Process finished !')
 
 
 def _get_slide(path: 'str') -> openslide.OpenSlide:
@@ -229,13 +273,14 @@ def _get_slide(path: 'str') -> openslide.OpenSlide:
     :return:
     """
 
-    file = next(os.walk(path))[2]
-    if '.DS_Store' in file: file.remove('.DS_Store')
+    # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
+    #if '.DS_Store' in file: file.remove('.DS_Store')
     slide = None
     try:
-        slide = openslide.open_slide(os.path.join(path, file[0]))
+        #slide = openslide.open_slide(os.path.join(path, file[0]))
+        slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
     except:
-        print('Cannot open slide {} at location: {}'.format(file, path))
+        print('Cannot open slide at location: {}'.format(path))
 
     return slide
 
@@ -248,9 +293,10 @@ def _get_tcga_id_list(path: str = 'tcga-data'):
     return next(os.walk(path))[1]
 
 
-def _make_segmentation_for_image(image: Image) -> (Image, Image):
+def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
+    :param magnification:
     :return:
     """
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
@@ -259,30 +305,87 @@ def _make_segmentation_for_image(image: Image) -> (Image, Image):
     _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
     # Smoothing the tissue segmentation imaqe:
-    size = 30
-    kernel = np.ones((size, size), dtype=np.float32) / size ** 2
-    seg_map = cv.filter2D(seg_map, -1, kernel)
+    size = 30 * magnification
+    kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
+    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
 
     th_val = 5
     seg_map[seg_map > th_val] = 255
     seg_map[seg_map <= th_val] = 0
     seg_map_PIL = Image.fromarray(seg_map)
 
-    edge_image = Image.fromarray(cv.Canny(seg_map, 1, 254)).convert('RGB')
+    edge_image = cv.Canny(seg_map, 1, 254)
+    # Make the edge thicker by dilating:
+    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=10)).convert('RGB')
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
 
 
+def get_transform():
+    transform = transforms.Compose([ transforms.RandomHorizontalFlip(),
+                                     transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))
+                                     ])
+
+
 class WSI_MILdataset(Dataset):
-    def __init__(self, excel_data='tcga-data/slides_data.xlsx',tile_size, transform=None):
-        self.image_file_names = []
+    def __init__(self,
+                 root_path: str ='tcga-data',
+                 tile_size: int=256,
+                 num_of_tiles: int=50,
+                 target_kind: str='ER',
+                 transform=None):
+        if target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+
+        excel_data = os.path.join(root_path, 'slides_data.xlsx')
+        self.target ={}
+        excel_DF = pd.read_excel(excel_data)
         self.tile_size = tile_size
-        xl_DF = pd.read_excel(excel_data)
+        self.root_path = root_path
+        self.target_kind = target_kind
+        self.image_file_names = list(excel_DF['file'])
+        self.image_path_names = list(excel_DF['id'])
+        self.target['ER'] = list(excel_DF['ER status'])
+        self.target['PR'] = list(excel_DF['PR status'])
+        self.target['Her2'] = list(excel_DF['Her2 status'])
+        self.in_fold = list(excel_DF['test fold idx'])
+        self.tiles_total = list(excel_DF['Tiles 256'])
+        self.num_of_tiles = num_of_tiles
+        self.transform = transform
+
+
+    def __len__(self):
+        return len(self.image_file_names)
+
+    def __getitem__(self, idx):
+        file_name = os.path.join(self.root_path, self.image_path_names[idx], self.image_file_names[idx])
+        tiles = _choose_data(file_name, self.num_of_tiles)
+        label = [1] if self.target[self.target_kind][idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        N = tiles.shape[0]
+        shape = tiles.shape
+        X = torch.zeros(shape)
+        if not self.transform:
+            self.transform = transforms.Compose([transforms.ToTensor()])
+
+        tiles = tiles.transpose(0, 2, 3, 1)
+        for i in range(N):
+            X[i] = self.transform(tiles[i])
+
+        return X, label
 
 
 
 
+
+
+
+"""
 class MnistMILdataset(Dataset):
     def __init__(self, all_image_tiles, labels, transform=None):
         self.all_image_tiles = all_image_tiles
@@ -306,3 +409,4 @@ class MnistMILdataset(Dataset):
                 X[i] = self.transform(x[i])
 
         return X, y, instance_locations
+"""
