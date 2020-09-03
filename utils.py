@@ -15,7 +15,7 @@ import torch
 from torchvision import transforms
 
 
-def get_normalization_values(data_path: 'str'='tcga-data/'):
+def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
     """
     This function tuns over a set of images and compute mean and variance of each channel
     :return:
@@ -23,19 +23,45 @@ def get_normalization_values(data_path: 'str'='tcga-data/'):
 
     # get a list of all directories with images:
     dirs = _get_tcga_id_list(data_path)
-    # get tissue image values from thumbnail image using the segmentation map:
+    stats_list =[]
+    print('Computing image set Mean and Variance...')
+    # gather tissue image values from thumbnail image using the segmentation map:
     for idx, dir in enumerate(dirs):
+        image_stats = {}
         thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
         segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
         tissue = thumb.transpose(2, 0, 1) * segMap
         tissue_pixels = (tissue[0] != 0).sum()
         tissue_matter = np.where(tissue[0] != 0)
-        values = tissue[tissue_matter]
-        print('a')
+        values = tissue[:, tissue_matter[0], tissue_matter[1]]
+        image_stats['Pixels'] = tissue_pixels
+        image_stats['Mean'] = values.mean(axis=1)
+        image_stats['Var'] = values.var(axis=1)
+        stats_list.append(image_stats)
 
-    # TODO: implement!
-    pass
+    # Save data to file:
+    with open(os.path.join(data_path, 'ImageStatData.data'), 'wb') as filehandle:
+        # store the data as binary data stream
+        pickle.dump(stats_list, filehandle)
 
+    # Compute total mean and var:
+    N = 0
+    running_mean = 0
+    running_mean_squared = 0
+    running_var = 0
+    for _, item in enumerate(stats_list):
+        n = item['Pixels']
+        N += n
+        running_mean += item['Mean'] * n
+        running_mean_squared += (item['Mean'] ** 2) * n
+        running_var += item['Var'] * n
+
+    total_mean = running_mean / N
+    total_var = (running_mean_squared + running_var) / N - total_mean ** 2
+    print('Finished computing statistical data')
+    print('Mean: {}'.format(total_mean))
+    print('Variance: {}'.format(total_var))
+    return total_mean, total_var
 
 def _choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
     """
@@ -324,12 +350,19 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
 
 def get_transform():
+
     transform = transforms.Compose([ transforms.RandomHorizontalFlip(),
                                      transforms.RandomVerticalFlip(),
                                      transforms.ToTensor(),
                                      transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))
                                      ])
-
+    transform = transforms.Compose([transforms.RandomHorizontalFlip(),
+                                    transforms.RandomVerticalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((48.9135746, 75.1674335, 59.00008673),
+                                                         (2216.86003428, 5263.29276891, 3241.14047416))
+                                    ])
+    return None
 
 class WSI_MILdataset(Dataset):
     def __init__(self,
