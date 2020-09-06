@@ -13,6 +13,31 @@ from random import sample
 from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
+import sys
+
+
+def copy_segImages(data_path: str = 'tcga-data'):
+    """
+    This function copies the Segmentation Images from it's original location to one specific location, for easy checking
+    of the segmentations later on...
+    :return:
+    """
+    dirs = _get_tcga_id_list(data_path)
+    print('Copying Segmentation Images...')
+    if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
+        try:
+            os.mkdir('Segmentation_Images')
+        except OSError:
+            print('Creation of directory \'Segmentation_Images\' is failed...')
+            raise
+
+    for _, dir in enumerate(dirs):
+        if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
+            shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
+        else:
+            print('Found no segImage file for {}'.format(dir))
+
+    print('Finished copying!')
 
 
 def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
@@ -24,9 +49,11 @@ def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
     # get a list of all directories with images:
     dirs = _get_tcga_id_list(data_path)
     stats_list =[]
-    print('Computing image set Mean and Variance...')
+    print('Computing image-set Mean and Variance...')
     # gather tissue image values from thumbnail image using the segmentation map:
-    for idx, dir in enumerate(dirs):
+    #for idx, dir in enumerate(dirs):
+    for i in tqdm(range(len(dirs))):
+        dir = dirs[i]
         image_stats = {}
         thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
         segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
@@ -62,6 +89,7 @@ def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
+
 
 def _choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
     """
@@ -113,10 +141,11 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
     :param tile_sz: size of tiles to be created
     :return:
     """
-
+    BASIC_OBJ_PWR = 20
 
     basic_DF = pd.read_excel(data_file)
     files = list(basic_DF['file'])
+    objective_power = list(basic_DF['Objective Power'])
     basic_DF.set_index('file', inplace=True)
     tile_nums = []
     total_tiles =[]
@@ -129,27 +158,27 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
         width  = basic_DF.loc[file, 'Width']
 
         id = basic_DF.loc[file, 'id']
-
-        basic_grid = [(row, col) for row in range(0, height, tile_sz) for col in range(0, width, tile_sz)]
+        converted_tile_size = int(tile_sz * (objective_power[i] / BASIC_OBJ_PWR))
+        basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
         total_tiles.append((len(basic_grid)))
 
         # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
         legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'segMap.png'),
                                  basic_grid,
-                                 tile_sz,
+                                 converted_tile_size,
                                  (height, width))
 
         # create a list with number of tiles in each file
         tile_nums.append(len(legit_grid))
 
         # Save the grid to file:
-        file_name = os.path.join(data_file.split('/')[0], id, 'grid_tlsz' + str(tile_sz) + '.data')
+        file_name = os.path.join(data_file.split('/')[0], id, 'grid_tlsz' + str(converted_tile_size) + '.data')
         with open(file_name, 'wb') as filehandle:
             # store the data as binary data stream
             pickle.dump(legit_grid, filehandle)
 
     # Adding the number of tiles to the excel file:
-    basic_DF['Legitimate tiles 256'] = tile_nums
+    basic_DF['Legitimate tiles - ' + str(converted_tile_size)] = tile_nums
     basic_DF['Total tiles 256'] = total_tiles
     basic_DF['Slide tile usage'] = list(np.array(tile_nums) / np.array(total_tiles))
     basic_DF.to_excel(data_file)
@@ -213,25 +242,16 @@ def make_slides_xl_file(path: str = 'tcga-data'):
 
     TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
     TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
-    try:
-        slides_data = pd.read_excel(os.path.join(path, 'slides_data.xlsx'))
-        create_file = False
-    except:
-        create_file = True
-        print('slides data file is not found')
-        print('Creating a new file in path: {}'.format(path))
+
+    print('Creating a new data file in path: {}'.format(path))
 
     id_list = []
 
     for idx, (root, dirs, files) in enumerate(tqdm(os.walk(path))):
         id_dict = {}
         if idx is 0:
-            all_dirs = dirs
+            continue
         else:
-            if 'logs' in dirs:
-                # shutil.rmtree(os.path.join(root, 'logs'))  # Erase all 'logs' path
-                pass
-
             # get all *.svs files in the directory:
             files = glob.glob(os.path.join(root, '*.svs'))
             for _, file in enumerate(files):
@@ -242,54 +262,101 @@ def make_slides_xl_file(path: str = 'tcga-data'):
 
                 # Get some basic data about the image like MPP (Microns Per Pixel) and size:
                 img = openslide.open_slide(file)
-                id_dict['MPP'] = img.properties['aperio.MPP']
-                id_dict['Width'] = img.dimensions[0]
-                id_dict['Height'] = img.dimensions[1]
-                id_dict['Objective Power'] = img.properties['openslide.objective-power']
-                id_dict['Scan Date'] = img.properties['aperio.Date']
+                try:
+                    id_dict['MPP'] = img.properties['aperio.MPP']
+                except:
+                    id_dict['MPP'] = 'Missing Data'
+                try:
+                    id_dict['Width'] = img.dimensions[0]
+                except:
+                    id_dict['Width'] = 'Missing Data'
+                try:
+                    id_dict['Height'] = img.dimensions[1]
+                except:
+                    id_dict['Height'] = 'Missing Data'
+                try:
+                    id_dict['Objective Power'] = img.properties['aperio.AppMag']
+                except:
+                    id_dict['Objective Power'] = 'Missing Data'
+                try:
+                    id_dict['Scan Date'] = img.properties['aperio.Date']
+                except:
+                    id_dict['Scan Date'] = 'Missing Data'
                 img.close()
 
                 # Get data from 'TCGA_BRCA.xlsx' and add to the dictionary ER_status, PR_status, Her2_status
-                id_dict['ER status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
-                id_dict['PR status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
-                id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
-                id_dict['test fold idx'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
+                try:
+                    id_dict['ER status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
+                    id_dict['PR status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
+                    id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
+                    id_dict['test fold idx'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
+                except:
+                    id_dict['ER status'] = 'Missing Data'
+                    id_dict['PR status'] = 'Missing Data'
+                    id_dict['Her2 status'] = 'Missing Data'
+                    id_dict['test fold idx'] = 'Missing Data'
 
 
                 id_list.append(id_dict)
 
-    if create_file:
-        slides_data = pd.DataFrame(id_list)
-        slides_data.to_excel(os.path.join(path, 'slides_data.xlsx'))
-
-    print('Finished data preparation')
+    slides_data = pd.DataFrame(id_list)
+    slides_data.to_excel(os.path.join(path, 'slides_data.xlsx'))
+    print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
 
 
-def make_segmentations(path: str = 'tcga-data/', magnification: int = 5):
-    print('Starting in making Segmentation Maps for each .svs file...')
-    dirs = _get_tcga_id_list(path)
+def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1):
+    print('Making Segmentation Maps for each .svs file...')
+    dirs = _get_tcga_id_list(data_path)
+    error_list = []
     #for _, dir in enumerate(dirs):
     for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
         dir = dirs[i]
-        slide = _get_slide(os.path.join(path, dir))
-        #slide = _get_slide(glob.glob(os.path.join(path, '*.svs')))
+        if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]): continue
+        print('Working on {}'.format(dir))
+        slide = _get_slide(os.path.join(data_path, dir))
         if slide is not None:
             # Get a thunmbnail image to create the segmentation for:
-            objective_pwr = int(slide.properties['openslide.objective-power'])
+            try:
+                objective_pwr = int(float(slide.properties['aperio.AppMag']))
+            except KeyError:
+                print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                continue
             height = slide.dimensions[1]
             width = slide.dimensions[0]
-            thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+            try:
+                thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+            except openslide.lowlevel.OpenSlideError as err:
+                error_dict = {}
+                e = sys.exc_info()
+                error_dict['Path'] = dir
+                error_dict['Error'] = err
+                error_dict['Error Details 1'] = e[0]
+                error_dict['Error Details 2'] = e[1]
+                error_list.append(error_dict)
+                print('Exception on path {}'.format(dir))
+                continue
 
+            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+            slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(path, dir, 'thumb.png'))
-            thmb_seg_map.save(os.path.join(path, dir, 'segMap.png'))
-            thmb_seg_image.save(os.path.join(path, dir, 'segImage.png'))
+            thumb.save(os.path.join(data_path, dir, 'thumb.png'))
+            thmb_seg_map.save(os.path.join(data_path, dir, 'segMap.png'))
+            thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))
 
         else:
+            print('Error: Found no slide in path {}'.format(dir))
             # TODO: implement a case for a slide that cannot be opened.
-            pass
-    print('Segmentation Process finished !')
+            continue
+
+
+    if len(error_list) != 0:
+        # Saving all error data to excel file:
+        error_DF = pd.DataFrame(error_list)
+        error_DF.to_excel('Segmentation_Errors.xlsx')
+        print('Segmentation Process finished WITH EXCEPTIONS!!!!')
+        print('Check "Segmenatation_Errors.xlsx" file for details...')
+    else:
+        print('Segmentation Process finished without exceptions!')
 
 
 def _get_slide(path: 'str') -> openslide.OpenSlide:
@@ -343,7 +410,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     edge_image = cv.Canny(seg_map, 1, 254)
     # Make the edge thicker by dilating:
     kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=10)).convert('RGB')
+    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
@@ -363,6 +430,7 @@ def get_transform():
                                                          (2216.86003428, 5263.29276891, 3241.14047416))
                                     ])
     return None
+
 
 class WSI_MILdataset(Dataset):
     def __init__(self,
