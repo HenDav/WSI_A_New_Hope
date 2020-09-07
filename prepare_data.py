@@ -17,9 +17,9 @@ if args.segmentation:
 if args.grid:
     utils.make_grid()
 if args.stats:
-    utils.get_normalization_values()
+    utils.compute_normalization_values()
 
-utils.make_slides_xl_file('tcga-data')
+
 print('Data Preparation sequence is Done !')
 
 

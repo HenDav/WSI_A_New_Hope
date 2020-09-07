@@ -40,9 +40,10 @@ def copy_segImages(data_path: str = 'tcga-data'):
     print('Finished copying!')
 
 
-def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
+def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     """
-    This function tuns over a set of images and compute mean and variance of each channel
+    This function runs over a set of images and compute mean and variance of each channel.
+    The function computes these statistic values over the thumbnail images which are at X1 magnification
     :return:
     """
 
@@ -50,10 +51,16 @@ def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
     dirs = _get_tcga_id_list(data_path)
     stats_list =[]
     print('Computing image-set Mean and Variance...')
+    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
+    meta_data.set_index('id', inplace=True)
+
     # gather tissue image values from thumbnail image using the segmentation map:
     #for idx, dir in enumerate(dirs):
     for i in tqdm(range(len(dirs))):
         dir = dirs[i]
+        if meta_data.loc[[dir], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
+            continue
+
         image_stats = {}
         thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
         segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
@@ -76,7 +83,7 @@ def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
     running_mean = 0
     running_mean_squared = 0
     running_var = 0
-    for _, item in enumerate(stats_list):
+    for i, item in enumerate(stats_list):
         n = item['Pixels']
         N += n
         running_mean += item['Mean'] * n
@@ -85,7 +92,7 @@ def get_normalization_values(data_path: 'str'='tcga-data/') -> tuple:
 
     total_mean = running_mean / N
     total_var = (running_mean_squared + running_var) / N - total_mean ** 2
-    print('Finished computing statistical data')
+    print('Finished computing statistical data over {} thumbnail slides'.format(i+1))
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
@@ -134,13 +141,15 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int) -> np.ndarr
     return tiles
 
 
-def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256):
+def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
     :param tile_sz: size of tiles to be created
     :return:
     """
+    data_file = os.path.join(data_path, 'slides_data.xlsx')
+
     BASIC_OBJ_PWR = 20
 
     basic_DF = pd.read_excel(data_file)
@@ -158,7 +167,13 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
         width  = basic_DF.loc[file, 'Width']
 
         id = basic_DF.loc[file, 'id']
-        converted_tile_size = int(tile_sz * (objective_power[i] / BASIC_OBJ_PWR))
+        if objective_power[i] == 'Missing Data':
+            print('Grid was not computed for path {}'.format(id))
+            tile_nums.append(0)
+            total_tiles.append(-1)
+            continue
+
+        converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
         basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
         total_tiles.append((len(basic_grid)))
 
@@ -178,9 +193,9 @@ def make_grid(data_file: str = 'tcga-data/slides_data.xlsx', tile_sz: int = 256)
             pickle.dump(legit_grid, filehandle)
 
     # Adding the number of tiles to the excel file:
-    basic_DF['Legitimate tiles - ' + str(converted_tile_size)] = tile_nums
-    basic_DF['Total tiles 256'] = total_tiles
-    basic_DF['Slide tile usage'] = list(np.array(tile_nums) / np.array(total_tiles))
+    basic_DF['Legitimate tiles - 256 compatible @ X20'] = tile_nums
+    basic_DF['Total tiles - 256 compatible @ X20'] = total_tiles
+    basic_DF['Slide tile usage [%]'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
@@ -263,19 +278,19 @@ def make_slides_xl_file(path: str = 'tcga-data'):
                 # Get some basic data about the image like MPP (Microns Per Pixel) and size:
                 img = openslide.open_slide(file)
                 try:
-                    id_dict['MPP'] = img.properties['aperio.MPP']
+                    id_dict['MPP'] = float(img.properties['aperio.MPP'])
                 except:
                     id_dict['MPP'] = 'Missing Data'
                 try:
-                    id_dict['Width'] = img.dimensions[0]
+                    id_dict['Width'] = int(img.dimensions[0])
                 except:
                     id_dict['Width'] = 'Missing Data'
                 try:
-                    id_dict['Height'] = img.dimensions[1]
+                    id_dict['Height'] = int(img.dimensions[1])
                 except:
                     id_dict['Height'] = 'Missing Data'
                 try:
-                    id_dict['Objective Power'] = img.properties['aperio.AppMag']
+                    id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
                 except:
                     id_dict['Objective Power'] = 'Missing Data'
                 try:
@@ -417,54 +432,75 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
 
 def get_transform():
-
-    transform = transforms.Compose([ transforms.RandomHorizontalFlip(),
-                                     transforms.RandomVerticalFlip(),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))
-                                     ])
+    # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
+    # TODO: Also consider the following - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
     transform = transforms.Compose([transforms.RandomHorizontalFlip(),
                                     transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
-                                    transforms.Normalize((48.9135746, 75.1674335, 59.00008673),
-                                                         (2216.86003428, 5263.29276891, 3241.14047416))
+    # TODO: Check if the output of ToTensor is in the range [0, 1] or [0, 255]. This will have implication on the following normalization !!!!!!!
+
+                                    transforms.Normalize(mean=(58.2069073, 96.22645279, 70.26442606),
+                                                         std=(40.40400300279664, 58.90625962739444, 45.09334057330417))
                                     ])
-    return None
+    return transform
 
 
 class WSI_MILdataset(Dataset):
     def __init__(self,
-                 root_path: str ='tcga-data',
-                 tile_size: int=256,
-                 num_of_tiles: int=50,
-                 target_kind: str='ER',
-                 transform=None):
+                 data_path: str = 'tcga-data',
+                 tile_size: int = 256,
+                 num_of_tiles_from_slide: int = 128,
+                 target_kind: str = 'ER',
+                 test_fold: int = 1,
+                 train: bool = True,
+                 transform = None):
+
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
 
-        excel_data = os.path.join(root_path, 'slides_data.xlsx')
-        self.target ={}
-        excel_DF = pd.read_excel(excel_data)
+        meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
+        self.meta_data_DF = pd.read_excel(meta_data_file)
+        # self.meta_data_DF.set_index('id')
+        self.data_path = data_path
         self.tile_size = tile_size
-        self.root_path = root_path
         self.target_kind = target_kind
-        self.image_file_names = list(excel_DF['file'])
-        self.image_path_names = list(excel_DF['id'])
-        self.target['ER'] = list(excel_DF['ER status'])
-        self.target['PR'] = list(excel_DF['PR status'])
-        self.target['Her2'] = list(excel_DF['Her2 status'])
-        self.in_fold = list(excel_DF['test fold idx'])
-        self.tiles_total = list(excel_DF['Tiles 256'])
-        self.num_of_tiles = num_of_tiles
+        self.test_fold = test_fold
+        self.num_of_tiles_from_slide = num_of_tiles_from_slide
+        self.train = train
         self.transform = transform
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(self.target), ['Positive', 'Negative']) == True)
+        all_image_file_names = list(self.meta_data_DF['file'])
+        all_image_path_names = list(self.meta_data_DF['id'])
+        all_in_fold = list(self.meta_data_DF['test fold idx'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - 256 compatible @ X20'])
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+
+        for _, index in enumerate(valid_slide_indices):
+            self.image_file_names.append(all_image_file_names[index])
+            self.image_path_names.append(all_image_path_names[index])
+            self.in_fold.append(all_in_fold[index])
+            self.tissue_tiles.append(all_tissue_tiles[index])
+            self.target.append(all_targets[index])
+
 
 
     def __len__(self):
-        return len(self.image_file_names)
+        # Check length of valid slides (the ones which have a POSITIVE or NEGATIVE labelling.
+        return len(self.target)
+
 
     def __getitem__(self, idx):
-        file_name = os.path.join(self.root_path, self.image_path_names[idx], self.image_file_names[idx])
-        tiles = _choose_data(file_name, self.num_of_tiles)
+        file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
+        tiles = _choose_data(file_name, self.num_of_tiles_from_slide)
         label = [1] if self.target[self.target_kind][idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
