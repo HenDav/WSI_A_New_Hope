@@ -98,16 +98,19 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     return total_mean, total_var
 
 
-def _choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
+def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256) -> np.ndarray:
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
     :param how_many: how_many describes how many tiles to pick from the whole image
     :return:
     """
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
     # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], 'grid_tlsz256.data')
+    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
     with open(grid_file, 'rb') as filehandle:
         # read the data as binary data stream
         grid_list = pickle.load(filehandle)
@@ -117,7 +120,7 @@ def _choose_data(file_name: str, how_many: int = 50) -> np.ndarray:
     idxs = sample(range(loc_num), how_many)
     locs = [grid_list[idx] for idx in idxs]
 
-    image_tiles = _get_tiles(file_name, locs, 256)
+    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size)
 
     return image_tiles
 
@@ -133,12 +136,15 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int) -> np.ndarr
     # open the .svs file:
     img = openslide.open_slide(file_name)
     tiles_num = len(locations)
+    # TODO: Checking Pil vs. np array. Delete one of them...
     tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)
+    tiles_PIL = []
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (256, 256)).convert('RGB')).transpose(2, 0, 1)
+        tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')).transpose(2, 0, 1)
+        tiles_PIL.append(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB'))
 
-    return tiles
+    return tiles_PIL
 
 
 def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
@@ -434,13 +440,14 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 def get_transform():
     # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
     # TODO: Also consider the following - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+    # TODO: Also consider the following - torchvision.transforms.RandomRotation(degrees, resample=False, expand=False, center=None, fill=None)
     transform = transforms.Compose([transforms.RandomHorizontalFlip(),
                                     transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
     # TODO: Check if the output of ToTensor is in the range [0, 1] or [0, 255]. This will have implication on the following normalization !!!!!!!
 
-                                    transforms.Normalize(mean=(58.2069073, 96.22645279, 70.26442606),
-                                                         std=(40.40400300279664, 58.90625962739444, 45.09334057330417))
+                                    transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                                         std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
                                     ])
     return transform
 
@@ -449,7 +456,7 @@ class WSI_MILdataset(Dataset):
     def __init__(self,
                  data_path: str = 'tcga-data',
                  tile_size: int = 256,
-                 num_of_tiles_from_slide: int = 128,
+                 num_of_tiles_from_slide: int = 50,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
@@ -459,6 +466,7 @@ class WSI_MILdataset(Dataset):
             raise ValueError('target should be one of: ER, PR, Her2')
 
         meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
+        self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
         # self.meta_data_DF.set_index('id')
         self.data_path = data_path
@@ -468,21 +476,34 @@ class WSI_MILdataset(Dataset):
         self.num_of_tiles_from_slide = num_of_tiles_from_slide
         self.train = train
         self.transform = transform
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
         # We'll use only the valid slides - the ones with a Negative or Positive label.
         # Let's compute which slides are these:
-        valid_slide_indices = np.where(np.isin(np.array(self.target), ['Positive', 'Negative']) == True)
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+        if self.train:
+            folds = list(range(1, 7))
+            folds.remove(self.test_fold)
+        else:
+            folds = [self.test_fold]
+
+        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
         all_image_file_names = list(self.meta_data_DF['file'])
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - 256 compatible @ X20'])
-        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []
         self.in_fold = []
         self.tissue_tiles = []
         self.target = []
+        self.magnification = []
 
         for _, index in enumerate(valid_slide_indices):
             self.image_file_names.append(all_image_file_names[index])
@@ -490,37 +511,51 @@ class WSI_MILdataset(Dataset):
             self.in_fold.append(all_in_fold[index])
             self.tissue_tiles.append(all_tissue_tiles[index])
             self.target.append(all_targets[index])
+            self.magnification.append(all_magnifications[index])
 
 
 
     def __len__(self):
-        # Check length of valid slides (the ones which have a POSITIVE or NEGATIVE labelling.
         return len(self.target)
 
 
     def __getitem__(self, idx):
         file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
-        tiles = _choose_data(file_name, self.num_of_tiles_from_slide)
-        label = [1] if self.target[self.target_kind][idx] == 'Positive' else [0]
+        tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size)
+        label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
-        N = tiles.shape[0]
+        """    
+        # This is for images in an nd.array:        
         shape = tiles.shape
         X = torch.zeros(shape)
+        """
+
+        # TODO: the following section is written for tiles in PIL format
+        X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
         if not self.transform:
             self.transform = transforms.Compose([transforms.ToTensor()])
 
-        tiles = tiles.transpose(0, 2, 3, 1)
-        for i in range(N):
+        # tiles = tiles.transpose(0, 2, 3, 1)  # When working with PIL, this line is not needed
+        # Check the need to resize the images (in case of different magnification):
+        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        if magnification_relation != 1:
+            self.transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform ])
+        for i in range(self.num_of_tiles_from_slide):
+            #  X[i] = self.transform(tiles[i])  # This line is for nd.array
             X[i] = self.transform(tiles[i])
 
         return X, label
 
 
+def device_gpu_cpu():
+    USE_GPU = True
+    if USE_GPU and torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
 
-
-
-
+    return device
 
 """
 class MnistMILdataset(Dataset):

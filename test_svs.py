@@ -6,8 +6,10 @@ from openslide import Image
 import os
 import glob
 
-data = utils.WSI_MILdataset()
+transform = utils.get_transform()
+data = utils.WSI_MILdataset(transform=None)
 
+data[5]
 
 print('Done!')
 
