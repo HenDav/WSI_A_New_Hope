@@ -14,6 +14,29 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import sys
+import time
+
+def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256):
+    """
+    This function makes a hard copy of the tile in order to avoid using openslide
+    :param data_path:
+    :return:
+    """
+
+    dirs = _get_tcga_id_list(data_path)
+    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
+
+    for i in range(meta_data.shape[0]):
+        if meta_data['Total tiles - 256 compatible @ X20'][i] == -1:
+            continue
+
+        slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
+        all_slide_tiles = _choose_data(slide_file_name, 50, meta_data['Objective Power'][i], tile_size)
+
+
+        print('aaaaa')
+
+
 
 
 def copy_segImages(data_path: str = 'tcga-data'):
@@ -98,7 +121,7 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     return total_mean, total_var
 
 
-def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256) -> np.ndarray:
+def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -125,7 +148,7 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
     return image_tiles
 
 
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int) -> np.ndarray:
+def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int):
     """
     This function returns an array of tiles
     :param file_name:
@@ -143,6 +166,7 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int) -> np.ndarr
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')).transpose(2, 0, 1)
         tiles_PIL.append(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB'))
+        print(idx)
 
     return tiles_PIL
 
@@ -520,6 +544,7 @@ class WSI_MILdataset(Dataset):
 
 
     def __getitem__(self, idx):
+        start = time.time()
         file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
         tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size)
         label = [1] if self.target[idx] == 'Positive' else [0]
@@ -545,6 +570,8 @@ class WSI_MILdataset(Dataset):
             #  X[i] = self.transform(tiles[i])  # This line is for nd.array
             X[i] = self.transform(tiles[i])
 
+        end = time.time()
+        print('Elapsed time to return Data is {:.0f} seconds'.format(end - start))
         return X, label
 
 

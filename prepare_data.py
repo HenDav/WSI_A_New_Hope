@@ -19,7 +19,7 @@ if args.grid:
 if args.stats:
     utils.compute_normalization_values()
 
-
+utils.make_tiles_hard_copy()
 print('Data Preparation sequence is Done !')
 
 

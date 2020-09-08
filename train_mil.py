@@ -6,6 +6,7 @@ import torch
 import torch.optim as optim
 import model
 from tqdm import tqdm
+import time
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, print_every: int = 100):
     """
@@ -22,6 +23,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         model.train()
         print('Epoch {}:'.format(e))
         for batch_idx, (data, target) in enumerate(tqdm(dloader_train)):
+            start = time.time()
             data, target = data.to(DEVICE), target.to(DEVICE)
             prob, label, weights = model(data)
 
@@ -36,6 +38,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # Calculate training error
             error = 1. - label.eq(target).cpu().float().mean().item()
             train_error += error
+
+            end = time.time()
+            print('Elapsed time of one train iteration is {:.0f} seconds'.format(end - start))
 
 
         print('Epoch {}: Train Loss = {:.2f}, Train Error = {:.2f}%'.format(e, train_loss, train_error / len(dloader_train)))
@@ -107,4 +112,3 @@ if not infer:
 
     epoch = 5
     best_model, best_train_error, best_train_loss = train(net, train_loader, test_loader)
-
