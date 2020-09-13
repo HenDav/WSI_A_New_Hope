@@ -16,7 +16,7 @@ from torchvision import transforms
 import sys
 import time
 
-def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256):
+def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
     This function makes a hard copy of the tile in order to avoid using openslide
     :param data_path:
@@ -26,17 +26,16 @@ def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256):
     dirs = _get_tcga_id_list(data_path)
     meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
 
-    for i in range(meta_data.shape[0]):
+    for i in tqdm(range(meta_data.shape[0])):
         if meta_data['Total tiles - 256 compatible @ X20'][i] == -1:
             continue
 
         slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        all_slide_tiles = _choose_data(slide_file_name, 50, meta_data['Objective Power'][i], tile_size)
+        slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
 
-
-        print('aaaaa')
-
-
+        file_name = os.path.join(data_path, meta_data['id'][i], 'tiles.data')
+        with open(file_name, 'wb') as filehandle:
+            pickle.dump(slide_tiles, filehandle)
 
 
 def copy_segImages(data_path: str = 'tcga-data'):
@@ -121,7 +120,7 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     return total_mean, total_var
 
 
-def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256):
+def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -143,12 +142,18 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
     idxs = sample(range(loc_num), how_many)
     locs = [grid_list[idx] for idx in idxs]
 
-    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size)
+    if resize:
+        resize_to = tile_size
+    else:
+        resize_to = adjusted_tile_size
+
+
+    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size, resize_to=resize_to)
 
     return image_tiles
 
 
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int):
+def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int):
     """
     This function returns an array of tiles
     :param file_name:
@@ -160,13 +165,17 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int):
     img = openslide.open_slide(file_name)
     tiles_num = len(locations)
     # TODO: Checking Pil vs. np array. Delete one of them...
-    tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)
+    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
     tiles_PIL = []
+
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        tiles[idx, :, :, :] = np.array(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')).transpose(2, 0, 1)
-        tiles_PIL.append(img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB'))
-        print(idx)
+        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
+        if tile_sz != resize_to:
+            image = image.resize((resize_to, resize_to), resample=Image.BILINEAR)
+
+        tiles_PIL.append(image)
 
     return tiles_PIL
 
@@ -492,6 +501,7 @@ class WSI_MILdataset(Dataset):
         meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
+
         # self.meta_data_DF.set_index('id')
         self.data_path = data_path
         self.tile_size = tile_size
@@ -505,6 +515,11 @@ class WSI_MILdataset(Dataset):
         # We'll use only the valid slides - the ones with a Negative or Positive label.
         # Let's compute which slides are these:
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+
+        # Also remove slides without grid data:
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - 256 compatible @ X20'] == -1])
+        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
+
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if self.train:
             folds = list(range(1, 7))
@@ -571,41 +586,108 @@ class WSI_MILdataset(Dataset):
             X[i] = self.transform(tiles[i])
 
         end = time.time()
-        print('Elapsed time to return Data is {:.0f} seconds'.format(end - start))
+        print('WSI: Time to prepare item is {:.2f} s'.format(end - start))
         return X, label
 
 
 def device_gpu_cpu():
-    USE_GPU = True
-    if USE_GPU and torch.cuda.is_available():
+    if torch.cuda.is_available():
         device = torch.device('cuda')
+        print('Using CUDA')
     else:
         device = torch.device('cpu')
+        print('Using cpu')
 
     return device
 
-"""
-class MnistMILdataset(Dataset):
-    def __init__(self, all_image_tiles, labels, transform=None):
-        self.all_image_tiles = all_image_tiles
-        self.labels = torch.LongTensor(labels)
+
+class PreSavedTiles_MILdataset(Dataset):
+    def __init__(self,
+                 data_path: str = 'tcga-data',
+                 tile_size: int = 256,
+                 num_of_tiles_from_slide: int = 50,
+                 target_kind: str = 'ER',
+                 test_fold: int = 1,
+                 train: bool = True,
+                 transform = None):
+
+        if target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+
+        meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
+        self.BASIC_MAGNIFICATION = 20
+        self.meta_data_DF = pd.read_excel(meta_data_file)
+        # self.meta_data_DF.set_index('id')
+        self.data_path = data_path
+        self.tile_size = tile_size
+        self.target_kind = target_kind
+        self.test_fold = test_fold
+        self.num_of_tiles_from_slide = num_of_tiles_from_slide
+        self.train = train
         self.transform = transform
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+        if self.train:
+            folds = list(range(1, 7))
+            folds.remove(self.test_fold)
+        else:
+            folds = [self.test_fold]
+
+        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
+        all_image_file_names = list(self.meta_data_DF['file'])
+        all_image_path_names = list(self.meta_data_DF['id'])
+        all_in_fold = list(self.meta_data_DF['test fold idx'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - 256 compatible @ X20'])
+
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+        self.magnification = []
+
+        for _, index in enumerate(valid_slide_indices):
+            self.image_file_names.append(all_image_file_names[index])
+            self.image_path_names.append(all_image_path_names[index])
+            self.in_fold.append(all_in_fold[index])
+            self.tissue_tiles.append(all_tissue_tiles[index])
+            self.target.append(all_targets[index])
+            self.magnification.append(all_magnifications[index])
+
+
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.target)
+
 
     def __getitem__(self, idx):
-        tiles = self.all_image_tiles[idx]
-        x, instance_locations = _make_bag(tiles)
-        y = self.labels[idx]
+        tiles_file_name = os.path.join(self.data_path, self.image_path_names[idx], 'tiles.data')
 
-        shape = x.shape
-        X = torch.zeros(shape)
-        if self.transform:
-            x = x.transpose(0, 2, 3, 1)
+        start = time.time()
+        with open(tiles_file_name, 'rb') as filehandle:
+            tiles = pickle.load(filehandle)
+        end = time.time()
+        print('PRESAVED: Time to upload tiles from HD is {:.2f} s'.format(end - start))
+        label = [1] if self.target[idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
 
-            for i in range(x.shape[0]):
-                X[i] = self.transform(x[i])
+        start = time.time()
+        X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
+        if not self.transform:
+            self.transform = transforms.Compose([transforms.ToTensor()])
 
-        return X, y, instance_locations
-"""
+        sample_idx = sample(range(len(tiles)), self.num_of_tiles_from_slide)
+        for i, idx in enumerate(sample_idx):
+            X[i] = self.transform(tiles[idx])
+
+        end = time.time()
+        print('PRESAVED: Time to make manipulations on  data is {:.2f} seconds'.format(end - start))
+        return X, label

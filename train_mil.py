@@ -40,9 +40,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             train_error += error
 
             end = time.time()
-            print('Elapsed time of one train iteration is {:.0f} seconds'.format(end - start))
+            print('Elapsed time of one train iteration is {:.0f} s'.format(end - start))
 
 
+        continue
         print('Epoch {}: Train Loss = {:.2f}, Train Error = {:.2f}%'.format(e, train_loss, train_error / len(dloader_train)))
 
         if train_loss < best_train_loss:
@@ -89,26 +90,26 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader):
 # Device definition:
 DEVICE = utils.device_gpu_cpu()
 
-if DEVICE == 'cuda':
-    net = nn.parallel.DistributedDataParallel(net)
-    # net = nn.DataParallel(net)
-    cudnn.benchmark = True
-
-
 # Get data:
+#train_dset = utils.PreSavedTiles_MILdataset(train=True)
 train_dset = utils.WSI_MILdataset(train=True)
-train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=20, pin_memory=False)
+train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=7, pin_memory=False)
 
-test_dset = utils.WSI_MILdataset(train=False)
-test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=20, pin_memory=False)
+test_dset = utils.WSI_MILdatasett(train=False)
+test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=7, pin_memory=False)
 
 # Model upload:
 infer = False
 if not infer:
     net = model.GatedAttention(tile_size=256)
+    if DEVICE == 'cuda':
+        net = nn.parallel.DistributedDataParallel(net)
+        # net = nn.DataParallel(net)
+        cudnn.benchmark = True
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=1e-4, weight_decay=1e-4)
     # optimizer = optim.Adadelta(net.parameters())
 
-    epoch = 5
+    epoch = 1
     best_model, best_train_error, best_train_loss = train(net, train_loader, test_loader)

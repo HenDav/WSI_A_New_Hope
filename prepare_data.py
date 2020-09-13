@@ -6,6 +6,7 @@ parser.add_argument('--data_collection', type=bool, default=False, help='need to
 parser.add_argument('--segmentation', type=bool, default=False, help='need to make segmentation map for all files?')
 parser.add_argument('--grid', type=bool, default=False, help='need to make grid coordinates for all files?')
 parser.add_argument('--stats', type=bool, default=False, help='need to compute statistical data?')
+parser.add_argument('--hard_copy', type=bool, default=False, help='make hard copy of tiles?')
 
 args = parser.parse_args()
 
@@ -18,8 +19,9 @@ if args.grid:
     utils.make_grid()
 if args.stats:
     utils.compute_normalization_values()
+if args.hard_copy:
+    utils.make_tiles_hard_copy()
 
-utils.make_tiles_hard_copy()
 print('Data Preparation sequence is Done !')
 
 
