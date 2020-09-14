@@ -7,6 +7,8 @@ import torch.optim as optim
 import model
 from tqdm import tqdm
 import time
+from torch.utils.tensorboard import SummaryWriter
+
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, print_every: int = 100):
     """
@@ -17,6 +19,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     best_train_error = len(dloader_train)
     best_train_loss = 1e5
     best_model = None
+    writer = SummaryWriter('runs-output')
 
     for e in range(epoch):
         train_error, train_loss = 0, 0
@@ -25,6 +28,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         for batch_idx, (data, target) in enumerate(tqdm(dloader_train)):
             start = time.time()
             data, target = data.to(DEVICE), target.to(DEVICE)
+            model.to(DEVICE)
             prob, label, weights = model(data)
 
             prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
@@ -35,6 +39,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             loss.backward()
             optimizer.step()
 
+            writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
             # Calculate training error
             error = 1. - label.eq(target).cpu().float().mean().item()
             train_error += error
@@ -43,7 +48,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             print('Elapsed time of one train iteration is {:.0f} s'.format(end - start))
 
 
-        continue
+        writer.add_scalar('Training Loss', train_loss, e)
+        writer.add_scalar('Training Error', train_error, e)
         print('Epoch {}: Train Loss = {:.2f}, Train Error = {:.2f}%'.format(e, train_loss, train_error / len(dloader_train)))
 
         if train_loss < best_train_loss:
@@ -55,6 +61,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         model.eval()
         test_acc = check_accuracy(model, dloader_test)
+        writer.add_scalar('Test Set Accuracy', test_acc, e)
         model.train()
         print('Epoch: {}, Loss: {:.2f}, Train error: {:.0f}'.format(e, train_loss.cpu().numpy()[0], train_error))
 
@@ -74,6 +81,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader):
     with torch.no_grad():
         for data, target, _ in data_loader:
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
+            net.to(DEVICE)
             _, label, _ = model(data)
             num_correct += (label == target).cpu().int().item()
             num_samples += label.size(0)
@@ -90,21 +98,26 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader):
 # Device definition:
 DEVICE = utils.device_gpu_cpu()
 
+# Get number of available CPUs:
+cpu_available = utils.get_cpu()
+
 # Get data:
 #train_dset = utils.PreSavedTiles_MILdataset(train=True)
-train_dset = utils.WSI_MILdataset(train=True)
-train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=7, pin_memory=False)
+train_dset = utils.PreSavedTiles_MILdataset(num_of_tiles_from_slide=50, train=True)
+train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=False)
 
-test_dset = utils.WSI_MILdatasett(train=False)
-test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=7, pin_memory=False)
+test_dset = utils.PreSavedTiles_MILdataset(num_of_tiles_from_slide=50, train=False)
+test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=False)
 
 # Model upload:
 infer = False
 if not infer:
     net = model.GatedAttention(tile_size=256)
-    if DEVICE == 'cuda':
+    if DEVICE == 'cuda:0':
         net = nn.parallel.DistributedDataParallel(net)
-        # net = nn.DataParallel(net)
+        if torch.cuda.device_count() > 1:
+            net = nn.DataParallel(net)
+            print('Using {} GPUs'.format(torch.cuda.device_count()))
         cudnn.benchmark = True
 
     criterion = nn.CrossEntropyLoss()

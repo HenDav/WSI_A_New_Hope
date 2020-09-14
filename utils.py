@@ -552,6 +552,7 @@ class WSI_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
+        print('Initiation of {} DataSet in Complete. Working with WSI'.format('Train' if self.train else 'Test'))
 
 
     def __len__(self):
@@ -592,13 +593,30 @@ class WSI_MILdataset(Dataset):
 
 def device_gpu_cpu():
     if torch.cuda.is_available():
-        device = torch.device('cuda')
+        device = torch.device('cuda:0')
         print('Using CUDA')
     else:
         device = torch.device('cpu')
         print('Using cpu')
 
     return device
+
+
+def get_cpu():
+    platform = sys.platform
+    if platform == 'linux':
+        cpu = len(os.sched_getaffinity(0))
+    elif platform == 'darwin':
+        cpu = 2
+        platform = 'MacOs'
+    else:
+        cpu = 1
+        platform = 'Unrecognized'
+
+    if cpu > 6:
+        cpu -= 2
+    print('Running on {} with {} workers'.format(platform, cpu))
+    return cpu
 
 
 class PreSavedTiles_MILdataset(Dataset):
@@ -662,24 +680,22 @@ class PreSavedTiles_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-
+        print('Initiation of {} DataSet in Complete. Working with PreSaved tiles'.format('Train' if self.train else 'Test'))
 
     def __len__(self):
         return len(self.target)
 
 
     def __getitem__(self, idx):
+        start = time.time()
         tiles_file_name = os.path.join(self.data_path, self.image_path_names[idx], 'tiles.data')
 
-        start = time.time()
         with open(tiles_file_name, 'rb') as filehandle:
             tiles = pickle.load(filehandle)
-        end = time.time()
-        print('PRESAVED: Time to upload tiles from HD is {:.2f} s'.format(end - start))
+
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
-        start = time.time()
         X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
         if not self.transform:
             self.transform = transforms.Compose([transforms.ToTensor()])
@@ -689,5 +705,5 @@ class PreSavedTiles_MILdataset(Dataset):
             X[i] = self.transform(tiles[idx])
 
         end = time.time()
-        print('PRESAVED: Time to make manipulations on  data is {:.2f} seconds'.format(end - start))
+        print('PreSaved: Time to prepare item is {:.2f} s'.format(end - start))
         return X, label

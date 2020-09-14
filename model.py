@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
 
 
 class Flatten(nn.Module):
@@ -19,6 +20,18 @@ class GatedAttention(nn.Module):
         self.M = 500
         self.L = 128
         self.K = 1    # in the paper referred a 1.
+
+        self.feature_extractor_ResNet50_part_1 = models.resnet50()
+
+        self.feature_extractor_fc = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(in_features=1000, out_features=512)
+        )
+
+        self.feature_extractor_ResNet50 = nn.Sequential(
+            self.feature_extractor_ResNet50_part_1,
+            self.feature_extractor_fc
+        )
 
         self.feature_extractor_basic_2 = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
