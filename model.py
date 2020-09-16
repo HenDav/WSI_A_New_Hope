@@ -21,18 +21,19 @@ class GatedAttention(nn.Module):
         self.L = 128
         self.K = 1    # in the paper referred a 1.
 
-        self.feature_extractor_ResNet50_part_1 = models.resnet50()
 
-        self.feature_extractor_fc = nn.Sequential(
+        self._feature_extractor_ResNet50_part_1 = models.resnet50()
+
+        self._feature_extractor_fc = nn.Sequential(
             nn.Dropout(),
-            nn.Linear(in_features=1000, out_features=512)
+            nn.Linear(in_features=1000, out_features=self.M)
         )
-
+        
         self.feature_extractor_ResNet50 = nn.Sequential(
-            self.feature_extractor_ResNet50_part_1,
-            self.feature_extractor_fc
+            self._feature_extractor_ResNet50_part_1,
+            self._feature_extractor_fc
         )
-
+        """
         self.feature_extractor_basic_2 = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
             nn.ReLU(),
@@ -50,7 +51,7 @@ class GatedAttention(nn.Module):
             nn.Linear(self.tile_size * self.tile_size * 128, self.M),
             nn.ReLU()
         )
-
+        
         self.feature_extractor_basic_1 = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
             nn.ReLU(),
@@ -62,7 +63,7 @@ class GatedAttention(nn.Module):
             nn.Linear(self.tile_size * self.tile_size * 64, self.M),
             nn.ReLU()
         )
-
+        """
         self.attention_V = nn.Sequential(
             nn.Linear(self.M, self.L),
             nn.Tanh()
@@ -83,7 +84,8 @@ class GatedAttention(nn.Module):
     def forward(self, x):
         x = x.squeeze(0)
 
-        H = self.feature_extractor_basic_1(x)  # NxM
+        H = self.feature_extractor_ResNet50(x)
+        # H = self.feature_extractor_basic_1(x)  # NxM
         """H = H.view(-1, 50 * 4 * 4) 
         H = self.feature_extractor_part2(H)  # NxL """
 

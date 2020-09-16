@@ -198,6 +198,7 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     tile_nums = []
     total_tiles =[]
     print('Starting Grid production...')
+    print()
     #for _, file in enumerate(files):
     for i in tqdm(range(len(files))):
         file = files[i]
@@ -232,9 +233,9 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
             pickle.dump(legit_grid, filehandle)
 
     # Adding the number of tiles to the excel file:
-    basic_DF['Legitimate tiles - 256 compatible @ X20'] = tile_nums
-    basic_DF['Total tiles - 256 compatible @ X20'] = total_tiles
-    basic_DF['Slide tile usage [%]'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
+    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
@@ -477,8 +478,6 @@ def get_transform():
     transform = transforms.Compose([transforms.RandomHorizontalFlip(),
                                     transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
-    # TODO: Check if the output of ToTensor is in the range [0, 1] or [0, 255]. This will have implication on the following normalization !!!!!!!
-
                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
                                     ])
@@ -493,6 +492,7 @@ class WSI_MILdataset(Dataset):
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
+                 print_timing: bool = True,
                  transform = None):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
@@ -509,6 +509,7 @@ class WSI_MILdataset(Dataset):
         self.test_fold = test_fold
         self.num_of_tiles_from_slide = num_of_tiles_from_slide
         self.train = train
+        self.print_time = print_timing
         self.transform = transform
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -552,7 +553,8 @@ class WSI_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-        print('Initiation of {} DataSet in Complete. Working with WSI'.format('Train' if self.train else 'Test'))
+        print('Initiation of {} DataSet is Complete. Working with WSI. Tiles of size {}. {} tiles in a bag'
+              .format('Train' if self.train else 'Test', self.tile_size, self.num_of_tiles_from_slide))
 
 
     def __len__(self):
@@ -586,8 +588,9 @@ class WSI_MILdataset(Dataset):
             #  X[i] = self.transform(tiles[i])  # This line is for nd.array
             X[i] = self.transform(tiles[i])
 
-        end = time.time()
-        print('WSI: Time to prepare item is {:.2f} s'.format(end - start))
+        if self.print_time:
+            end = time.time()
+            print('WSI: Time to prepare item is {:.2f} s'.format(end - start))
         return X, label
 
 
@@ -680,7 +683,7 @@ class PreSavedTiles_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-        print('Initiation of {} DataSet in Complete. Working with PreSaved tiles'.format('Train' if self.train else 'Test'))
+        print('Initiation of {} DataSet is Complete. Working with PreSaved tiles'.format('Train' if self.train else 'Test'))
 
     def __len__(self):
         return len(self.target)
