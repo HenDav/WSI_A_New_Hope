@@ -79,15 +79,31 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader):
     """
     num_correct = 0
     num_samples = 0
+    total_pos, total_neg = 0, 0
+    true_pos, true_neg = 0, 0
+
     model.eval()  # set model to evaluation mode
     with torch.no_grad():
         for (data, target) in data_loader:
+            if target == 1:
+                total_pos += 1
+            else:
+                total_neg += 1
+
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
-            net.to(DEVICE)
+            model.to(DEVICE)
             _, label, _ = model(data)
             num_correct += (label == target).cpu().int().item()
             num_samples += label.size(0)
+
+            if target == 1 and label == 1:
+                true_pos += 1
+            elif target == 0 and label == 0:
+                true_neg += 1
+
         acc = float(num_correct) / num_samples
+        balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+        wri
         print('Got {} / {} correct = {:.2f} % over Test set'.format(num_correct, num_samples, 100 * acc))
     return acc
 
