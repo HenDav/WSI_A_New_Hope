@@ -473,8 +473,8 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
 def get_transform():
     # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
-    # TODO: Also consider the following - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-    # TODO: Also consider the following - torchvision.transforms.RandomRotation(degrees, resample=False, expand=False, center=None, fill=None)
+    # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+    # TODO: Consider using - torchvision.transforms.RandomRotation(degrees, resample=False, expand=False, center=None, fill=None)
     transform = transforms.Compose([transforms.RandomHorizontalFlip(),
                                     transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
@@ -577,7 +577,11 @@ class WSI_MILdataset(Dataset):
         # TODO: the following section is written for tiles in PIL format
         X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
         if not self.transform:
-            self.transform = transforms.Compose([transforms.ToTensor()])
+            self.transform = transforms.Compose([transforms.ToTensor(),
+                                                 transforms.Normalize(
+                                                     mean=(0.22826, 0.37736, 0.275547),
+                                                     std=(0.158447, 0.231005, 0.1768365))
+                                                 ])
 
         # tiles = tiles.transpose(0, 2, 3, 1)  # When working with PIL, this line is not needed
         # Check the need to resize the images (in case of different magnification):
@@ -596,7 +600,7 @@ class WSI_MILdataset(Dataset):
 
 def device_gpu_cpu():
     if torch.cuda.is_available():
-        device = torch.device('cuda:0')
+        device = torch.device('cuda')
         print('Using CUDA')
     else:
         device = torch.device('cpu')
