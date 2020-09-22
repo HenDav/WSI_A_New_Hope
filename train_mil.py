@@ -32,10 +32,16 @@ def train(print_timing: bool = True):
     best_train_acc = 0
     best_train_loss = 1e5
     previous_epoch_loss = 1e5
+
+    # The following 3 lines initialize variables to computer AUC for train dataset.
+    total_pos_train, total_neg_train = 0, 0
+    true_pos_train, true_neg_train = 0, 0
+    true_labels_train, scores_train = np.zeros(len(train_loader)), np.zeros(len(train_loader))
+
     best_model = None
 
     for e in range(epoch):
-        train_acc, train_loss = 0, 0
+        correct_labeling_total, train_loss = 0, 0
         model.train()
         print('Epoch {}:'.format(e))
         for batch_idx, (data, target) in enumerate(tqdm(train_loader)):
@@ -43,6 +49,18 @@ def train(print_timing: bool = True):
             data, target = data.to(DEVICE), target.to(DEVICE)
             model.to(DEVICE)
             prob, label, _ = model(data)
+
+            if target == 1:
+                total_pos_train += 1
+                if label == 1:
+                    true_pos_train += 1
+            else:
+                total_neg_train += 1
+                if target == 0:
+                    true_neg_train += 1
+
+            true_labels_train[batch_idx] = target.cpu().detach().numpy()[0][0]
+            scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
 
             prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
             neg_log_likelihood = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
@@ -53,24 +71,40 @@ def train(print_timing: bool = True):
             optimizer.step()
 
             writer.add_scalar('Train/Loss', loss.data[0], batch_idx + e * len(train_loader))
-            # Calculate training error
-            error = 1. - label.eq(target).cpu().float().mean().item()
-            acc = label.eq(target).cpu().float().mean().item()  # TODO: I think the mean() calculation can be removed (each batch consists of only one example
-            train_acc += acc
+            # error = 1. - label.eq(target).cpu().float().mean().item()
+            # Calculate training accuracy
+            correct_labeling = label.eq(target).cpu().float().mean().item()  # TODO: I think the mean() calculation can be removed (each batch consists of only one example
+            correct_labeling_total += correct_labeling
 
             if print_timing:
                 end = time.time()
                 print('Elapsed time of one train iteration is {:.0f} s'.format(end - start))
 
+        train_accuracy = correct_labeling_total / len(train_loader) * 100
+
+        balanced_acc_train = 100 * (true_pos_train / total_pos_train + true_neg_train / total_neg_train) / 2
+
+        fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+        roc_auc_train = auc(fpr_train, tpr_train)
+
+        writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
+        writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
 
         writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
-        writer.add_scalar('Train/Accuracy', train_acc, e)
-        print('Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}%'
-              .format(e + 1, train_loss.cpu().numpy()[0], previous_epoch_loss - train_loss.cpu().numpy()[0], (train_acc / len(train_loader)) * 100))
+        writer.add_scalar('Train/Accuracy', train_accuracy, e)
+        print('Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {})'
+              .format(e + 1,
+                      train_loss.cpu().numpy()[0],
+                      previous_epoch_loss - train_loss.cpu().numpy()[0],
+                      train_accuracy,
+                      correct_labeling_total,
+                      len(train_loader)))
+
         previous_epoch_loss = train_loss.cpu().numpy()[0]
+
         if train_loss < best_train_loss:
             best_train_loss = train_loss
-            best_train_acc = train_acc
+            best_train_acc = train_accuracy
             best_model = model
 
         model.eval()
@@ -101,6 +135,7 @@ def check_accuracy(data_loader: DataLoader, epoch:int, train: bool = False):
     else:
         print('Checking accuracy on test sett')
     """
+
     num_correct = 0
     num_samples = 0
     total_pos, total_neg = 0, 0
@@ -136,6 +171,7 @@ def check_accuracy(data_loader: DataLoader, epoch:int, train: bool = False):
         roc_auc = auc(fpr, tpr)
 
 
+        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if train:
             writer_string = 'Train'
         else:
@@ -145,7 +181,7 @@ def check_accuracy(data_loader: DataLoader, epoch:int, train: bool = False):
         writer.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('Got {} / {} correct = {:.2f} % over Test set'.format(num_correct, num_samples, acc))
+        print('Got {} / {} correct ({:.2f}%) over Test set'.format(num_correct, num_samples, acc))
     return acc, balanced_acc
 
 
@@ -161,11 +197,11 @@ if __name__ == '__main__':
     cpu_available = utils.get_cpu()
 
     # Tile size definition:
-    TILE_SIZE = 128
+    TILE_SIZE = 256
 
     # Get data:
     train_dset = utils.WSI_MILdataset(tile_size=TILE_SIZE,
-                                      num_of_tiles_from_slide=3,
+                                      num_of_tiles_from_slide=50,
                                       test_fold=args.test_fold,
                                       train=True,
                                       print_timing=False,
@@ -176,14 +212,13 @@ if __name__ == '__main__':
     #  with the GPUs. The solution might be to run each batch of tiles through the first section of the net till we have all
     #  the feature vectors and then proceed to the attention weight part for all feature vectors together.
 
-    # This test data set is written such that it'll be the same as the train dataset
     test_dset = utils.WSI_MILdataset(tile_size=TILE_SIZE,
-                                     num_of_tiles_from_slide=3,
-                                     print_timing=False,
+                                     num_of_tiles_from_slide=50,
                                      test_fold=args.test_fold,
                                      train=True,
+                                     print_timing=False,
                                      transform=None)
-    test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=False)
+    test_loader = DataLoader(test_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=False)
 
     # Load model
     model = model.GatedAttention(tile_size=TILE_SIZE)
