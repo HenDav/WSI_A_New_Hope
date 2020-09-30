@@ -10,11 +10,13 @@ from tqdm import tqdm
 from typing import List, Tuple
 import pickle
 from random import sample
+import random
 from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import sys
 import time
+
 
 def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
@@ -139,8 +141,13 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
 
     # Choose locations from the grid:
     loc_num = len(grid_list)
+
     idxs = sample(range(loc_num), how_many)
     locs = [grid_list[idx] for idx in idxs]
+
+    #  _save_tile_list_to_file(file_name, idxs)
+
+    # print('File: {}, Tiles: {}'.format(file_name, idxs))
 
     if resize:
         resize_to = tile_size
@@ -366,7 +373,9 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
     #for _, dir in enumerate(dirs):
     for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
         dir = dirs[i]
-        if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]): continue
+        if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
+            continue
+
         print('Working on {}'.format(dir))
         slide = _get_slide(os.path.join(data_path, dir))
         if slide is not None:
@@ -484,6 +493,94 @@ def get_transform():
     return transform
 
 
+def device_gpu_cpu():
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        print('Using CUDA')
+    else:
+        device = torch.device('cpu')
+        print('Using cpu')
+
+    return device
+
+
+def get_cpu():
+    platform = sys.platform
+    if platform == 'linux':
+        cpu = len(os.sched_getaffinity(0))
+    elif platform == 'darwin':
+        cpu = 2
+        platform = 'MacOs'
+    else:
+        cpu = 1
+        platform = 'Unrecognized'
+
+    if cpu > 6:
+        cpu -= 2
+    print('Running on {} with {} workers'.format(platform, cpu))
+    return cpu
+
+def run_data(experiment: str = None,
+             test_fold: int = 1,
+             transformations: bool = False,
+             tile_size: int = 256,
+             tiles_per_bag: int = 50):
+    """
+    This function writes the run data to file
+    :param experiment:
+    :param from_epoch:
+    :return:
+    """
+
+    run_file_name = 'runs/run_data.xlsx'
+    run_DF = pd.read_excel(run_file_name)
+    run_DF.set_index('Experiment', inplace=True)
+
+    # If a new experiment is conducted:
+    if experiment is None:
+        experiment = run_DF.index.values.max() + 1
+        location = 'runs/Exp_' + str(experiment) + '-Test_' + str(test_fold)
+        run_dict = {'Experiment': experiment,
+                    'Test Fold': test_fold,
+                    'Transformations': transformations,
+                    'Tile Size': tile_size,
+                    'Tiles Per Bag': tiles_per_bag,
+                    'Location': location
+                    }
+        run_DF.append([run_dict])
+        run_DF.to_excel(run_file_name)
+        return location
+    # In case we want to continue from a previous training session
+    else:
+        location = run_DF.loc[[experiment], ['Location']].values[0][0]
+        test_fold = run_DF.loc[[experiment], ['Test Fold']].values[0][0]
+        transformations = run_DF.loc[[experiment], ['Transformations']].values[0][0]
+        tile_size = run_DF.loc[[experiment], ['Tile Size']].values[0][0]
+        tiles_per_bag = run_DF.loc[[experiment], ['Tiles Per Bag']].values[0][0]
+
+        return location, test_fold, transformations, tile_size, tiles_per_bag
+
+
+
+"""
+def _save_tile_list_to_file(slide_name: str, tile_list: list, path: str = 'tcga-data'):
+    tile_list.sort()
+    tile_list_dict = {'Slide': slide_name.split('/')[1],
+                      'Tiles': str(tile_list)}
+
+    if os.path.isfile(os.path.join(path, 'train_tile_selection.xlsx')):
+        tile_list_DF = pd.read_excel(os.path.join(path, 'train_tile_selection.xlsx'))
+        tile_list_DF = tile_list_DF.append([tile_list_dict], ignore_index=False)
+        try:
+            tile_list_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+        except:
+            pass
+    else:
+        tile_list_DF = pd.DataFrame([tile_list_dict])
+
+    tile_list_DF.to_excel(os.path.join(path, 'train_tile_selection.xlsx'))
+"""
+
 class WSI_MILdataset(Dataset):
     def __init__(self,
                  data_path: str = 'tcga-data',
@@ -518,7 +615,7 @@ class WSI_MILdataset(Dataset):
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         # Also remove slides without grid data:
-        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - 256 compatible @ X20'] == -1])
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
@@ -534,7 +631,7 @@ class WSI_MILdataset(Dataset):
         all_image_file_names = list(self.meta_data_DF['file'])
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
-        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - 256 compatible @ X20'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
 
         all_magnifications = list(self.meta_data_DF['Objective Power'])
 
@@ -553,8 +650,12 @@ class WSI_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-        print('Initiation of {} DataSet is Complete. Working with WSI. Tiles of size {}. {} tiles in a bag'
-              .format('Train' if self.train else 'Test', self.tile_size, self.num_of_tiles_from_slide))
+        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform'
+              .format('Train' if self.train else 'Test',
+                      self.__len__(),
+                      self.tile_size,
+                      self.num_of_tiles_from_slide,
+                      'Without' if self.transform is None else 'With'))
 
 
     def __len__(self):
@@ -578,9 +679,8 @@ class WSI_MILdataset(Dataset):
         X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
         if not self.transform:
             self.transform = transforms.Compose([transforms.ToTensor(),
-                                                 transforms.Normalize(
-                                                     mean=(0.22826, 0.37736, 0.275547),
-                                                     std=(0.158447, 0.231005, 0.1768365))
+                                                 transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
+                                                                      std=(0.158447, 0.231005, 0.1768365))
                                                  ])
 
         # tiles = tiles.transpose(0, 2, 3, 1)  # When working with PIL, this line is not needed
@@ -596,34 +696,6 @@ class WSI_MILdataset(Dataset):
             end = time.time()
             print('WSI: Time to prepare item is {:.2f} s'.format(end - start))
         return X, label
-
-
-def device_gpu_cpu():
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print('Using CUDA')
-    else:
-        device = torch.device('cpu')
-        print('Using cpu')
-
-    return device
-
-
-def get_cpu():
-    platform = sys.platform
-    if platform == 'linux':
-        cpu = len(os.sched_getaffinity(0))
-    elif platform == 'darwin':
-        cpu = 2
-        platform = 'MacOs'
-    else:
-        cpu = 1
-        platform = 'Unrecognized'
-
-    if cpu > 6:
-        cpu -= 2
-    print('Running on {} with {} workers'.format(platform, cpu))
-    return cpu
 
 
 class PreSavedTiles_MILdataset(Dataset):

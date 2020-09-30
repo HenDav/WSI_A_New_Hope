@@ -14,56 +14,26 @@ class Flatten(nn.Module):
 
 
 class GatedAttention(nn.Module):
-    def __init__(self, tile_size: int = 7):
+    def __init__(self):
+    #def __init__(self, tile_size: int = 256):
         super(GatedAttention, self).__init__()
-        self.tile_size = tile_size
+        #self.tile_size = tile_size
         self.M = 500
         self.L = 128
         self.K = 1    # in the paper referred a 1.
 
-
         self._feature_extractor_ResNet50_part_1 = models.resnet50()
 
         self._feature_extractor_fc = nn.Sequential(
-            nn.Dropout(),
+            # nn.Dropout(),  # TODO: Try to add regularization methods after you can over-fit the model
             nn.Linear(in_features=1000, out_features=self.M)
         )
         
-        self.feature_extractor_ResNet50 = nn.Sequential(
+        self.feature_extractor = nn.Sequential(
             self._feature_extractor_ResNet50_part_1,
             self._feature_extractor_fc
         )
-        """
-        self.feature_extractor_basic_2 = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.BatchNorm2d(num_features=64),
-            nn.Dropout(0.25),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.BatchNorm2d(num_features=128),
-            nn.Dropout(0.25),
-            Flatten(),  # flattening from 7 X 7 X 64
-            nn.Linear(self.tile_size * self.tile_size * 128, self.M),
-            nn.ReLU()
-        )
-        
-        self.feature_extractor_basic_1 = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),  # This layer don't change the size of input tiles.
-            nn.ReLU(),
-            nn.BatchNorm2d(num_features=64),
-            nn.Dropout(0.25),
-            Flatten(),  # flattening from 7 X 7 X 64
-            nn.Linear(self.tile_size * self.tile_size * 64, self.M),
-            nn.ReLU()
-        )
-        """
+
         self.attention_V = nn.Sequential(
             nn.Linear(self.M, self.L),
             nn.Tanh()
@@ -84,10 +54,12 @@ class GatedAttention(nn.Module):
     def forward(self, x):
         x = x.squeeze(0)
 
-        H = self.feature_extractor_ResNet50(x)
-        # H = self.feature_extractor_basic_1(x)  # NxM
-        """H = H.view(-1, 50 * 4 * 4) 
-        H = self.feature_extractor_part2(H)  # NxL """
+        H = self.feature_extractor(x)
+
+        """
+        H = H.view(-1, 50 * 4 * 4) 
+        H = self.feature_extractor_part2(H)  # NxL
+        """
 
         A_V = self.attention_V(H)  # NxL
         A_U = self.attention_U(H)  # NxL
@@ -107,8 +79,9 @@ class GatedAttention(nn.Module):
 
         return Y_prob, Y_class, A
 
+    """
     # AUXILIARY METHODS
-    def calculate_classification_error(self, X, Y):
+    def calculate_classification_accuracy(self, X, Y):
         Y = Y.float()
         _, Y_hat, _ = self.forward(X)
         error = 1. - Y_hat.eq(Y).cpu().float().mean().item()
@@ -122,3 +95,4 @@ class GatedAttention(nn.Module):
         neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
         return neg_log_likelihood, A
+    """
