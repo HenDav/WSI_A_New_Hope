@@ -160,6 +160,26 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
     return image_tiles
 
 
+def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
+    """
+    This function returns the grid location of tile for a specific slide.
+    :param file_name:
+    :return:
+    """
+
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
+
+    # open grid list:
+    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
+
+        return grid_list
+
+
 def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int):
     """
     This function returns an array of tiles
@@ -480,19 +500,6 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     return seg_map_PIL, seg_image
 
 
-def get_transform():
-    # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
-    # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-    # TODO: Consider using - torchvision.transforms.RandomRotation(degrees, resample=False, expand=False, center=None, fill=None)
-    transform = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                    transforms.RandomVerticalFlip(),
-                                    transforms.ToTensor(),
-                                    transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
-                                                         std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
-                                    ])
-    return transform
-
-
 def device_gpu_cpu():
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -515,16 +522,12 @@ def get_cpu():
         cpu = 1
         platform = 'Unrecognized'
 
-    if cpu > 6:
-        cpu -= 2
+    #if cpu > 6:
+    #    cpu -= 2
     print('Running on {} with {} workers'.format(platform, cpu))
     return cpu
 
-def run_data(experiment: str = None,
-             test_fold: int = 1,
-             transformations: bool = False,
-             tile_size: int = 256,
-             tiles_per_bag: int = 50):
+def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False, tile_size: int = 256, tiles_per_bag: int = 50):
     """
     This function writes the run data to file
     :param experiment:
@@ -534,12 +537,18 @@ def run_data(experiment: str = None,
 
     run_file_name = 'runs/run_data.xlsx'
     run_DF = pd.read_excel(run_file_name)
-    run_DF.set_index('Experiment', inplace=True)
+    try:
+        run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+    except KeyError:
+        pass
+
+
+    run_DF_exp = run_DF.set_index('Experiment', inplace=False)
 
     # If a new experiment is conducted:
     if experiment is None:
-        experiment = run_DF.index.values.max() + 1
-        location = 'runs/Exp_' + str(experiment) + '-Test_' + str(test_fold)
+        experiment = run_DF_exp.index.values.max() + 1
+        location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
                     'Transformations': transformations,
@@ -547,39 +556,21 @@ def run_data(experiment: str = None,
                     'Tiles Per Bag': tiles_per_bag,
                     'Location': location
                     }
-        run_DF.append([run_dict])
+        run_DF = run_DF.append([run_dict], ignore_index=True)
         run_DF.to_excel(run_file_name)
+        print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
+
         return location
     # In case we want to continue from a previous training session
     else:
-        location = run_DF.loc[[experiment], ['Location']].values[0][0]
-        test_fold = run_DF.loc[[experiment], ['Test Fold']].values[0][0]
-        transformations = run_DF.loc[[experiment], ['Transformations']].values[0][0]
-        tile_size = run_DF.loc[[experiment], ['Tile Size']].values[0][0]
-        tiles_per_bag = run_DF.loc[[experiment], ['Tiles Per Bag']].values[0][0]
+        location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
+        test_fold = int(run_DF_exp.loc[[experiment], ['Test Fold']].values[0][0])
+        transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
+        tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
+        tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
 
         return location, test_fold, transformations, tile_size, tiles_per_bag
 
-
-
-"""
-def _save_tile_list_to_file(slide_name: str, tile_list: list, path: str = 'tcga-data'):
-    tile_list.sort()
-    tile_list_dict = {'Slide': slide_name.split('/')[1],
-                      'Tiles': str(tile_list)}
-
-    if os.path.isfile(os.path.join(path, 'train_tile_selection.xlsx')):
-        tile_list_DF = pd.read_excel(os.path.join(path, 'train_tile_selection.xlsx'))
-        tile_list_DF = tile_list_DF.append([tile_list_dict], ignore_index=False)
-        try:
-            tile_list_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
-        except:
-            pass
-    else:
-        tile_list_DF = pd.DataFrame([tile_list_dict])
-
-    tile_list_DF.to_excel(os.path.join(path, 'train_tile_selection.xlsx'))
-"""
 
 class WSI_MILdataset(Dataset):
     def __init__(self,
@@ -589,8 +580,8 @@ class WSI_MILdataset(Dataset):
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
-                 print_timing: bool = True,
-                 transform = None):
+                 print_timing: bool = False,
+                 transform = False):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
@@ -608,6 +599,7 @@ class WSI_MILdataset(Dataset):
         self.train = train
         self.print_time = print_timing
         self.transform = transform
+
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
         # We'll use only the valid slides - the ones with a Negative or Positive label.
@@ -650,12 +642,34 @@ class WSI_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform'
+        # Setting the transformation:
+        if self.transform:
+            # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
+            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: Consider transforms.RandomHorizontalFlip()
+
+            self.transform = \
+                transforms.Compose([ #transforms.RandomRotation([self.rotate_by, self.rotate_by]),
+                                     transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                                     ])
+        else:
+            self.transform = transforms.Compose([transforms.ToTensor(),
+                                                 transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
+                                                                      std=(0.158447, 0.231005, 0.1768365))
+                                                 ])
+
+
+
+        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}'
               .format('Train' if self.train else 'Test',
                       self.__len__(),
                       self.tile_size,
                       self.num_of_tiles_from_slide,
-                      'Without' if self.transform is None else 'With'))
+                      'Without' if transform is False else 'With',
+                      self.test_fold))
 
 
     def __len__(self):
@@ -675,22 +689,50 @@ class WSI_MILdataset(Dataset):
         X = torch.zeros(shape)
         """
 
-        # TODO: the following section is written for tiles in PIL format
+        # The following section is written for tiles in PIL format
         X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
-        if not self.transform:
+
+        # Updating RandomRotation angle in the data transformations only for train set:
+        if self.train:
+            rotate_by = sample([0, 90, 180, 270], 1)[0]
+            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
+                                             self.transform
+                                             ])
+        else:
+            transform = self.transform
+
+        """
             self.transform = transforms.Compose([transforms.ToTensor(),
                                                  transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
                                                                       std=(0.158447, 0.231005, 0.1768365))
                                                  ])
+        else:
+            # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
+            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: Consider transforms.RandomHorizontalFlip()
+
+            
+            rotate_by = sample([0, 90, 180, 270], 1)[0]
+            self.transform = \
+                transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
+                                     transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                                     ])
+        """
 
         # tiles = tiles.transpose(0, 2, 3, 1)  # When working with PIL, this line is not needed
         # Check the need to resize the images (in case of different magnification):
+
+
         magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         if magnification_relation != 1:
-            self.transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform ])
+            transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
+
         for i in range(self.num_of_tiles_from_slide):
             #  X[i] = self.transform(tiles[i])  # This line is for nd.array
-            X[i] = self.transform(tiles[i])
+            X[i] = transform(tiles[i])
 
         if self.print_time:
             end = time.time()
@@ -698,6 +740,7 @@ class WSI_MILdataset(Dataset):
         return X, label
 
 
+"""
 class PreSavedTiles_MILdataset(Dataset):
     def __init__(self,
                  data_path: str = 'tcga-data',
@@ -786,3 +829,174 @@ class PreSavedTiles_MILdataset(Dataset):
         end = time.time()
         print('PreSaved: Time to prepare item is {:.2f} s'.format(end - start))
         return X, label
+"""
+
+
+"""
+def get_transform():
+    # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
+    # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+    # TODO: Consider transforms.RandomHorizontalFlip()
+
+    transform = transforms.Compose([#transforms.RandomRotation([180, 180]),
+                                    transforms.RandomVerticalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                                         std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                                    ])
+    return transform
+"""
+
+
+"""
+def _save_tile_list_to_file(slide_name: str, tile_list: list, path: str = 'tcga-data'):
+    tile_list.sort()
+    tile_list_dict = {'Slide': slide_name.split('/')[1],
+                      'Tiles': str(tile_list)}
+
+    if os.path.isfile(os.path.join(path, 'train_tile_selection.xlsx')):
+        tile_list_DF = pd.read_excel(os.path.join(path, 'train_tile_selection.xlsx'))
+        tile_list_DF = tile_list_DF.append([tile_list_dict], ignore_index=False)
+        try:
+            tile_list_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+        except:
+            pass
+    else:
+        tile_list_DF = pd.DataFrame([tile_list_dict])
+
+    tile_list_DF.to_excel(os.path.join(path, 'train_tile_selection.xlsx'))
+"""
+
+
+class Infer_WSI_MILdataset(Dataset):
+    def __init__(self,
+                 data_path: str = 'tcga-data',
+                 tile_size: int = 256,
+                 tiles_per_bag: int = 50,
+                 target_kind: str = 'ER',
+                 test_fold: int = 1,
+                 train: bool = False,
+                 print_timing: bool = True,
+                 transform=False):
+
+        if target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+
+        meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
+        self.BASIC_MAGNIFICATION = 20
+        self.meta_data_DF = pd.read_excel(meta_data_file)
+
+        # self.meta_data_DF.set_index('id')
+        self.data_path = data_path
+        self.tile_size = tile_size
+        self.target_kind = target_kind
+        self.test_fold = test_fold
+        self.tiles_per_bag = tiles_per_bag
+        self.train = train
+        self.print_time = print_timing
+        self.transform = transform
+
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+
+        # Also remove slides without grid data:
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
+            self.tile_size) + ' compatible @ X20'] == -1])
+        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
+
+        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+        if self.train:
+            folds = list(range(1, 7))
+            folds.remove(self.test_fold)
+        else:
+            folds = [self.test_fold]
+
+        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
+        all_image_file_names = list(self.meta_data_DF['file'])
+        all_image_path_names = list(self.meta_data_DF['id'])
+        all_in_fold = list(self.meta_data_DF['test fold idx'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+        self.magnification = []
+        self.bags_per_slide = []
+        self.grid_list = []
+
+        for idx, index in enumerate(valid_slide_indices):
+            self.image_file_names.append(all_image_file_names[index])
+            self.image_path_names.append(all_image_path_names[index])
+            self.in_fold.append(all_in_fold[index])
+            self.tissue_tiles.append(all_tissue_tiles[index])
+            self.target.append(all_targets[index])
+            self.magnification.append(all_magnifications[index])
+            self.bags_per_slide.append( -(-all_tissue_tiles[index] // self.tiles_per_bag) )  # round up
+
+            grid = _get_grid_list(file_name=os.path.join(self.data_path,
+                                                         self.image_path_names[idx],
+                                                         self.image_file_names[idx]),
+                                  magnification=all_magnifications[index],
+                                  tile_size=self.tile_size)
+            bag = []
+            for i in range(self.bags_per_slide[idx]):
+                if bag == self.bags_per_slide[idx] - 1:
+                    bag.append(grid[(i + 1) * 50:])
+                else:
+                    bag.append(grid[i * 50 : (i + 1) * 50])
+
+            self.grid_list.append(bag)
+
+        # Setting the transformation:
+        self.transform = transforms.Compose([transforms.ToTensor(),
+                                             transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
+                                                                  std=(0.158447, 0.231005, 0.1768365))
+                                             ])
+
+        self.last_bag = False
+
+        print('Initiation of Inference WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform'
+              .format('Train' if self.train else 'Test',
+                      len(self.target),
+                      self.tile_size,
+                      self.tiles_per_bag,
+                      'Without' if transform is False else 'With'))
+
+    def __len__(self):
+        return sum(self.bags_per_slide)
+
+    def __getitem__(self, idx):
+        start = time.time()
+        # According to idx we need to find which slide and which bag we're in.
+
+        grid_locations = self.grid_list
+
+        file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
+        tiles = _choose_data(file_name, self.tiles_per_bag, self.magnification[idx], self.tile_size)
+
+        label = [1] if self.target[idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        # The following section is written for tiles in PIL format
+        X = torch.zeros([self.tiles_per_bag, 3, self.tile_size, self.tile_size])
+
+        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        if magnification_relation != 1:
+            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
+
+        for i in range(self.tiles_per_bag):
+            X[i] = transform(tiles[i])
+
+        if self.print_time:
+            end = time.time()
+            print('Infer WSI: Time to prepare item is {:.2f} s'.format(end - start))
+        return X, label, self.last_bag
