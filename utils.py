@@ -40,13 +40,12 @@ def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, ho
             pickle.dump(slide_tiles, filehandle)
 
 
-def copy_segImages(data_path: str = 'tcga-data'):
+def copy_segImages(data_path: str = 'tcga-data', data_format: str = 'TCGA'):
     """
     This function copies the Segmentation Images from it's original location to one specific location, for easy checking
     of the segmentations later on...
     :return:
     """
-    dirs = _get_tcga_id_list(data_path)
     print('Copying Segmentation Images...')
     if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
         try:
@@ -55,11 +54,23 @@ def copy_segImages(data_path: str = 'tcga-data'):
             print('Creation of directory \'Segmentation_Images\' is failed...')
             raise
 
-    for _, dir in enumerate(dirs):
-        if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
-            shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
-        else:
-            print('Found no segImage file for {}'.format(dir))
+    if data_format=='TCGA':
+        dirs = _get_tcga_id_list(data_path)
+        for _, dir in enumerate(dirs):
+            if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
+                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
+            else:
+                print('Found no segImage file for {}'.format(dir))
+    elif data_format=='ABCTB':
+        files = [file for file in os.listdir(data_path) if file.endswith("_segImage.png")]
+        for file in files:
+            shutil.copy2(os.path.join(data_path, file), os.path.join('Segmentation_Images', file))
+        #dirs = _get_tcga_id_list(data_path)
+        #for _, dir in enumerate(dirs):
+        #    if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
+
+        #    else:
+        #        print('Found no segImage file for {}'.format(dir))
 
     print('Finished copying!')
 
@@ -386,51 +397,95 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
 
 
-def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1):
-    print('Making Segmentation Maps for each .svs file...')
-    dirs = _get_tcga_id_list(data_path)
-    error_list = []
-    #for _, dir in enumerate(dirs):
-    for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
-        dir = dirs[i]
-        if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
-            continue
-
-        print('Working on {}'.format(dir))
-        slide = _get_slide(os.path.join(data_path, dir))
-        if slide is not None:
-            # Get a thunmbnail image to create the segmentation for:
-            try:
-                objective_pwr = int(float(slide.properties['aperio.AppMag']))
-            except KeyError:
-                print('Couldn\'t find Magnification - Segmentation Map was not Created')
-                continue
-            height = slide.dimensions[1]
-            width = slide.dimensions[0]
-            try:
-                thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-            except openslide.lowlevel.OpenSlideError as err:
-                error_dict = {}
-                e = sys.exc_info()
-                error_dict['Path'] = dir
-                error_dict['Error'] = err
-                error_dict['Error Details 1'] = e[0]
-                error_dict['Error Details 2'] = e[1]
-                error_list.append(error_dict)
-                print('Exception on path {}'.format(dir))
+def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1, data_format: str = 'TCGA'):
+    if data_format=='TCGA':
+        print('Making Segmentation Maps for each .svs file...')
+        dirs = _get_tcga_id_list(data_path)
+        error_list = []
+        #for _, dir in enumerate(dirs):
+        for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
+            dir = dirs[i]
+            if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
                 continue
 
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
-            slide.close()
-            # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(data_path, dir, 'thumb.png'))
-            thmb_seg_map.save(os.path.join(data_path, dir, 'segMap.png'))
-            thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))
+            print('Working on {}'.format(dir))
+            slide = _get_slide(os.path.join(data_path, dir), data_format)
+            if slide is not None:
+                # Get a thunmbnail image to create the segmentation for:
+                try:
+                    objective_pwr = int(float(slide.properties['aperio.AppMag']))
+                except KeyError:
+                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                    continue
+                height = slide.dimensions[1]
+                width = slide.dimensions[0]
+                try:
+                    thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except openslide.lowlevel.OpenSlideError as err:
+                    error_dict = {}
+                    e = sys.exc_info()
+                    error_dict['Path'] = dir
+                    error_dict['Error'] = err
+                    error_dict['Error Details 1'] = e[0]
+                    error_dict['Error Details 2'] = e[1]
+                    error_list.append(error_dict)
+                    print('Exception on path {}'.format(dir))
+                    continue
 
-        else:
-            print('Error: Found no slide in path {}'.format(dir))
-            # TODO: implement a case for a slide that cannot be opened.
-            continue
+                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+                slide.close()
+                # Saving segmentation map, segmentation image and thumbnail:
+                thumb.save(os.path.join(data_path, dir, 'thumb.png'))
+                thmb_seg_map.save(os.path.join(data_path, dir, 'segMap.png'))
+                thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))
+
+            else:
+                print('Error: Found no slide in path {}'.format(dir))
+                # TODO: implement a case for a slide that cannot be opened.
+                continue
+
+    elif data_format == 'ABCTB':
+        print('Making Segmentation Maps for each .ndpi file...')
+        files = [file for file in os.listdir(data_path) if file.endswith(".ndpi")]
+        error_list = []
+        for file in files:
+            print('Working on {}'.format(file))
+            slide = _get_slide(os.path.join(data_path, file), data_format)
+            if slide is not None:
+                # Get a thunmbnail image to create the segmentation for:
+                try:
+                    objective_pwr = int(float(slide.properties['hamamatsu.SourceLens']))
+                except KeyError:
+                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                    continue
+                height = slide.dimensions[1]
+                width = slide.dimensions[0]
+                try:
+                    thumb = slide.get_thumbnail(
+                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except openslide.lowlevel.OpenSlideError as err:
+                    error_dict = {}
+                    e = sys.exc_info()
+                    error_dict['Path'] = file
+                    error_dict['Error'] = err
+                    error_dict['Error Details 1'] = e[0]
+                    error_dict['Error Details 2'] = e[1]
+                    error_list.append(error_dict)
+                    print('Exception on file {}'.format(file))
+                    continue
+
+                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+                slide.close()
+                # Saving segmentation map, segmentation image and thumbnail:
+                fn = file[:-5]
+                thumb.save(os.path.join(data_path, fn + '_thumb.png'))
+                thmb_seg_map.save(os.path.join(data_path, fn + '_segMap.png'))
+                thmb_seg_image.save(os.path.join(data_path, fn + '_segImage.png'))
+
+            else:
+                print('Error: Found no slide in path {}'.format(data_path))
+                # TODO: implement a case for a slide that cannot be opened.
+                continue
 
 
     if len(error_list) != 0:
@@ -443,21 +498,27 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
         print('Segmentation Process finished without exceptions!')
 
 
-def _get_slide(path: 'str') -> openslide.OpenSlide:
+def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
     """
     This function returns an OpenSlide object from the file within the directory
     :param path:
     :return:
     """
-
-    # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
-    #if '.DS_Store' in file: file.remove('.DS_Store')
-    slide = None
-    try:
-        #slide = openslide.open_slide(os.path.join(path, file[0]))
-        slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
-    except:
-        print('Cannot open slide at location: {}'.format(path))
+    if data_format=='TCGA':
+        # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
+        #if '.DS_Store' in file: file.remove('.DS_Store')
+        slide = None
+        try:
+            #slide = openslide.open_slide(os.path.join(path, file[0]))
+            slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
+        except:
+            print('Cannot open slide at location: {}'.format(path))
+    elif data_format=='ABCTB':
+        slide = None
+        try:
+            slide = openslide.open_slide(path)
+        except:
+            print('Cannot open slide at location: {}'.format(path))
 
     return slide
 
@@ -489,8 +550,21 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     th_val = 5
     seg_map[seg_map > th_val] = 255
     seg_map[seg_map <= th_val] = 0
-    seg_map_PIL = Image.fromarray(seg_map)
 
+    #find small contours and delete them from segmentation map
+    size_thresh = 10000
+    contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    #drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
+    #cv.imshow("Contours", drawContours)
+    #cv.waitKey()
+    small_contours = []
+    for contour in contours:
+        contour_area = cv.contourArea(contour)
+        if contour_area < size_thresh:
+            small_contours.append(contour)
+    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1)
+
+    seg_map_PIL = Image.fromarray(seg_map)
     edge_image = cv.Canny(seg_map, 1, 254)
     # Make the edge thicker by dilating:
     kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
