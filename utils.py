@@ -18,7 +18,16 @@ import sys
 import time
 
 
-def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
+def make_dir(dirname):
+    if not dirname in next(os.walk(os.getcwd()))[1]:
+        try:
+            os.mkdir(dirname)
+        except OSError:
+            print('Creation of directory ', dirname, ' failed...')
+            raise
+
+
+def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
     This function makes a hard copy of the tile in order to avoid using openslide
     :param data_path:
@@ -33,7 +42,8 @@ def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, ho
             continue
 
         slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
+        slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size,
+                                   resize=True)
 
         file_name = os.path.join(data_path, meta_data['id'][i], 'tiles.data')
         with open(file_name, 'wb') as filehandle:
@@ -47,26 +57,22 @@ def copy_segImages(data_path: str = 'tcga-data', data_format: str = 'TCGA'):
     :return:
     """
     print('Copying Segmentation Images...')
-    if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
-        try:
-            os.mkdir('Segmentation_Images')
-        except OSError:
-            print('Creation of directory \'Segmentation_Images\' is failed...')
-            raise
+    make_dir('Segmentation_Images')
 
-    if data_format=='TCGA':
+    if data_format == 'TCGA':
         dirs = _get_tcga_id_list(data_path)
         for _, dir in enumerate(dirs):
             if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
-                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
+                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'),
+                             os.path.join('Segmentation_Images', dir + '_SegImage.png'))
             else:
                 print('Found no segImage file for {}'.format(dir))
-    elif data_format=='ABCTB':
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
         files = [file for file in os.listdir(data_path) if file.endswith("_segImage.png")]
         for file in files:
             shutil.copy2(os.path.join(data_path, file), os.path.join('Segmentation_Images', file))
-        #dirs = _get_tcga_id_list(data_path)
-        #for _, dir in enumerate(dirs):
+        # dirs = _get_tcga_id_list(data_path)
+        # for _, dir in enumerate(dirs):
         #    if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
 
         #    else:
@@ -75,7 +81,7 @@ def copy_segImages(data_path: str = 'tcga-data', data_format: str = 'TCGA'):
     print('Finished copying!')
 
 
-def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
+def compute_normalization_values(data_path: 'str' = 'tcga-data/') -> tuple:
     """
     This function runs over a set of images and compute mean and variance of each channel.
     The function computes these statistic values over the thumbnail images which are at X1 magnification
@@ -84,13 +90,13 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
 
     # get a list of all directories with images:
     dirs = _get_tcga_id_list(data_path)
-    stats_list =[]
+    stats_list = []
     print('Computing image-set Mean and Variance...')
     meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
     meta_data.set_index('id', inplace=True)
 
     # gather tissue image values from thumbnail image using the segmentation map:
-    #for idx, dir in enumerate(dirs):
+    # for idx, dir in enumerate(dirs):
     for i in tqdm(range(len(dirs))):
         dir = dirs[i]
         if meta_data.loc[[dir], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
@@ -127,7 +133,7 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
 
     total_mean = running_mean / N
     total_var = (running_mean_squared + running_var) / N - total_mean ** 2
-    print('Finished computing statistical data over {} thumbnail slides'.format(i+1))
+    print('Finished computing statistical data over {} thumbnail slides'.format(i + 1))
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
@@ -164,7 +170,6 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
         resize_to = tile_size
     else:
         resize_to = adjusted_tile_size
-
 
     image_tiles = _get_tiles(file_name, locs, adjusted_tile_size, resize_to=resize_to)
 
@@ -203,13 +208,13 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: 
     img = openslide.open_slide(file_name)
     tiles_num = len(locations)
     # TODO: Checking Pil vs. np array. Delete one of them...
-    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
+    # tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
     tiles_PIL = []
 
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
+        # tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
         if tile_sz != resize_to:
             image = image.resize((resize_to, resize_to), resample=Image.BILINEAR)
 
@@ -234,15 +239,15 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     objective_power = list(basic_DF['Objective Power'])
     basic_DF.set_index('file', inplace=True)
     tile_nums = []
-    total_tiles =[]
+    total_tiles = []
     print('Starting Grid production...')
     print()
-    #for _, file in enumerate(files):
+    # for _, file in enumerate(files):
     for i in tqdm(range(len(files))):
         file = files[i]
         data_dict = {}
         height = basic_DF.loc[file, 'Height']
-        width  = basic_DF.loc[file, 'Width']
+        width = basic_DF.loc[file, 'Width']
 
         id = basic_DF.loc[file, 'id']
         if objective_power[i] == 'Missing Data':
@@ -252,7 +257,8 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
             continue
 
         converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
-        basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
+        basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in
+                      range(0, width, converted_tile_size)]
         total_tiles.append((len(basic_grid)))
 
         # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
@@ -273,13 +279,15 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     # Adding the number of tiles to the excel file:
     basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
     basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(
+        ((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
 
 
-def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
+def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[
+    Tuple]:
     """
     This function gets a .svs file name, a basic grid and tile size and returns a list of legitimate grid locations.
     :param image_file_name: .svs file name
@@ -300,15 +308,15 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
     cols = size[1] / segMap.shape[1]
 
     # the complicated next line only rounds up the numbers
-    small_tile = (int(-(-tile_size//rows)), int(-(-tile_size//cols)))
+    small_tile = (int(-(-tile_size // rows)), int(-(-tile_size // cols)))
     # computing the compatible grid for the small segmenatation map:
-    idx_to_remove =[]
+    idx_to_remove = []
     for idx, (row, col) in enumerate(grid):
         new_row = int(-(-(row // rows)))
         new_col = int(-(-(col // cols)))
 
         # collect the data from the segMap:
-        tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
+        tile = segMap[new_row: new_row + small_tile[0], new_col: new_col + small_tile[1]]
         tile_pixels = small_tile[0] * small_tile[1]
         tissue_coverage = tile.sum() / tile_pixels
         if tissue_coverage < coverage:
@@ -381,14 +389,15 @@ def make_slides_xl_file(path: str = 'tcga-data'):
                 try:
                     id_dict['ER status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
                     id_dict['PR status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
-                    id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
-                    id_dict['test fold idx'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
+                    id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][
+                        0]
+                    id_dict['test fold idx'] = \
+                    TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
                 except:
                     id_dict['ER status'] = 'Missing Data'
                     id_dict['PR status'] = 'Missing Data'
                     id_dict['Her2 status'] = 'Missing Data'
                     id_dict['test fold idx'] = 'Missing Data'
-
 
                 id_list.append(id_dict)
 
@@ -397,16 +406,37 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
 
 
-def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1, data_format: str = 'TCGA'):
-    if data_format=='TCGA':
+def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1,
+                       data_format: str = 'TCGA'):
+    # RanS, save locally
+    make_dir('Segmentation_Images')
+    make_dir('Thumbs')
+    make_dir('Segmentation_Maps')
+
+    '''if data_format == 'TCGA':
+        dirs = _get_tcga_id_list(data_path)
+        for _, dir in enumerate(dirs):
+            if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
+                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'),
+                             os.path.join('Segmentation_Images', dir + '_SegImage.png'))
+            else:
+                print('Found no segImage file for {}'.format(dir))'''
+
+    if data_format == 'TCGA':
         print('Making Segmentation Maps for each .svs file...')
         dirs = _get_tcga_id_list(data_path)
         error_list = []
-        #for _, dir in enumerate(dirs):
+        # for _, dir in enumerate(dirs):
         for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
             dir = dirs[i]
-            if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
-                continue
+            fn = dir
+            #if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
+            if not rewrite:
+                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
+                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
+                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
+                if pic1 and pic2 and pic3:
+                    continue
 
             print('Working on {}'.format(dir))
             slide = _get_slide(os.path.join(data_path, dir), data_format)
@@ -420,7 +450,8 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
                 height = slide.dimensions[1]
                 width = slide.dimensions[0]
                 try:
-                    thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                    thumb = slide.get_thumbnail(
+                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
                 except openslide.lowlevel.OpenSlideError as err:
                     error_dict = {}
                     e = sys.exc_info()
@@ -435,26 +466,45 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
                 thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
                 slide.close()
                 # Saving segmentation map, segmentation image and thumbnail:
-                thumb.save(os.path.join(data_path, dir, 'thumb.png'))
+                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
+                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
+                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
+
+                '''thumb.save(os.path.join(data_path, dir, 'thumb.png'))
                 thmb_seg_map.save(os.path.join(data_path, dir, 'segMap.png'))
-                thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))
+                thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))'''
 
             else:
                 print('Error: Found no slide in path {}'.format(dir))
                 # TODO: implement a case for a slide that cannot be opened.
                 continue
 
-    elif data_format == 'ABCTB':
-        print('Making Segmentation Maps for each .ndpi file...')
-        files = [file for file in os.listdir(data_path) if file.endswith(".ndpi")]
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
+        if data_format == 'ABCTB':
+            print('Making Segmentation Maps for each .ndpi file...')
+            files = [file for file in os.listdir(data_path) if file.endswith(".ndpi")]
+        elif data_format == 'MIRAX':
+            print('Making Segmentation Maps for each .mrxs file...')
+            files = [file for file in os.listdir(data_path) if file.endswith(".mrxs")]
         error_list = []
         for file in files:
+            fn = file[:-5]
+            if not rewrite:
+                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
+                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
+                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
+                if pic1 and pic2 and pic3:
+                    continue
+
             print('Working on {}'.format(file))
             slide = _get_slide(os.path.join(data_path, file), data_format)
             if slide is not None:
                 # Get a thunmbnail image to create the segmentation for:
                 try:
-                    objective_pwr = int(float(slide.properties['hamamatsu.SourceLens']))
+                    if data_format == 'ABCTB':
+                        objective_pwr = int(float(slide.properties['hamamatsu.SourceLens']))
+                    elif data_format == 'MIRAX':
+                        objective_pwr = int(float(slide.properties['openslide.objective-power']))
                 except KeyError:
                     print('Couldn\'t find Magnification - Segmentation Map was not Created')
                     continue
@@ -477,16 +527,17 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
                 thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
                 slide.close()
                 # Saving segmentation map, segmentation image and thumbnail:
-                fn = file[:-5]
-                thumb.save(os.path.join(data_path, fn + '_thumb.png'))
+                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
+                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
+                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
+                '''thumb.save(os.path.join(data_path, fn + '_thumb.png'))
                 thmb_seg_map.save(os.path.join(data_path, fn + '_segMap.png'))
-                thmb_seg_image.save(os.path.join(data_path, fn + '_segImage.png'))
+                thmb_seg_image.save(os.path.join(data_path, fn + '_segImage.png'))'''
 
             else:
                 print('Error: Found no slide in path {}'.format(data_path))
                 # TODO: implement a case for a slide that cannot be opened.
                 continue
-
 
     if len(error_list) != 0:
         # Saving all error data to excel file:
@@ -504,16 +555,16 @@ def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
     :param path:
     :return:
     """
-    if data_format=='TCGA':
+    if data_format == 'TCGA':
         # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
-        #if '.DS_Store' in file: file.remove('.DS_Store')
+        # if '.DS_Store' in file: file.remove('.DS_Store')
         slide = None
         try:
-            #slide = openslide.open_slide(os.path.join(path, file[0]))
+            # slide = openslide.open_slide(os.path.join(path, file[0]))
             slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
         except:
             print('Cannot open slide at location: {}'.format(path))
-    elif data_format=='ABCTB':
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
         slide = None
         try:
             slide = openslide.open_slide(path)
@@ -551,12 +602,12 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     seg_map[seg_map > th_val] = 255
     seg_map[seg_map <= th_val] = 0
 
-    #find small contours and delete them from segmentation map
+    # find small contours and delete them from segmentation map
     size_thresh = 10000
     contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-    #drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
-    #cv.imshow("Contours", drawContours)
-    #cv.waitKey()
+    # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
+    # cv.imshow("Contours", drawContours)
+    # cv.waitKey()
     small_contours = []
     for contour in contours:
         contour_area = cv.contourArea(contour)
@@ -567,7 +618,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     seg_map_PIL = Image.fromarray(seg_map)
     edge_image = cv.Canny(seg_map, 1, 254)
     # Make the edge thicker by dilating:
-    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    kernel_dilation = np.ones((3, 3))  # cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
     edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
     seg_image = Image.blend(image, edge_image, 0.5)
 
@@ -596,12 +647,14 @@ def get_cpu():
         cpu = 1
         platform = 'Unrecognized'
 
-    #if cpu > 6:
+    # if cpu > 6:
     #    cpu -= 2
     print('Running on {} with {} workers'.format(platform, cpu))
     return cpu
 
-def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False, tile_size: int = 256, tiles_per_bag: int = 50):
+
+def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False, tile_size: int = 256,
+             tiles_per_bag: int = 50):
     """
     This function writes the run data to file
     :param experiment:
@@ -612,10 +665,9 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
     run_file_name = 'runs/run_data.xlsx'
     run_DF = pd.read_excel(run_file_name)
     try:
-        run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+        run_DF.drop(labels='Unnamed: 0', axis='columns', inplace=True)
     except KeyError:
         pass
-
 
     run_DF_exp = run_DF.set_index('Experiment', inplace=False)
 
@@ -655,7 +707,7 @@ class WSI_MILdataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform = False):
+                 transform=False):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
@@ -681,7 +733,8 @@ class WSI_MILdataset(Dataset):
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         # Also remove slides without grid data:
-        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
+            self.tile_size) + ' compatible @ X20'] == -1])
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
@@ -723,32 +776,30 @@ class WSI_MILdataset(Dataset):
             # TODO: Consider transforms.RandomHorizontalFlip()
 
             self.transform = \
-                transforms.Compose([ #transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-                                     transforms.RandomVerticalFlip(),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
-                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
-                                     ])
+                transforms.Compose([  # transforms.RandomRotation([self.rotate_by, self.rotate_by]),
+                    transforms.RandomVerticalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                         std=(
+                                         40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                ])
         else:
             self.transform = transforms.Compose([transforms.ToTensor(),
                                                  transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
                                                                       std=(0.158447, 0.231005, 0.1768365))
                                                  ])
 
-
-
-        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}'
-              .format('Train' if self.train else 'Test',
-                      self.__len__(),
-                      self.tile_size,
-                      self.num_of_tiles_from_slide,
-                      'Without' if transform is False else 'With',
-                      self.test_fold))
-
+        print(
+            'Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}'
+            .format('Train' if self.train else 'Test',
+                    self.__len__(),
+                    self.tile_size,
+                    self.num_of_tiles_from_slide,
+                    'Without' if transform is False else 'With',
+                    self.test_fold))
 
     def __len__(self):
         return len(self.target)
-
 
     def __getitem__(self, idx):
         start = time.time()
@@ -769,9 +820,9 @@ class WSI_MILdataset(Dataset):
         # Updating RandomRotation angle in the data transformations only for train set:
         if self.train:
             rotate_by = sample([0, 90, 180, 270], 1)[0]
-            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
-                                             self.transform
-                                             ])
+            transform = transforms.Compose([transforms.RandomRotation([rotate_by, rotate_by]),
+                                            self.transform
+                                            ])
         else:
             transform = self.transform
 
@@ -799,10 +850,9 @@ class WSI_MILdataset(Dataset):
         # tiles = tiles.transpose(0, 2, 3, 1)  # When working with PIL, this line is not needed
         # Check the need to resize the images (in case of different magnification):
 
-
         magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         if magnification_relation != 1:
-            transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
+            transform = transforms.Compose([transforms.Resize(self.tile_size), transform])
 
         for i in range(self.num_of_tiles_from_slide):
             #  X[i] = self.transform(tiles[i])  # This line is for nd.array
@@ -905,7 +955,6 @@ class PreSavedTiles_MILdataset(Dataset):
         return X, label
 """
 
-
 """
 def get_transform():
     # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
@@ -920,7 +969,6 @@ def get_transform():
                                     ])
     return transform
 """
-
 
 """
 def _save_tile_list_to_file(slide_name: str, tile_list: list, path: str = 'tcga-data'):
@@ -1014,7 +1062,7 @@ class Infer_WSI_MILdataset(Dataset):
             self.tissue_tiles.append(all_tissue_tiles[index])
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
-            self.bags_per_slide.append( -(-all_tissue_tiles[index] // self.tiles_per_bag) )  # round up
+            self.bags_per_slide.append(-(-all_tissue_tiles[index] // self.tiles_per_bag))  # round up
 
             grid = _get_grid_list(file_name=os.path.join(self.data_path,
                                                          self.image_path_names[idx],
@@ -1026,7 +1074,7 @@ class Infer_WSI_MILdataset(Dataset):
                 if bag == self.bags_per_slide[idx] - 1:
                     bag.append(grid[(i + 1) * 50:])
                 else:
-                    bag.append(grid[i * 50 : (i + 1) * 50])
+                    bag.append(grid[i * 50: (i + 1) * 50])
 
             self.grid_list.append(bag)
 
@@ -1038,12 +1086,13 @@ class Infer_WSI_MILdataset(Dataset):
 
         self.last_bag = False
 
-        print('Initiation of Inference WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform'
-              .format('Train' if self.train else 'Test',
-                      len(self.target),
-                      self.tile_size,
-                      self.tiles_per_bag,
-                      'Without' if transform is False else 'With'))
+        print(
+            'Initiation of Inference WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform'
+            .format('Train' if self.train else 'Test',
+                    len(self.target),
+                    self.tile_size,
+                    self.tiles_per_bag,
+                    'Without' if transform is False else 'With'))
 
     def __len__(self):
         return sum(self.bags_per_slide)
