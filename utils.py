@@ -1,24 +1,26 @@
-import cv2 as cv
 import numpy as np
 from PIL import Image
 import os
 import openslide
 import pandas as pd
-import shutil
 import glob
-from tqdm import tqdm
-from typing import List, Tuple
 import pickle
 from random import sample
-import random
-from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import sys
 import time
+import random
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
+from typing import List, Tuple
+import shutil
+import cv2 as cv
 
 
-def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
+
+
+def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
     This function makes a hard copy of the tile in order to avoid using openslide
     :param data_path:
@@ -30,16 +32,42 @@ def  make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, ho
 
     for i in tqdm(range(meta_data.shape[0])):
         if meta_data['Total tiles - 256 compatible @ X20'][i] == -1:
+            print('Could not find tile data for slide XXXXXXX')
             continue
 
         slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
+        # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
+        tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
+        _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Objective Power'][i], tile_size)
 
-        file_name = os.path.join(data_path, meta_data['id'][i], 'tiles.data')
+
+        """
+        file_name = os.path.join(data_path, meta_data['id'][i], 'tiles', 'tiles.data')
         with open(file_name, 'wb') as filehandle:
             pickle.dump(slide_tiles, filehandle)
+        """
+def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
+    # open grid list:
+    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
 
+    if not os.path.isdir(tile_basic_file_name):
+        os.mkdir(tile_basic_file_name)
+        os.mkdir(os.path.join(tile_basic_file_name, str(tile_size)))
+    if not os.path.isdir(os.path.join(tile_basic_file_name, str(tile_size))):
+        os.mkdir(os.path.join(tile_basic_file_name, str(tile_size)))
+
+    for tile_idx in range(from_tile, from_tile + num_tiles):
+        tile, _ = _get_tiles_2(file_name, [grid_list[tile_idx]], adjusted_tile_size)
+        tile_file_name = os.path.join(tile_basic_file_name, str(tile_size), str(tile_idx) + '.data')
+        with open(tile_file_name, 'wb') as filehandle:
+            pickle.dump(tile, filehandle)
 def copy_segImages(data_path: str = 'tcga-data'):
     """
     This function copies the Segmentation Images from it's original location to one specific location, for easy checking
@@ -62,8 +90,6 @@ def copy_segImages(data_path: str = 'tcga-data'):
             print('Found no segImage file for {}'.format(dir))
 
     print('Finished copying!')
-
-
 def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     """
     This function runs over a set of images and compute mean and variance of each channel.
@@ -120,93 +146,6 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
-
-
-def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False):
-    """
-    This function choose and returns data to be held by DataSet
-    :param file_name:
-    :param how_many: how_many describes how many tiles to pick from the whole image
-    :return:
-    """
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
-        grid_list = pickle.load(filehandle)
-
-    # Choose locations from the grid:
-    loc_num = len(grid_list)
-
-    idxs = sample(range(loc_num), how_many)
-    locs = [grid_list[idx] for idx in idxs]
-
-    #  _save_tile_list_to_file(file_name, idxs)
-
-    # print('File: {}, Tiles: {}'.format(file_name, idxs))
-
-    if resize:
-        resize_to = tile_size
-    else:
-        resize_to = adjusted_tile_size
-
-
-    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size, resize_to=resize_to)
-
-    return image_tiles
-
-
-def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
-    """
-    This function returns the grid location of tile for a specific slide.
-    :param file_name:
-    :return:
-    """
-
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
-        grid_list = pickle.load(filehandle)
-
-        return grid_list
-
-
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-    # open the .svs file:
-    img = openslide.open_slide(file_name)
-    tiles_num = len(locations)
-    # TODO: Checking Pil vs. np array. Delete one of them...
-    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
-    tiles_PIL = []
-
-    for idx, loc in enumerate(locations):
-        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
-        if tile_sz != resize_to:
-            image = image.resize((resize_to, resize_to), resample=Image.BILINEAR)
-
-        tiles_PIL.append(image)
-
-    return tiles_PIL
-
-
 def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     """
     This function creates a location for all top left corners of the grid
@@ -266,8 +205,6 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
-
-
 def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
     """
     This function gets a .svs file name, a basic grid and tile size and returns a list of legitimate grid locations.
@@ -308,8 +245,6 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
         grid.pop(idx)
 
     return grid
-
-
 def make_slides_xl_file(path: str = 'tcga-data'):
     """
     This function goes over all directories and makes a table with slides data:
@@ -384,8 +319,6 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     slides_data = pd.DataFrame(id_list)
     slides_data.to_excel(os.path.join(path, 'slides_data.xlsx'))
     print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
-
-
 def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1):
     print('Making Segmentation Maps for each .svs file...')
     dirs = _get_tcga_id_list(data_path)
@@ -441,35 +374,6 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
         print('Check "Segmenatation_Errors.xlsx" file for details...')
     else:
         print('Segmentation Process finished without exceptions!')
-
-
-def _get_slide(path: 'str') -> openslide.OpenSlide:
-    """
-    This function returns an OpenSlide object from the file within the directory
-    :param path:
-    :return:
-    """
-
-    # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
-    #if '.DS_Store' in file: file.remove('.DS_Store')
-    slide = None
-    try:
-        #slide = openslide.open_slide(os.path.join(path, file[0]))
-        slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
-    except:
-        print('Cannot open slide at location: {}'.format(path))
-
-    return slide
-
-
-def _get_tcga_id_list(path: str = 'tcga-data'):
-    """
-    This function returns the id of all images in the TCGA data directory given by 'path'
-    :return:
-    """
-    return next(os.walk(path))[1]
-
-
 def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
@@ -500,6 +404,197 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     return seg_map_PIL, seg_image
 
 
+def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
+    """
+    This function choose and returns data to be held by DataSet
+    :param file_name:
+    :param how_many: how_many describes how many tiles to pick from the whole image
+    :return:
+    """
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
+
+    # open grid list:
+    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
+
+    # Choose locations from the grid:
+    loc_num = len(grid_list)
+
+    idxs = sample(range(loc_num), how_many)
+    locs = [grid_list[idx] for idx in idxs]
+
+    #  _save_tile_list_to_file(file_name, idxs)
+
+    # print('File: {}, Tiles: {}'.format(file_name, idxs))
+
+    if resize:
+        resize_to = tile_size
+    else:
+        resize_to = adjusted_tile_size
+
+
+    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size, resize_to=resize_to, print_timing=print_timing)
+
+    return image_tiles
+
+#def _choose_data_2(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+    """
+    This function choose and returns data to be held by DataSet
+    :param file_name:
+    :param how_many: how_many describes how many tiles to pick from the whole image
+    :return:
+    """
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
+
+    # open grid list:
+    grid_file = os.path.join(data_path, 'Grids', file_name[:-4] + '--tlsz' + str(tile_size) + '.data')
+    #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], 'Grids', file_name.split('/')[2][:-4] + '--tlsz' + str(tile_size) + '.data')
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
+
+    # Choose locations from the grid:
+    loc_num = len(grid_list)
+
+    idxs = sample(range(loc_num), how_many)
+    locs = [grid_list[idx] for idx in idxs]
+
+    image_file = os.path.join(data_path, file_name)
+    image_tiles, time_list = _get_tiles_2(image_file, locs, adjusted_tile_size, print_timing=print_timing)
+
+    return image_tiles, time_list
+
+
+def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
+    """
+    This function returns an array of tiles
+    :param file_name:
+    :param locations:
+    :param tile_sz:
+    :return:
+    """
+
+    # open the .svs file:
+    start_openslide = time.time()
+    img = openslide.open_slide(file_name)
+    end_openslide = time.time()
+
+    tiles_num = len(locations)
+    # TODO: Checking Pil vs. np array. Delete one of them...
+    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
+    tiles_PIL = []
+
+    start_gettiles = time.time()
+    for idx, loc in enumerate(locations):
+        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
+        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
+        tiles_PIL.append(image)
+
+    end_gettiles = time.time()
+
+
+    if print_timing:
+        time_list = [end_openslide - start_openslide, (end_gettiles - start_gettiles) / tiles_num]
+        # print('WSI: Time to Openslide is: {:.2f} s, Time to Prepare {} tiles: {:.2f} s'.format(end_openslide - start_openslide,
+        #                                                                   tiles_num,
+        #                                                                   end_tiles - start_tiles))
+    else:
+        time_list = [0]
+
+    return tiles_PIL, time_list
+
+
+def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
+    """
+    This function returns the grid location of tile for a specific slide.
+    :param file_name:
+    :return:
+    """
+
+    BASIC_OBJ_POWER = 20
+    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
+
+    # open grid list:
+    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
+
+        return grid_list
+
+
+def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int, print_timing: bool = False):
+    """
+    This function returns an array of tiles
+    :param file_name:
+    :param locations:
+    :param tile_sz:
+    :return:
+    """
+    # open the .svs file:
+    start_openslide = time.time()
+    img = openslide.open_slide(file_name)
+    end_openslide = time.time()
+
+    tiles_num = len(locations)
+    # TODO: Checking Pil vs. np array. Delete one of them...
+    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
+    tiles_PIL = []
+
+    start_tiles = time.time()
+    for idx, loc in enumerate(locations):
+        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
+        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
+        # TODO : try to remove this if !!!!!!!!
+        if tile_sz != resize_to:
+            image = image.resize((resize_to, resize_to), resample=Image.BILINEAR)
+
+        tiles_PIL.append(image)
+        end_tiles = time.time()
+    if print_timing:
+        print('WSI: Time to Openslide is: {:.2f} s, Time to Prepare {} tiles: {:.2f} s'.format(end_openslide - start_openslide,
+                                                                           tiles_num,
+                                                                           end_tiles - start_tiles))
+    return tiles_PIL
+
+
+def _get_slide(path: 'str') -> openslide.OpenSlide:
+    """
+    This function returns an OpenSlide object from the file within the directory
+    :param path:
+    :return:
+    """
+
+    # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
+    #if '.DS_Store' in file: file.remove('.DS_Store')
+    slide = None
+    try:
+        #slide = openslide.open_slide(os.path.join(path, file[0]))
+        slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
+    except:
+        print('Cannot open slide at location: {}'.format(path))
+
+    return slide
+
+
+def _get_tcga_id_list(path: str = 'tcga-data'):
+    """
+    This function returns the id of all images in the TCGA data directory given by 'path'
+    :return:
+    """
+    return next(os.walk(path))[1]
+
+
 def device_gpu_cpu():
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -522,12 +617,14 @@ def get_cpu():
         cpu = 1
         platform = 'Unrecognized'
 
-    #if cpu > 6:
-    #    cpu -= 2
+
+    #cpu = 20
     print('Running on {} with {} workers'.format(platform, cpu))
     return cpu
 
-def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False, tile_size: int = 256, tiles_per_bag: int = 50):
+
+def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False,
+             tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False):
     """
     This function writes the run data to file
     :param experiment:
@@ -536,27 +633,38 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
     """
 
     run_file_name = 'runs/run_data.xlsx'
-    run_DF = pd.read_excel(run_file_name)
-    try:
-        run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
-    except KeyError:
-        pass
+    if os.path.isfile(run_file_name):
+        run_DF = pd.read_excel(run_file_name)
+        try:
+            run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+        except KeyError:
+            print('KeyError at function run_data')
+            pass
 
-
-    run_DF_exp = run_DF.set_index('Experiment', inplace=False)
+        run_DF_exp = run_DF.set_index('Experiment', inplace=False)
+    else:
+        run_DF = pd.DataFrame()
 
     # If a new experiment is conducted:
     if experiment is None:
-        experiment = run_DF_exp.index.values.max() + 1
+        if os.path.isfile(run_file_name):
+            experiment = run_DF_exp.index.values.max() + 1
+        else:
+            experiment = 1
+
         location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
                     'Transformations': transformations,
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
-                    'Location': location
+                    'Location': location,
+                    'DX': DX
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
+        if not os.path.isdir('runs'):
+            os.mkdir('runs')
+
         run_DF.to_excel(run_file_name)
         print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
 
@@ -568,20 +676,23 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
         transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
         tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
+        DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag
+        return location, test_fold, transformations, tile_size, tiles_per_bag, DX
 
 
 class WSI_MILdataset(Dataset):
     def __init__(self,
-                 data_path: str = 'tcga-data',
+                 #data_path: str = '/Users/wasserman/Developer/All data - outer scope',
+                 data_path: str = 'All Data',
                  tile_size: int = 256,
-                 num_of_tiles_from_slide: int = 50,
+                 bag_size: int = 50,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform = False):
+                 transform : bool = False,
+                 DX : bool = False):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
@@ -595,10 +706,11 @@ class WSI_MILdataset(Dataset):
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
-        self.num_of_tiles_from_slide = num_of_tiles_from_slide
+        self.bag_size = bag_size
         self.train = train
         self.print_time = print_timing
         self.transform = transform
+        self.DX = DX
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -624,6 +736,8 @@ class WSI_MILdataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+        if self.DX:
+            all_is_DX_cut = list(self.meta_data_DF['DX'])
 
         all_magnifications = list(self.meta_data_DF['Objective Power'])
 
@@ -635,15 +749,16 @@ class WSI_MILdataset(Dataset):
         self.magnification = []
 
         for _, index in enumerate(valid_slide_indices):
-            self.image_file_names.append(all_image_file_names[index])
-            self.image_path_names.append(all_image_path_names[index])
-            self.in_fold.append(all_in_fold[index])
-            self.tissue_tiles.append(all_tissue_tiles[index])
-            self.target.append(all_targets[index])
-            self.magnification.append(all_magnifications[index])
+            if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                self.image_file_names.append(all_image_file_names[index])
+                self.image_path_names.append(all_image_path_names[index])
+                self.in_fold.append(all_in_fold[index])
+                self.tissue_tiles.append(all_tissue_tiles[index])
+                self.target.append(all_targets[index])
+                self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
-        if self.transform:
+        if self.transform and self.train:
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
             # TODO: Consider transforms.RandomHorizontalFlip()
@@ -663,13 +778,14 @@ class WSI_MILdataset(Dataset):
 
 
 
-        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}'
+        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
                       self.__len__(),
                       self.tile_size,
-                      self.num_of_tiles_from_slide,
+                      self.bag_size,
                       'Without' if transform is False else 'With',
-                      self.test_fold))
+                      self.test_fold,
+                      'ON' if self.DX else 'OFF'))
 
 
     def __len__(self):
@@ -677,9 +793,14 @@ class WSI_MILdataset(Dataset):
 
 
     def __getitem__(self, idx):
-        start = time.time()
-        file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
-        tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size)
+        start_getitem = time.time()
+        data_path_extended = os.path.join(self.data_path, self.image_path_names[idx])
+        # file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
+        # tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size, print_timing=self.print_time)
+        #tiles, time_list = _choose_data_2(self.data_path, file_name, self.bag_size, self.magnification[idx], self.tile_size, print_timing=self.print_time)
+        tiles, time_list = _choose_data_2(data_path_extended, self.image_file_names[idx], self.bag_size, self.magnification[idx],
+                                          self.tile_size, print_timing=self.print_time)
+
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -690,7 +811,7 @@ class WSI_MILdataset(Dataset):
         """
 
         # The following section is written for tiles in PIL format
-        X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
+        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
         # Updating RandomRotation angle in the data transformations only for train set:
         if self.train:
@@ -730,26 +851,34 @@ class WSI_MILdataset(Dataset):
         if magnification_relation != 1:
             transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
 
-        for i in range(self.num_of_tiles_from_slide):
+        start_aug = time.time()
+        for i in range(self.bag_size):
             #  X[i] = self.transform(tiles[i])  # This line is for nd.array
             X[i] = transform(tiles[i])
 
+        aug_time = (time.time() - start_aug) / self.bag_size
+        total_time = time.time() - start_getitem
         if self.print_time:
-            end = time.time()
-            print('WSI: Time to prepare item is {:.2f} s'.format(end - start))
-        return X, label
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+            # print('Data Augmentation time is: {:.2f} s'.format(aug_time))
+            # print('WSI: TOTAL Time to prepare item is: {:.2f} s'.format(total_time))
+        else:
+            time_list = [0]
+
+        return X, label, time_list
 
 
-"""
+
 class PreSavedTiles_MILdataset(Dataset):
     def __init__(self,
                  data_path: str = 'tcga-data',
                  tile_size: int = 256,
-                 num_of_tiles_from_slide: int = 50,
+                 bag_size: int = 50,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
-                 transform = None):
+                 print_timing: bool = False,
+                 transform = False):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
@@ -762,8 +891,9 @@ class PreSavedTiles_MILdataset(Dataset):
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
-        self.num_of_tiles_from_slide = num_of_tiles_from_slide
+        self.bag_size = bag_size
         self.train = train
+        self.print_timing = print_timing
         self.transform = transform
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -771,6 +901,7 @@ class PreSavedTiles_MILdataset(Dataset):
         # Let's compute which slides are these:
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+
         if self.train:
             folds = list(range(1, 7))
             folds.remove(self.test_fold)
@@ -783,7 +914,7 @@ class PreSavedTiles_MILdataset(Dataset):
         all_image_file_names = list(self.meta_data_DF['file'])
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
-        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - 256 compatible @ X20'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
 
         all_magnifications = list(self.meta_data_DF['Objective Power'])
 
@@ -802,34 +933,77 @@ class PreSavedTiles_MILdataset(Dataset):
             self.target.append(all_targets[index])
             self.magnification.append(all_magnifications[index])
 
-        print('Initiation of {} DataSet is Complete. Working with PreSaved tiles'.format('Train' if self.train else 'Test'))
+        # Setting the transformation:
+        if self.transform and self.train:
+            self.transform = \
+                transforms.Compose([ transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
+                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                                     ])
+        else:
+            self.transform = transforms.Compose([transforms.ToTensor(),
+                                                 transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
+                                                                      std=(0.158447, 0.231005, 0.1768365))
+                                                 ])
+
+        print('Initiation of PreSaved Tiles {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}'
+              .format('Train' if self.train else 'Test',
+                      self.__len__(),
+                      self.tile_size,
+                      self.bag_size,
+                      'Without' if transform is False else 'With',
+                      self.test_fold))
+
 
     def __len__(self):
         return len(self.target)
 
-
     def __getitem__(self, idx):
-        start = time.time()
-        tiles_file_name = os.path.join(self.data_path, self.image_path_names[idx], 'tiles.data')
+        start_load_tiles = time.time()
+        tiles_basic_file_name = os.path.join(self.data_path, self.image_path_names[idx], 'tiles', str(self.tile_size))
 
-        with open(tiles_file_name, 'rb') as filehandle:
-            tiles = pickle.load(filehandle)
+        tile_idxs = sample(range(500), self.bag_size)
+        tiles_PIL = []
+        for _, tile_idx in enumerate(tile_idxs):
+            tile_file_name = os.path.join(tiles_basic_file_name, str(tile_idx) + '.data')
+            with open(tile_file_name, 'rb') as filehandle:
+                tile = pickle.load(filehandle)
+                tiles_PIL.append(tile[0])
 
+        time_load_tiles = (time.time() - start_load_tiles) / self.bag_size
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
-        X = torch.zeros([self.num_of_tiles_from_slide, 3, self.tile_size, self.tile_size])
-        if not self.transform:
-            self.transform = transforms.Compose([transforms.ToTensor()])
+        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
-        sample_idx = sample(range(len(tiles)), self.num_of_tiles_from_slide)
-        for i, idx in enumerate(sample_idx):
-            X[i] = self.transform(tiles[idx])
+        # Adding rotation as data aug. for train set:
+        if self.train:
+            rotate_by = sample([0, 90, 180, 270], 1)[0]
+            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
+                                             self.transform
+                                             ])
+        else:
+            transform = self.transform
 
-        end = time.time()
-        print('PreSaved: Time to prepare item is {:.2f} s'.format(end - start))
-        return X, label
-"""
+        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        if magnification_relation != 1:
+            transform = transforms.Compose([transforms.Resize(self.tile_size), transform])
+
+        time_start_aug = time.time()
+        for i in range(self.bag_size):
+            X[i] = transform(tiles_PIL[i])
+
+        aug_time = (time.time() - time_start_aug) / self.bag_size
+
+        total_time = time.time() - start_load_tiles
+        if self.print_timing:
+            time_list = (time_load_tiles, aug_time, total_time)
+        else:
+            time_list = [0]
+
+        return X, label, time_list
+
 
 
 """

@@ -12,14 +12,16 @@ import argparse
 import os
 from sklearn.metrics import roc_curve, auc
 import numpy as np
+import sys
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
-# parser.add_argument('--output_dir', default='runs-output', type=str, help='output directory for TensorBoard data')
-parser.add_argument('--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-parser.add_argument('-t', '--transformation', default=True, type=bool, help='Include transformations ?')
+# parser.add_argument('-t', '--transformation', type=bool, default=True, help='Include transformations ?')
+parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
+parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 
 args = parser.parse_args()
 
@@ -77,8 +79,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     """
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
-    train_writer = SummaryWriter(os.path.join(writer_folder, 'train'))
-    test_writer = SummaryWriter(os.path.join(writer_folder, 'test'))
+    #train_writer = SummaryWriter(os.path.join(writer_folder, 'train'))
+    #test_writer = SummaryWriter(os.path.join(writer_folder, 'test'))
+    if print_timing:
+        time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     print('Start Training...')
     best_train_loss = 1e5
@@ -92,13 +96,16 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     best_model = None
 
     for e in range(from_epoch, epoch + from_epoch):
+        time_epoch_start = time.time()
         correct_labeling, train_loss = 0, 0
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
+            train_start = time.time()
+
             data, target = data.to(DEVICE), target.to(DEVICE)
             model.to(DEVICE)
-            start = time.time()
+
             prob, label, _ = model(data)
 
             if target == 1:
@@ -127,9 +134,24 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # Calculate training accuracy
             correct_labeling += (label == target).data.cpu().int().item()
 
+            train_time = time.time() - train_start
             if print_timing:
-                end = time.time()
-                print('Elapsed time of one train iteration is {:.0f} s'.format(end - start))
+                time_stamp = batch_idx + e * len(dloader_train)
+                time_writer.add_scalar('Time/Train (iter) [Sec]', train_time, time_stamp)
+                # print('Elapsed time of one train iteration is {:.2f} s'.format(train_time))
+                if len(time_list) == 4:
+                    time_writer.add_scalar('Time/Open WSI [Sec]'     , time_list[0], time_stamp)
+                    time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[1], time_stamp)
+                    time_writer.add_scalar('Time/Augmentation [Sec]' , time_list[2], time_stamp)
+                    time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[3], time_stamp)
+                else:
+                    time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[0], time_stamp)
+                    time_writer.add_scalar('Time/Augmentation [Sec]', time_list[1], time_stamp)
+                    time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[2], time_stamp)
+
+        time_epoch = (time.time() - time_epoch_start) / 60
+        if print_timing:
+            time_writer.add_scalar('Time/Full Epoch [min]', time_epoch, e)
 
         train_acc = 100 * correct_labeling / len(dloader_train)
 
@@ -142,21 +164,22 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
-
+        """
         train_writer.add_scalar('Balanced Accuracy', balanced_acc_train, e)
         train_writer.add_scalar('Roc-Auc', roc_auc_train, e)
         train_writer.add_scalar('Loss Per Epoch', train_loss, e)
         train_writer.add_scalar('Accuracy', train_acc, e)
-
-        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {})'
+        """
+        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
               .format(e,
-                      train_loss.cpu().numpy()[0],
-                      previous_epoch_loss - train_loss.cpu().numpy()[0],
+                      train_loss,
+                      previous_epoch_loss - train_loss,
                       train_acc,
                       int(correct_labeling),
-                      len(train_loader)))
+                      len(train_loader),
+                      time_epoch))
 
-        previous_epoch_loss = train_loss.cpu().numpy()[0]
+        previous_epoch_loss = train_loss
 
         if train_loss < best_train_loss:
             best_train_loss = train_loss
@@ -165,7 +188,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             best_model = model
 
         if e % 5 == 0:
-            acc_test, bacc_test = check_accuracy(model, dloader_test, test_writer, all_writer, DEVICE, e)
+            # acc_test, bacc_test = check_accuracy(model, dloader_test, test_writer, all_writer, DEVICE, e)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
         else:
             acc_test, bacc_test = None, None
 
@@ -173,31 +197,52 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
             os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
 
+        try:
+            model_state_dict = model.module.state_dict()
+        except AttributeError:
+            model_state_dict = model.state_dict()
+
         torch.save({'epoch': e,
-                    'model_state_dict': model.module.state_dict(),
+                    'model_state_dict': model_state_dict,
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss.data[0],
                     'acc_test': acc_test,
-                    'bacc_test': bacc_test},
+                    'bacc_test': bacc_test,
+                    'tile_size': TILE_SIZE,
+                    'tiles_per_bag': TILES_PER_BAG},
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
+
+        # torch.save(model_state_dict, os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '_tag.pt'))
 
     # If epochs ended - Save best model:
     if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
         os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+
+    try:
+        best_model_state_dict = best_model.module.state_dict()
+    except AttributeError:
+        best_model_state_dict = best_model.state_dict()
+
     torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model.module.state_dict(),
+                'model_state_dict': best_model_state_dict,
                 'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc},
+                'best_train_acc': best_train_acc,
+                'tile_size': TILE_SIZE,
+                'tiles_per_bag': TILES_PER_BAG},
                os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
 
+    """
     train_writer.close()
     test_writer.close()
+    """
     all_writer.close()
+    time_writer.close()
 
-    return best_model, best_train_acc, best_train_loss.cpu().numpy()[0]
+    return best_model, best_train_acc, best_train_loss
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_test, writer_all, DEVICE, epoch: int):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
+#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_test, writer_all, DEVICE, epoch: int):
 #def check_accuracy(model: nn.Module, data_loader: DataLoader, writer, DEVICE, epoch:int, train_string: str ='', train: bool = False):
 #def check_accuracy(data_loader: DataLoader, epoch:int, train: bool = False):
     """
@@ -214,7 +259,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_test, write
     # TODO: eval mode changes the mode of dropout and batchnorm layers. Activate this line only after the model is fully learned
     model.eval()
     with torch.no_grad():
-        for idx, (data, target) in enumerate(data_loader):
+        for idx, (data, target, time_list) in enumerate(data_loader):
             if target == 1:
                 total_pos += 1
                 true_labels[idx] = 1
@@ -253,9 +298,11 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_test, write
         else:
             writer_string = 'Test'
 
+        """
         writer_test.add_scalar('Accuracy', acc, epoch)
         writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
         writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
+        """
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
@@ -293,7 +340,7 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
         model.get_features = True
 
         features = model(data)
-
+        """
         if target == 1:
             total_pos += 1
             true_labels[batch_idx] = 1
@@ -304,9 +351,9 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
             true_labels[batch_idx] = 0
             if target == 0:
                 true_neg += 1
-
+        
         scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
-
+        """
     torch.enable_grad
 
 
@@ -315,51 +362,70 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
 if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
+    # Data type definition:
+    DATA_TYPE = 'WSI'
 
     # Tile size definition:
-    TILE_SIZE = 256
-    TILES_PER_BAG = 50
+    TILE_SIZE =128
+    TILES_PER_BAG = 5
+    timing = True
+    data_path = '/Users/wasserman/Developer/All data - outer scope'
+
+    if sys.platform == 'linux':
+        TILE_SIZE = 256
+        TILES_PER_BAG = 50
+        data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir = utils.run_data(test_fold=args.test_fold,
                                          transformations=args.transformation,
                                          tile_size=TILE_SIZE,
-                                         tiles_per_bag=TILES_PER_BAG)
+                                         tiles_per_bag=TILES_PER_BAG,
+                                         DX=args.dx)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx = utils.run_data(experiment=args.experiment)
 
     # Get number of available CPUs:
     cpu_available = utils.get_cpu()
 
-    """
-    # Get data augmentation:
-    if args.transformation:
-        transform = utils.get_transform()
-    else:
-        transform = False
-    """
-
     # Get data:
-    train_dset = utils.WSI_MILdataset(tile_size=TILE_SIZE,
-                                      num_of_tiles_from_slide=TILES_PER_BAG,
-                                      test_fold=args.test_fold,
-                                      train=True,
-                                      print_timing=True,
-                                      transform=args.transformation)
+    if DATA_TYPE == 'WSI':
+        train_dset = utils.WSI_MILdataset(data_path=data_path,
+                                          tile_size=TILE_SIZE,
+                                          bag_size=TILES_PER_BAG,
+                                          test_fold=args.test_fold,
+                                          train=True,
+                                          print_timing=timing,
+                                          transform=args.transformation,
+                                          DX=args.dx)
+
+        test_dset = utils.WSI_MILdataset(data_path=data_path,
+                                         tile_size=TILE_SIZE,
+                                         bag_size=TILES_PER_BAG,
+                                         test_fold=args.test_fold,
+                                         train=False,
+                                         print_timing=False,
+                                         transform=False,
+                                         DX=args.dx)
+    elif DATA_TYPE =='PRE':
+        train_dset = utils.PreSavedTiles_MILdataset(tile_size=TILE_SIZE,
+                                                    bag_size=TILES_PER_BAG,
+                                                    test_fold=args.test_fold,
+                                                    train=True,
+                                                    print_timing=timing,
+                                                    transform=args.transformation)
+
+        test_dset = utils.PreSavedTiles_MILdataset(tile_size=TILE_SIZE,
+                                                   bag_size=TILES_PER_BAG,
+                                                   test_fold=args.test_fold,
+                                                   train=False,
+                                                   print_timing=False,
+                                                   transform=False)
+
+
     train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=False)
-
-    # TODO: check it it's possible to put all the tiles of a WSI in the test loader - seems like there will a memory problem
-    #  with the GPUs. The solution might be to run each batch of tiles through the first section of the net till we have all
-    #  the feature vectors and then proceed to the attention weight part for all feature vectors together.
-
-    test_dset = utils.WSI_MILdataset(tile_size=TILE_SIZE,
-                                     num_of_tiles_from_slide=TILES_PER_BAG,
-                                     test_fold=args.test_fold,
-                                     train=False,
-                                     print_timing=False,
-                                     transform=False)
-    test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=False)
+    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=False)
 
     # Load model
     model = ResNet50_GatedAttention() #tile_size=TILE_SIZE)
@@ -370,12 +436,17 @@ if __name__ == '__main__':
 
     # In case we continue from an already trained model, than load the previous model and optimizer data:
     if args.experiment is not 0:
-        print('Loading pre-saved model')
+        print('Loading pre-saved model...')
         model_data_loaded = torch.load(os.path.join(args.output_dir,
                                                     'Model_CheckPoints',
                                                     'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
 
         model.load_state_dict(model_data_loaded['model_state_dict'])
+
+        #  TODO: The following line are a tryout to fix the out of memory glitsch in one if state...
+        ##########################################################################
+
+
 
         from_epoch = args.from_epoch + 1
         print()
@@ -402,4 +473,5 @@ if __name__ == '__main__':
                     state[k] = v.to(DEVICE)
 
     # simple_train(model, train_loader, test_loader)
-    best_model, best_train_error, best_train_loss = train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=True)
+    best_model, best_train_error, best_train_loss = train(model, train_loader, test_loader, DEVICE=DEVICE,
+                                                          optimizer=optimizer, print_timing=timing)
