@@ -563,3 +563,7 @@ def TCGA_dirs_2_files():
             shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
 
     print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
+
+
+
+#Bladsdfsdf
