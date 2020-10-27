@@ -21,6 +21,14 @@ import sys
 import cv2 as cv
 
 
+'''def make_dir(dirname):
+    if not dirname in next(os.walk(os.getcwd()))[1]:
+        try:
+            os.mkdir(dirname)
+        except OSError:
+            print('Creation of directory ', dirname, ' failed...')
+            raise'''
+
 
 def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
@@ -72,30 +80,6 @@ def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, ti
         tile_file_name = os.path.join(tile_basic_file_name, str(tile_size), str(tile_idx) + '.data')
         with open(tile_file_name, 'wb') as filehandle:
             pickle.dump(tile, filehandle)
-
-
-def copy_segImages(data_path: str = 'tcga-data'):
-    """
-    This function copies the Segmentation Images from it's original location to one specific location, for easy checking
-    of the segmentations later on...
-    :return:
-    """
-    dirs = utils._get_tcga_id_list(data_path)
-    print('Copying Segmentation Images...')
-    if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
-        try:
-            os.mkdir('Segmentation_Images')
-        except OSError:
-            print('Creation of directory \'Segmentation_Images\' has failed...')
-            raise
-
-    for _, dir in enumerate(dirs):
-        if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
-            shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
-        else:
-            print('Found no segImage file for {}'.format(dir))
-
-    print('Finished copying!')
 
 
 def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
@@ -156,15 +140,20 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     return total_mean, total_var
 
 
-def make_grid(data_path: str = 'All Data', tile_sz: int = 256):
+def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
     :param tile_sz: size of tiles to be created
     :return:
     """
-    data_file = os.path.join(data_path.split('/')[0], 'slides_data.xlsx')
+    #splitter = '\\' if os.name=='nt' else '/'
+    #data_file = os.path.join(data_path.split('/')[0], 'slides_data.xlsx')
+    #data_file = os.path.join(splitter.join(data_path.split(splitter)[:-1]), 'slides_data.xlsx') #RanS 26.10.20
 
+    data_file = os.path.join(main_data_path, 'slides_data.xlsx')  # RanS 26.10.20
+    #data_files = glob.glob(main_data_path + '/slides_data*.xlsx')
+    #for data_file in data_files:
     BASIC_OBJ_PWR = 20
 
     basic_DF = pd.read_excel(data_file)
@@ -172,49 +161,69 @@ def make_grid(data_path: str = 'All Data', tile_sz: int = 256):
     objective_power = list(basic_DF['Objective Power'])
     basic_DF.set_index('file', inplace=True)
     tile_nums = []
+    file_inds = []
     total_tiles =[]
     print('Starting Grid production...')
     print()
     #for _, file in enumerate(files):
     for i in tqdm(range(len(files))):
         file = files[i]
-        data_dict = {}
-        height = basic_DF.loc[file, 'Height']
-        width  = basic_DF.loc[file, 'Width']
+        database = basic_DF.loc[file, 'id']
+        if os.path.isfile(os.path.join(main_data_path, database, file)): #RanS, make sure file exists
+            data_dict = {}
+            height = basic_DF.loc[file, 'Height']
+            width  = basic_DF.loc[file, 'Width']
 
-        id = basic_DF.loc[file, 'id']
-        if objective_power[i] == 'Missing Data':
-            print('Grid was not computed for file {}'.format(file))
-            tile_nums.append(0)
-            total_tiles.append(-1)
-            continue
+            if objective_power[i] == 'Missing Data':
+                print('Grid was not computed for file {}'.format(file))
+                tile_nums.append(0)
+                total_tiles.append(-1)
+                continue
 
-        converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
-        basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
-        total_tiles.append((len(basic_grid)))
+            converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
+            basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
+            total_tiles.append((len(basic_grid)))
 
-        # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-        legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
-                                 basic_grid,
-                                 converted_tile_size,
-                                 (height, width))
+            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
+            #legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
+            legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'), #RanS 26.10.20
+                                     basic_grid,
+                                     converted_tile_size,
+                                     (height, width))
 
-        # create a list with number of tiles in each file
-        tile_nums.append(len(legit_grid))
+            # create a list with number of tiles in each file
+            tile_nums.append(len(legit_grid))
+            file_inds.append(i)
 
-        # Save the grid to file:
-        if not os.path.isdir(os.path.join(data_path.split('/')[0], id, 'Grids')):
-            os.mkdir(os.path.join(data_path.split('/')[0], id, 'Grids'))
+            # Save the grid to file:
+            #if not os.path.isdir(os.path.join(data_path.split(splitter)[0], id, 'Grids')):
+            #    os.mkdir(os.path.join(data_path.split(splitter)[0], id, 'Grids'))
+            if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')): #RanS 26.10.20
+                os.mkdir(os.path.join(main_data_path, database, 'Grids'))
 
-        file_name = os.path.join(data_file.split('/')[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
-        with open(file_name, 'wb') as filehandle:
-            # store the data as binary data stream
-            pickle.dump(legit_grid, filehandle)
+            #file_name = os.path.join(data_file.split(splitter)[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
+            file_name = os.path.join(main_data_path, database, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
+            with open(file_name, 'wb') as filehandle:
+                # store the data as binary data stream
+                pickle.dump(legit_grid, filehandle)
+
 
     # Adding the number of tiles to the excel file:
-    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20
+    tile_nums_all = np.zeros(basic_DF.shape[0])
+    total_tiles_all = np.zeros(basic_DF.shape[0])
+    slide_usage_all = np.zeros(basic_DF.shape[0])
+
+    tile_nums_all[file_inds] = tile_nums
+    total_tiles_all[file_inds] = total_tiles
+    slide_usage_all[file_inds] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+
+    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all #RanS 26.10.20
+    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles_all
+    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage_all
+    #basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
+    #basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    #basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
@@ -281,8 +290,18 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
 
     id_list = []
 
-    slides = glob.glob(os.path.join(path, '*.svs'))
+    #RanS 27.10.20, support slide types
+    slide_files_svs = glob.glob(os.path.join(path, '*.svs'))
+    slide_files_ndpi = glob.glob(os.path.join(path, '*.ndpi'))
+    slide_files_mrxs = glob.glob(os.path.join(path, '*.mrxs'))
+    slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
+    mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x'}
+    date_dict = {'.svs': 'aperio.Date', '.ndpi': 'tiff.DateTime', '.mrxs': 'mirax.GENERAL.SLIDE_CREATIONDATETIME'}
+
+    #slides = glob.glob(os.path.join(path, '*.svs'))
     for idx, file in enumerate(tqdm(slides)):
+        fn, data_format = os.path.splitext(os.path.basename(file)) #RanS 27.10.20
         id_dict = {}
 
         # Create a dictionary to the files and id's:
@@ -296,7 +315,8 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         # Get some basic data about the image like MPP (Microns Per Pixel) and size:
         img = openslide.open_slide(file)
         try:
-            id_dict['MPP'] = float(img.properties['aperio.MPP'])
+            #id_dict['MPP'] = float(img.properties['aperio.MPP'])
+            id_dict['MPP'] = float(img.properties[mpp_dict[data_format]]) #RanS 27.10.20
         except:
             id_dict['MPP'] = 'Missing Data'
         try:
@@ -308,11 +328,13 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         except:
             id_dict['Height'] = 'Missing Data'
         try:
-            id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
+            #id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
+            id_dict['Objective Power'] = int(float(img.properties[mag_dict[data_format]])) #RanS 27.10.20
         except:
             id_dict['Objective Power'] = 'Missing Data'
         try:
-            id_dict['Scan Date'] = img.properties['aperio.Date']
+            #id_dict['Scan Date'] = img.properties['aperio.Date']
+            id_dict['Scan Date'] = img.properties[date_dict[data_format]] #RanS 27.10.20
         except:
             id_dict['Scan Date'] = 'Missing Data'
         img.close()
@@ -338,14 +360,34 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
 
 
 def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
-    print('Making Segmentation Maps for each .svs file...')
+    print('Making Segmentation Maps for each slide file...')
     if not os.path.isdir(os.path.join(data_path, 'SegData')):
         os.mkdir(os.path.join(data_path, 'SegData'))
+        if not os.path.isdir(os.path.join(data_path, 'SegData','Thumbs')):
+            os.mkdir(os.path.join(data_path, 'SegData','Thumbs'))
+        if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegMaps')):
+            os.mkdir(os.path.join(data_path, 'SegData', 'SegMaps'))
+        if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegImages')):
+            os.mkdir(os.path.join(data_path, 'SegData', 'SegImages'))
 
-    slide_files = glob.glob(os.path.join(data_path, '*.svs'))
+    slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
+    slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
+    slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))
+    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
 
     error_list = []
     for idx, file in enumerate(tqdm(slide_files)):
+
+        fn, data_format = os.path.splitext(os.path.basename(file))
+
+        if not rewrite:
+            pic1 = os.path.exists(os.path.join(data_path, 'SegData', 'Thumbs', fn + '_thumb.png'))
+            pic2 = os.path.exists(os.path.join(data_path, 'SegData', 'SegMaps', fn + '_SegMap.png'))
+            pic3 = os.path.exists(os.path.join(data_path, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            if pic1 and pic2 and pic3:
+                continue
+
         slide = None
         try:
             slide = openslide.open_slide(file)
@@ -355,10 +397,12 @@ def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False,
         if slide is not None:
             # Get a thunmbnail image to create the segmentation for:
             try:
-                objective_pwr = int(float(slide.properties['aperio.AppMag']))
+                #objective_pwr = int(float(slide.properties['aperio.AppMag']))
+                objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
             except KeyError:
                 print('Couldn\'t find Magnification - Segmentation Map was not Created')
                 continue
+
             height = slide.dimensions[1]
             width = slide.dimensions[0]
             try:
@@ -374,12 +418,12 @@ def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False,
                 print('Exception for file {}'.format(file))
                 continue
 
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image_2(thumb, magnification)
+            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
             slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(data_path, 'SegData', file.split('/')[2][:-4] + '-thumb.png'))
-            thmb_seg_map.save(os.path.join(data_path, 'SegData', file.split('/')[2][:-4] + '-segMap.png'))
-            thmb_seg_image.save(os.path.join(data_path, 'SegData', file.split('/')[2][:-4] + '-segImage.png'))
+            thumb.save(os.path.join(data_path, 'SegData',  'Thumbs', fn + '_thumb.png'))
+            thmb_seg_map.save(os.path.join(data_path, 'SegData', 'SegMaps', fn + '_SegMap.png'))
+            thmb_seg_image.save(os.path.join(data_path, 'SegData', 'SegImages', fn + '_SegImage.png'))
 
         else:
             print('Error: Found no slide in path {}'.format(dir))
@@ -397,8 +441,35 @@ def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False,
         print('Segmentation Process finished without exceptions!')
 
 
+def otsu3(img):
+    #blur = cv.GaussianBlur(img,(5,5),0)
+    # find normalized_histogram, and its cumulative distribution function
+    #hist = cv.calcHist([blur],[0],None,[256],[0,256])
+    hist = cv.calcHist([img], [0], None, [256], [0, 256])
+    hist_norm = hist.ravel()/hist.sum()
+    Q = hist_norm.cumsum()
+    bins = np.arange(256)
+    fn_min = np.inf
+    thresh = -1,-1
+    for i in range(1,256):
+        for j in range(i+1, 256):
+            p1, p2, p3 = np.hsplit(hist_norm,[i,j]) # probabilities
+            q1, q2, q3 = Q[i], Q[j]-Q[i], Q[255]-Q[j] # cum sum of classes
+            if q1 < 1.e-6 or q2 < 1.e-6 or q3 < 1.e-6:
+                continue
+            b1, b2, b3 = np.hsplit(bins,[i,j]) # weights
+            # finding means and variances
+            m1, m2, m3 = np.sum(p1*b1)/q1, np.sum(p2*b2)/q2, np.sum(p3*b3)/q3
+            v1, v2, v3 = np.sum(((b1-m1)**2)*p1)/q1,np.sum(((b2-m2)**2)*p2)/q2, np.sum(((b3-m3)**2)*p3)/q3
+            # calculates the minimization function
+            fn = v1*q1 + v2*q2 + v3*q3
+            if fn < fn_min:
+                fn_min = fn
+                thresh = i,j
+    return thresh
 
-def _make_segmentation_for_image_2(image: Image, magnification: int) -> (Image, Image):
+
+def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:
@@ -407,7 +478,13 @@ def _make_segmentation_for_image_2(image: Image, magnification: int) -> (Image, 
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     image_array = np.array(image.convert('HSV'))
     # otsu Thresholding:
-    _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
+    use_otsu3 = True
+    if use_otsu3:
+        # RanS 25.10.20 - 3way binarization
+        thresh = otsu3(image_array[:, :, 1])
+        _, seg_map = cv.threshold(image_array[:, :, 1], thresh[0], 255, cv.THRESH_BINARY)
+    else:
+        _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
     # Smoothing the tissue segmentation imaqe:
     size = 30 * magnification
@@ -419,7 +496,7 @@ def _make_segmentation_for_image_2(image: Image, magnification: int) -> (Image, 
     seg_map[seg_map <= th_val] = 0
 
     # find small contours and delete them from segmentation map
-    size_thresh = 10000
+    size_thresh = 30000 #10000
     contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
     # cv.imshow("Contours", drawContours)
@@ -432,17 +509,17 @@ def _make_segmentation_for_image_2(image: Image, magnification: int) -> (Image, 
     seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1)
 
     seg_map_PIL = Image.fromarray(seg_map)
+
     edge_image = cv.Canny(seg_map, 1, 254)
     # Make the edge thicker by dilating:
-    kernel_dilation = np.ones((3, 3))  # cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
     edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
 
 
-
-def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+'''def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:
@@ -469,7 +546,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
     seg_image = Image.blend(image, edge_image, 0.5)
 
-    return seg_map_PIL, seg_image
+    return seg_map_PIL, seg_image'''
 
 
 def TCGA_dirs_2_files():

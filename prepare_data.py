@@ -1,5 +1,6 @@
 import utils_data_managment
 import argparse
+import os
 
 parser = argparse.ArgumentParser(description='Data preparation script')
 """
@@ -24,9 +25,11 @@ if __name__ =='__main__':
     if args.data_collection:
         utils_data_managment.make_slides_xl_file(path=args.data_folder)
     if args.segmentation:
-        utils_data_managment.make_segmentations(data_path=args.data_folder + '/', rewrite=False)
+        data_dirs = [f.path for f in os.scandir(args.data_folder) if f.is_dir()]
+        for data_dir in data_dirs:
+            utils_data_managment.make_segmentations(data_path=data_dir, rewrite=False)
     if args.grid:
-        utils_data_managment.make_grid(data_path=args.data_folder, tile_sz=args.tile_size)
+        utils_data_managment.make_grid(main_data_path=args.data_folder, tile_sz=args.tile_size)
     if args.stats:
         utils_data_managment.compute_normalization_values()
     if args.hard_copy:

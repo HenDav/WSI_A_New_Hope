@@ -17,8 +17,14 @@ from typing import List, Tuple
 import shutil
 import cv2 as cv
 
+def make_dir(dirname):
+    if not dirname in next(os.walk(os.getcwd()))[1]:
+        try:
+            os.mkdir(dirname)
+        except OSError:
+            print('Creation of directory ', dirname, ' failed...')
+            raise
 
-"""
 def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     dirs = _get_tcga_id_list(data_path)
     meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
@@ -32,6 +38,7 @@ def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how
         # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
         tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
         _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Objective Power'][i], tile_size)
+
 def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
     BASIC_OBJ_POWER = 20
     adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
@@ -54,23 +61,29 @@ def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, ti
         tile_file_name = os.path.join(tile_basic_file_name, str(tile_size), str(tile_idx) + '.data')
         with open(tile_file_name, 'wb') as filehandle:
             pickle.dump(tile, filehandle)
+
 def copy_segImages(data_path: str = 'tcga-data'):    
     dirs = _get_tcga_id_list(data_path)
+
     print('Copying Segmentation Images...')
-    if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
-        try:
-            os.mkdir('Segmentation_Images')
-        except OSError:
-            print('Creation of directory \'Segmentation_Images\' is failed...')
-            raise
+    make_dir('Segmentation_Images')
 
-    for _, dir in enumerate(dirs):
-        if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
-            shutil.copy2(os.path.join(data_path, dir, 'segImage.png'), os.path.join('Segmentation_Images', dir + '_SegImage.png'))
-        else:
-            print('Found no segImage file for {}'.format(dir))
+    if data_format == 'TCGA':
+        dirs = _get_tcga_id_list(data_path)
+        for _, dir in enumerate(dirs):
+            if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
+                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'),
+                             os.path.join('Segmentation_Images', dir + '_SegImage.png'))
+            else:
+                print('Found no segImage file for {}'.format(dir))
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
+        files = [file for file in os.listdir(data_path) if file.endswith("_segImage.png")]
+        for file in files:
+            shutil.copy2(os.path.join(data_path, file), os.path.join('Segmentation_Images', file))
 
-    print('Finished copying!')
+    print('Finished copying!')'''
+
+
 def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     # get a list of all directories with images:
     dirs = _get_tcga_id_list(data_path)
@@ -121,6 +134,7 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
+
 def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):    
     data_file = os.path.join(data_path, 'slides_data.xlsx')
 
@@ -174,6 +188,8 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
     basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
+
+
 def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
     # Check if coverage is a number in the range (0, 1]
     if not (coverage > 0 and coverage <= 1):
@@ -204,6 +220,8 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
         grid.pop(idx)
 
     return grid
+
+
 def make_slides_xl_file(path: str = 'tcga-data'):
     TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
     TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -267,52 +285,125 @@ def make_slides_xl_file(path: str = 'tcga-data'):
     slides_data = pd.DataFrame(id_list)
     slides_data.to_excel(os.path.join(path, 'slides_data.xlsx'))
     print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
-def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1):
-    print('Making Segmentation Maps for each .svs file...')
-    dirs = _get_tcga_id_list(data_path)
-    error_list = []
-    #for _, dir in enumerate(dirs):
-    for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
-        dir = dirs[i]
-        if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
-            continue
 
-        print('Working on {}'.format(dir))
-        slide = _get_slide(os.path.join(data_path, dir))
-        if slide is not None:
-            # Get a thunmbnail image to create the segmentation for:
-            try:
-                objective_pwr = int(float(slide.properties['aperio.AppMag']))
-            except KeyError:
-                print('Couldn\'t find Magnification - Segmentation Map was not Created')
+
+'''def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1,
+                       data_format: str = 'TCGA'):
+    # RanS, save locally
+    make_dir('Segmentation_Images')
+    make_dir('Thumbs')
+    make_dir('Segmentation_Maps')
+
+    if data_format == 'TCGA':
+        print('Making Segmentation Maps for each .svs file...')
+        dirs = _get_tcga_id_list(data_path)
+        error_list = []
+        # for _, dir in enumerate(dirs):
+        for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
+            dir = dirs[i]
+            fn = dir
+            #if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
+            if not rewrite:
+                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
+                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
+                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
+                if pic1 and pic2 and pic3:
+                    continue
+
+            print('Working on {}'.format(dir))
+            slide = _get_slide(os.path.join(data_path, dir), data_format)
+            if slide is not None:
+                # Get a thunmbnail image to create the segmentation for:
+                try:
+                    objective_pwr = int(float(slide.properties['aperio.AppMag']))
+                except KeyError:
+                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                    continue
+                height = slide.dimensions[1]
+                width = slide.dimensions[0]
+                try:
+                    thumb = slide.get_thumbnail(
+                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except openslide.lowlevel.OpenSlideError as err:
+                    error_dict = {}
+                    e = sys.exc_info()
+                    error_dict['Path'] = dir
+                    error_dict['Error'] = err
+                    error_dict['Error Details 1'] = e[0]
+                    error_dict['Error Details 2'] = e[1]
+                    error_list.append(error_dict)
+                    print('Exception on path {}'.format(dir))
+                    continue
+
+                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+                slide.close()
+                # Saving segmentation map, segmentation image and thumbnail:
+                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
+                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
+                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
+
+
+            else:
+                print('Error: Found no slide in path {}'.format(dir))
+                # TODO: implement a case for a slide that cannot be opened.
                 continue
-            height = slide.dimensions[1]
-            width = slide.dimensions[0]
-            try:
-                thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-            except openslide.lowlevel.OpenSlideError as err:
-                error_dict = {}
-                e = sys.exc_info()
-                error_dict['Path'] = dir
-                error_dict['Error'] = err
-                error_dict['Error Details 1'] = e[0]
-                error_dict['Error Details 2'] = e[1]
-                error_list.append(error_dict)
-                print('Exception on path {}'.format(dir))
+
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
+        if data_format == 'ABCTB':
+            print('Making Segmentation Maps for each .ndpi file...')
+            files = [file for file in os.listdir(data_path) if file.endswith(".ndpi")]
+        elif data_format == 'MIRAX':
+            print('Making Segmentation Maps for each .mrxs file...')
+            files = [file for file in os.listdir(data_path) if file.endswith(".mrxs")]
+        error_list = []
+        for file in files:
+            fn = file[:-5]
+            if not rewrite:
+                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
+                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
+                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
+                if pic1 and pic2 and pic3:
+                    continue
+
+            print('Working on {}'.format(file))
+            slide = _get_slide(os.path.join(data_path, file), data_format)
+            if slide is not None:
+                # Get a thunmbnail image to create the segmentation for:
+                try:
+                    if data_format == 'ABCTB':
+                        objective_pwr = int(float(slide.properties['hamamatsu.SourceLens']))
+                    elif data_format == 'MIRAX':
+                        objective_pwr = int(float(slide.properties['openslide.objective-power']))
+                except KeyError:
+                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                    continue
+                height = slide.dimensions[1]
+                width = slide.dimensions[0]
+                try:
+                    thumb = slide.get_thumbnail(
+                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except openslide.lowlevel.OpenSlideError as err:
+                    error_dict = {}
+                    e = sys.exc_info()
+                    error_dict['Path'] = file
+                    error_dict['Error'] = err
+                    error_dict['Error Details 1'] = e[0]
+                    error_dict['Error Details 2'] = e[1]
+                    error_list.append(error_dict)
+                    print('Exception on file {}'.format(file))
+                    continue
+
+                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+                slide.close()
+                # Saving segmentation map, segmentation image and thumbnail:
+                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
+                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
+                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
+
+            else:
+                print('Error: Found no slide in path {}'.format(data_path))
+                # TODO: implement a case for a slide that cannot be opened.
                 continue
-
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
-            slide.close()
-            # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(data_path, dir, 'thumb.png'))
-            thmb_seg_map.save(os.path.join(data_path, dir, 'segMap.png'))
-            thmb_seg_image.save(os.path.join(data_path, dir, 'segImage.png'))
-
-        else:
-            print('Error: Found no slide in path {}'.format(dir))
-            # TODO: implement a case for a slide that cannot be opened.
-            continue
-
 
     if len(error_list) != 0:
         # Saving all error data to excel file:
@@ -322,11 +413,20 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
         print('Check "Segmenatation_Errors.xlsx" file for details...')
     else:
         print('Segmentation Process finished without exceptions!')
+        
+        
 def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):    
+
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     image_array = np.array(image.convert('HSV'))
     # otsu Thresholding:
-    _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
+    use_otsu3 = True
+    if use_otsu3:
+        # RanS 25.10.20 - 3way binarization
+        thresh = otsu3(image_array[:, :, 1])
+        _, seg_map = cv.threshold(image_array[:, :, 1], thresh[0], 255, cv.THRESH_BINARY)
+    else:
+        _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
     # Smoothing the tissue segmentation imaqe:
     size = 30 * magnification
@@ -336,6 +436,20 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     th_val = 5
     seg_map[seg_map > th_val] = 255
     seg_map[seg_map <= th_val] = 0
+
+    # find small contours and delete them from segmentation map
+    size_thresh = 10000
+    contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
+    # cv.imshow("Contours", drawContours)
+    # cv.waitKey()
+    small_contours = []
+    for contour in contours:
+        contour_area = cv.contourArea(contour)
+        if contour_area < size_thresh:
+            small_contours.append(contour)
+    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1)
+
     seg_map_PIL = Image.fromarray(seg_map)
 
     edge_image = cv.Canny(seg_map, 1, 254)
@@ -345,7 +459,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
-"""
+
 
 def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
     """
@@ -511,21 +625,27 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: 
     return tiles_PIL
 
 
-def _get_slide(path: 'str') -> openslide.OpenSlide:
+def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
     """
     This function returns an OpenSlide object from the file within the directory
     :param path:
     :return:
     """
-
-    # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
-    #if '.DS_Store' in file: file.remove('.DS_Store')
-    slide = None
-    try:
-        #slide = openslide.open_slide(os.path.join(path, file[0]))
-        slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
-    except:
-        print('Cannot open slide at location: {}'.format(path))
+    if data_format == 'TCGA':
+        # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
+        # if '.DS_Store' in file: file.remove('.DS_Store')
+        slide = None
+        try:
+            # slide = openslide.open_slide(os.path.join(path, file[0]))
+            slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
+        except:
+            print('Cannot open slide at location: {}'.format(path))
+    elif data_format == 'ABCTB' or data_format == 'MIRAX':
+        slide = None
+        try:
+            slide = openslide.open_slide(path)
+        except:
+            print('Cannot open slide at location: {}'.format(path))
 
     return slide
 
