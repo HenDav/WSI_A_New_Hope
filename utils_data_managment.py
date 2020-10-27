@@ -277,7 +277,7 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
     TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
     TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
 
-    print('Creating a new data file in path: {}'.format(path))
+    print('Creating a new data file in path: \'All Data\'/')
 
     id_list = []
 

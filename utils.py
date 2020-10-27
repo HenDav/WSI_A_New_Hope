@@ -18,15 +18,8 @@ import shutil
 import cv2 as cv
 
 
-
-
+"""
 def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
-    """
-    This function makes a hard copy of the tile in order to avoid using openslide
-    :param data_path:
-    :return:
-    """
-
     dirs = _get_tcga_id_list(data_path)
     meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
 
@@ -39,13 +32,6 @@ def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how
         # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
         tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
         _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Objective Power'][i], tile_size)
-
-
-        """
-        file_name = os.path.join(data_path, meta_data['id'][i], 'tiles', 'tiles.data')
-        with open(file_name, 'wb') as filehandle:
-            pickle.dump(slide_tiles, filehandle)
-        """
 def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
     BASIC_OBJ_POWER = 20
     adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
@@ -68,12 +54,7 @@ def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, ti
         tile_file_name = os.path.join(tile_basic_file_name, str(tile_size), str(tile_idx) + '.data')
         with open(tile_file_name, 'wb') as filehandle:
             pickle.dump(tile, filehandle)
-def copy_segImages(data_path: str = 'tcga-data'):
-    """
-    This function copies the Segmentation Images from it's original location to one specific location, for easy checking
-    of the segmentations later on...
-    :return:
-    """
+def copy_segImages(data_path: str = 'tcga-data'):    
     dirs = _get_tcga_id_list(data_path)
     print('Copying Segmentation Images...')
     if not 'Segmentation_Images' in next(os.walk(os.getcwd()))[1]:
@@ -91,12 +72,6 @@ def copy_segImages(data_path: str = 'tcga-data'):
 
     print('Finished copying!')
 def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
-    """
-    This function runs over a set of images and compute mean and variance of each channel.
-    The function computes these statistic values over the thumbnail images which are at X1 magnification
-    :return:
-    """
-
     # get a list of all directories with images:
     dirs = _get_tcga_id_list(data_path)
     stats_list =[]
@@ -146,13 +121,7 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
     return total_mean, total_var
-def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
-    """
-    This function creates a location for all top left corners of the grid
-    :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
-    :param tile_sz: size of tiles to be created
-    :return:
-    """
+def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):    
     data_file = os.path.join(data_path, 'slides_data.xlsx')
 
     BASIC_OBJ_PWR = 20
@@ -206,16 +175,6 @@ def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
 
     print('Finished Grid production phase !')
 def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
-    """
-    This function gets a .svs file name, a basic grid and tile size and returns a list of legitimate grid locations.
-    :param image_file_name: .svs file name
-    :param grid: basic grid
-    :param tile_size: tile size
-    :param size: size of original image (height, width)
-    :param coverage: Coverage of tissue to make the slide legitimate
-    :return:
-    """
-
     # Check if coverage is a number in the range (0, 1]
     if not (coverage > 0 and coverage <= 1):
         raise ValueError('Coverage Parameter should be in the range (0,1]')
@@ -246,17 +205,6 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
 
     return grid
 def make_slides_xl_file(path: str = 'tcga-data'):
-    """
-    This function goes over all directories and makes a table with slides data:
-    (1) id
-    (2) file name
-    (3) ER, PR, Her2 status
-    (4) size of image
-    (5) MPP (Microns Per Pixel)
-    It also erases all 'log' subdirectories
-    :return:
-    """
-
     TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
     TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
 
@@ -374,12 +322,7 @@ def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, mag
         print('Check "Segmenatation_Errors.xlsx" file for details...')
     else:
         print('Segmentation Process finished without exceptions!')
-def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
-    """
-    This function creates a segmentation map for an Image
-    :param magnification:
-    :return:
-    """
+def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):    
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     image_array = np.array(image.convert('HSV'))
     # otsu Thresholding:
@@ -402,7 +345,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
-
+"""
 
 def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
     """
@@ -623,8 +566,7 @@ def get_cpu():
     return cpu
 
 
-def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False,
-             tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False):
+def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False, tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False):
     """
     This function writes the run data to file
     :param experiment:
