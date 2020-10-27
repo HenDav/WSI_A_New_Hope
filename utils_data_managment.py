@@ -151,80 +151,80 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
     #data_file = os.path.join(data_path.split('/')[0], 'slides_data.xlsx')
     #data_file = os.path.join(splitter.join(data_path.split(splitter)[:-1]), 'slides_data.xlsx') #RanS 26.10.20
 
-    #data_file = os.path.join(data_path, 'slides_data.xlsx')  # RanS 26.10.20
-    data_files = glob.glob(main_data_path + '/slides_data*.xlsx')
-    for data_file in data_files:
-        BASIC_OBJ_PWR = 20
+    data_file = os.path.join(main_data_path, 'slides_data.xlsx')  # RanS 26.10.20
+    #data_files = glob.glob(main_data_path + '/slides_data*.xlsx')
+    #for data_file in data_files:
+    BASIC_OBJ_PWR = 20
 
-        basic_DF = pd.read_excel(data_file)
-        files = list(basic_DF['file'])
-        objective_power = list(basic_DF['Objective Power'])
-        basic_DF.set_index('file', inplace=True)
-        tile_nums = []
-        file_inds = []
-        total_tiles =[]
-        print('Starting Grid production...')
-        print()
-        #for _, file in enumerate(files):
-        for i in tqdm(range(len(files))):
-            file = files[i]
-            database = basic_DF.loc[file, 'id']
-            if os.path.isfile(os.path.join(main_data_path, database, file)): #RanS, make sure file exists
-                data_dict = {}
-                height = basic_DF.loc[file, 'Height']
-                width  = basic_DF.loc[file, 'Width']
+    basic_DF = pd.read_excel(data_file)
+    files = list(basic_DF['file'])
+    objective_power = list(basic_DF['Objective Power'])
+    basic_DF.set_index('file', inplace=True)
+    tile_nums = []
+    file_inds = []
+    total_tiles =[]
+    print('Starting Grid production...')
+    print()
+    #for _, file in enumerate(files):
+    for i in tqdm(range(len(files))):
+        file = files[i]
+        database = basic_DF.loc[file, 'id']
+        if os.path.isfile(os.path.join(main_data_path, database, file)): #RanS, make sure file exists
+            data_dict = {}
+            height = basic_DF.loc[file, 'Height']
+            width  = basic_DF.loc[file, 'Width']
 
-                if objective_power[i] == 'Missing Data':
-                    print('Grid was not computed for file {}'.format(file))
-                    tile_nums.append(0)
-                    total_tiles.append(-1)
-                    continue
+            if objective_power[i] == 'Missing Data':
+                print('Grid was not computed for file {}'.format(file))
+                tile_nums.append(0)
+                total_tiles.append(-1)
+                continue
 
-                converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
-                basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
-                total_tiles.append((len(basic_grid)))
+            converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
+            basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
+            total_tiles.append((len(basic_grid)))
 
-                # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-                #legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
-                legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'), #RanS 26.10.20
-                                         basic_grid,
-                                        converted_tile_size,
-                                        (height, width))
+            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
+            #legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
+            legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'), #RanS 26.10.20
+                                     basic_grid,
+                                     converted_tile_size,
+                                     (height, width))
 
-                # create a list with number of tiles in each file
-                tile_nums.append(len(legit_grid))
-                file_inds.append(i)
+            # create a list with number of tiles in each file
+            tile_nums.append(len(legit_grid))
+            file_inds.append(i)
 
-                # Save the grid to file:
-                #if not os.path.isdir(os.path.join(data_path.split(splitter)[0], id, 'Grids')):
-                #    os.mkdir(os.path.join(data_path.split(splitter)[0], id, 'Grids'))
-                if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')): #RanS 26.10.20
-                    os.mkdir(os.path.join(main_data_path, database, 'Grids'))
+            # Save the grid to file:
+            #if not os.path.isdir(os.path.join(data_path.split(splitter)[0], id, 'Grids')):
+            #    os.mkdir(os.path.join(data_path.split(splitter)[0], id, 'Grids'))
+            if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')): #RanS 26.10.20
+                os.mkdir(os.path.join(main_data_path, database, 'Grids'))
 
-                #file_name = os.path.join(data_file.split(splitter)[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
-                file_name = os.path.join(main_data_path, database, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
-                with open(file_name, 'wb') as filehandle:
-                    # store the data as binary data stream
-                    pickle.dump(legit_grid, filehandle)
+            #file_name = os.path.join(data_file.split(splitter)[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
+            file_name = os.path.join(main_data_path, database, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
+            with open(file_name, 'wb') as filehandle:
+                # store the data as binary data stream
+                pickle.dump(legit_grid, filehandle)
 
 
-        # Adding the number of tiles to the excel file:
-        #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20
-        tile_nums_all = np.zeros(basic_DF.shape[0])
-        total_tiles_all = np.zeros(basic_DF.shape[0])
-        slide_usage_all = np.zeros(basic_DF.shape[0])
+    # Adding the number of tiles to the excel file:
+    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20
+    tile_nums_all = np.zeros(basic_DF.shape[0])
+    total_tiles_all = np.zeros(basic_DF.shape[0])
+    slide_usage_all = np.zeros(basic_DF.shape[0])
 
-        tile_nums_all[file_inds] = tile_nums
-        total_tiles_all[file_inds] = total_tiles
-        slide_usage_all[file_inds] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    tile_nums_all[file_inds] = tile_nums
+    total_tiles_all[file_inds] = total_tiles
+    slide_usage_all[file_inds] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
 
-        basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all #RanS 26.10.20
-        basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles_all
-        basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage_all
-        #basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-        #basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-        #basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
-        basic_DF.to_excel(data_file)
+    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all #RanS 26.10.20
+    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles_all
+    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage_all
+    #basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
+    #basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    #basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    basic_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
 
@@ -290,8 +290,18 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
 
     id_list = []
 
-    slides = glob.glob(os.path.join(path, '*.svs'))
+    #RanS 27.10.20, support slide types
+    slide_files_svs = glob.glob(os.path.join(path, '*.svs'))
+    slide_files_ndpi = glob.glob(os.path.join(path, '*.ndpi'))
+    slide_files_mrxs = glob.glob(os.path.join(path, '*.mrxs'))
+    slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
+    mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x'}
+    date_dict = {'.svs': 'aperio.Date', '.ndpi': 'tiff.DateTime', '.mrxs': 'mirax.GENERAL.SLIDE_CREATIONDATETIME'}
+
+    #slides = glob.glob(os.path.join(path, '*.svs'))
     for idx, file in enumerate(tqdm(slides)):
+        fn, data_format = os.path.splitext(os.path.basename(file)) #RanS 27.10.20
         id_dict = {}
 
         # Create a dictionary to the files and id's:
@@ -305,7 +315,8 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         # Get some basic data about the image like MPP (Microns Per Pixel) and size:
         img = openslide.open_slide(file)
         try:
-            id_dict['MPP'] = float(img.properties['aperio.MPP'])
+            #id_dict['MPP'] = float(img.properties['aperio.MPP'])
+            id_dict['MPP'] = float(img.properties[mpp_dict[data_format]]) #RanS 27.10.20
         except:
             id_dict['MPP'] = 'Missing Data'
         try:
@@ -317,11 +328,13 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         except:
             id_dict['Height'] = 'Missing Data'
         try:
-            id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
+            #id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
+            id_dict['Objective Power'] = int(float(img.properties[mag_dict[data_format]])) #RanS 27.10.20
         except:
             id_dict['Objective Power'] = 'Missing Data'
         try:
-            id_dict['Scan Date'] = img.properties['aperio.Date']
+            #id_dict['Scan Date'] = img.properties['aperio.Date']
+            id_dict['Scan Date'] = img.properties[date_dict[data_format]] #RanS 27.10.20
         except:
             id_dict['Scan Date'] = 'Missing Data'
         img.close()
