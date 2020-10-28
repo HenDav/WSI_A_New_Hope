@@ -438,12 +438,12 @@ def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False,
     print('Making Segmentation Maps for each slide file...')
     if not os.path.isdir(os.path.join(data_path, 'SegData')):
         os.mkdir(os.path.join(data_path, 'SegData'))
-        if not os.path.isdir(os.path.join(data_path, 'SegData','Thumbs')):
-            os.mkdir(os.path.join(data_path, 'SegData','Thumbs'))
-        if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegMaps')):
-            os.mkdir(os.path.join(data_path, 'SegData', 'SegMaps'))
-        if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegImages')):
-            os.mkdir(os.path.join(data_path, 'SegData', 'SegImages'))
+    if not os.path.isdir(os.path.join(data_path, 'SegData','Thumbs')):
+        os.mkdir(os.path.join(data_path, 'SegData','Thumbs'))
+    if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegMaps')):
+        os.mkdir(os.path.join(data_path, 'SegData', 'SegMaps'))
+    if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegImages')):
+        os.mkdir(os.path.join(data_path, 'SegData', 'SegImages'))
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
@@ -638,8 +638,3 @@ def TCGA_dirs_2_files():
             shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
 
     print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
-
-
-
-#Bladsdfsdf
-#comment for commit testing, RanS 28.10.20
