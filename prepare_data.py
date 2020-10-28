@@ -3,27 +3,19 @@ import argparse
 import os
 
 parser = argparse.ArgumentParser(description='Data preparation script')
-"""
-parser.add_argument('--data_collection', type=bool, default=False, help='need to collect data from main data file?')
-parser.add_argument('--segmentation', type=bool, default=False, help='need to make segmentation map for all files?')
-parser.add_argument('--grid', type=bool, default=True, help='need to make grid coordinates for all files?')
-parser.add_argument('--tile_size', type=int, default=64, help='size of tiles')
-parser.add_argument('--stats', type=bool, default=False, help='need to compute statistical data?')
-parser.add_argument('--hard_copy', type=bool, default=False, help='make hard copy of tiles?')
-parser.add_argument('--data_folder', type=str, default='All Data/TCGA', help='location of data folder')
-"""
+
 parser.add_argument('--data_collection', dest='data_collection', action='store_true', help='need to collect data from main data file?')
 parser.add_argument('--segmentation', dest='segmentation', action='store_true', help='need to make segmentation map for all files?')
 parser.add_argument('--grid', dest='grid', action='store_true', help='need to make grid coordinates for all files?')
 parser.add_argument('--tile_size', type=int, default=256, help='size of tiles')
 parser.add_argument('--stats', dest='stats', action='store_true', help='need to compute statistical data?')
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
-parser.add_argument('--data_folder', type=str, default='All Data/TCGA', help='location of data folder')
+parser.add_argument('--data_folder', type=str, default='All Data', help='location of data folder')
 args = parser.parse_args()
 
 if __name__ =='__main__':
     if args.data_collection:
-        utils_data_managment.make_slides_xl_file(path=args.data_folder)
+        utils_data_managment.make_slides_xl_file(root_dir=args.data_folder)
     if args.segmentation:
         data_dirs = [f.path for f in os.scandir(args.data_folder) if f.is_dir()]
         for data_dir in data_dirs:

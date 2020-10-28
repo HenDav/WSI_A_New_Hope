@@ -21,14 +21,61 @@ import sys
 import cv2 as cv
 
 
-'''def make_dir(dirname):
+'''
+def make_dir(dirname):
     if not dirname in next(os.walk(os.getcwd()))[1]:
         try:
             os.mkdir(dirname)
         except OSError:
             print('Creation of directory ', dirname, ' failed...')
-            raise'''
+            raise
+'''
+'''
+def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+    """
+    This function creates a segmentation map for an Image
+    :param magnification:
+    :return:
+    """
+    # Converting the image from RGBA to HSV and to a numpy array (from PIL):
+    image_array = np.array(image.convert('HSV'))
+    # otsu Thresholding:
+    _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
+    # Smoothing the tissue segmentation imaqe:
+    size = 30 * magnification
+    kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
+    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
+
+    th_val = 5
+    seg_map[seg_map > th_val] = 255
+    seg_map[seg_map <= th_val] = 0
+    seg_map_PIL = Image.fromarray(seg_map)
+
+    edge_image = cv.Canny(seg_map, 1, 254)
+    # Make the edge thicker by dilating:
+    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
+    seg_image = Image.blend(image, edge_image, 0.5)
+
+    return seg_map_PIL, seg_image
+'''
+'''
+def TCGA_dirs_2_files():
+    dirs = utils._get_tcga_id_list()
+    print('Creating one directory for all TCGA slides...')
+    if not os.path.isdir('All Data'):
+        os.mkdir('All Data')
+    if not os.path.isdir('All Data/TCGA'):
+        os.mkdir('All Data/TCGA')
+
+    for _, dir in enumerate(tqdm(dirs)):
+        files = glob.glob(os.path.join('tcga-data', dir, '*.svs'))
+        for _, path_file in enumerate(files):
+            shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
+
+    print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
+'''
 
 def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
@@ -271,7 +318,7 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
     return grid
 
 
-def make_slides_xl_file(path: str = 'All Data/TCGA'):
+def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
     """
     This function goes over all directories and makes a table with slides data:
     (1) id
@@ -282,18 +329,36 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
     It also erases all 'log' subdirectories
     :return:
     """
+    SLIDES_DATA_FILE = 'slides_data.xlsx'
+    META_DATA_FILE = {}
+    META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
+    META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
 
-    TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
-    TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
 
-    print('Creating a new data file in path: \'All Data\'/')
+    data_file = os.path.join(root_dir, SLIDES_DATA_FILE)
+    new_file = False if os.path.isfile(data_file) else True
+
+    meta_data_DF = pd.read_excel(os.path.join(root_dir, DataSet, META_DATA_FILE[DataSet]))
+    # meta_data_DF = pd.read_excel(os.path.join(root_dir, 'TCGA_BRCA.xlsx'))
+
+    meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
+
+    if new_file:
+        print('Creating a new data file in in \'{}\''.format(data_file))
+    else:
+        print('Adding data to file \'{}\''.format(data_file))
+        slides_data_DF = pd.read_excel(data_file)
+        try:
+            slides_data_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
+        except KeyError:
+            pass
 
     id_list = []
 
     #RanS 27.10.20, support slide types
-    slide_files_svs = glob.glob(os.path.join(path, '*.svs'))
-    slide_files_ndpi = glob.glob(os.path.join(path, '*.ndpi'))
-    slide_files_mrxs = glob.glob(os.path.join(path, '*.mrxs'))
+    slide_files_svs = glob.glob(os.path.join(root_dir, DataSet, '*.svs'))
+    slide_files_ndpi = glob.glob(os.path.join(root_dir, DataSet, '*.ndpi'))
+    slide_files_mrxs = glob.glob(os.path.join(root_dir, DataSet, '*.mrxs'))
     slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs
     mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
     mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x'}
@@ -305,12 +370,15 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         id_dict = {}
 
         # Create a dictionary to the files and id's:
-        id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
+        if DataSet is 'TCGA':
+            id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
+        elif DataSet is 'HEROHE':
+            id_dict['patient barcode'] = int(file.split('/')[-1].split('.')[0])
 
         # id_dict['id'] = root.split('/')[-1]
-        id_dict['id'] = 'TCGA'
+        id_dict['id'] = DataSet
         id_dict['file'] = file.split('/')[-1]
-        id_dict['DX'] = True if file.find('DX') != -1 else False
+        id_dict['DX'] = True if (file.find('DX') != -1 or DataSet is not 'TCGA') else False
 
         # Get some basic data about the image like MPP (Microns Per Pixel) and size:
         img = openslide.open_slide(file)
@@ -339,24 +407,35 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
             id_dict['Scan Date'] = 'Missing Data'
         img.close()
 
-        # Get data from 'TCGA_BRCA.xlsx' and add to the dictionary ER_status, PR_status, Her2_status
+        # Get data from META_DATA_FILE and add to the dictionary ER_status, PR_status, Her2_status
         try:
-            id_dict['ER status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
-            id_dict['PR status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
-            id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
-            id_dict['test fold idx'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
+            id_dict['ER status'] = meta_data_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
         except:
             id_dict['ER status'] = 'Missing Data'
+        try:
+            id_dict['PR status'] = meta_data_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
+        except:
             id_dict['PR status'] = 'Missing Data'
+        try:
+            id_dict['Her2 status'] = meta_data_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
+        except:
             id_dict['Her2 status'] = 'Missing Data'
-            id_dict['test fold idx'] = 'Missing Data'
-
+        try:
+            id_dict['test fold idx'] = meta_data_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
+        except:
+            id_dict['test fold idx'] = 1
 
         id_list.append(id_dict)
 
-    slides_data = pd.DataFrame(id_list)
-    slides_data.to_excel(os.path.join('All Data', 'slides_data.xlsx'))
-    print('Created data file \'{}\''.format(os.path.join('All Data', 'slides_data.xlsx')))
+    if new_file:
+        slides_data_DF = pd.DataFrame(id_list)
+        messege_prefix = 'Creating'
+    else:
+        slides_data_DF = slides_data_DF.append(id_list)
+        messege_prefix = 'Updated'
+
+    slides_data_DF.to_excel(data_file)
+    print('{} data file \'{}\''.format(messege_prefix, data_file))
 
 
 def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
@@ -518,52 +597,3 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
     return seg_map_PIL, seg_image
 
-
-'''def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
-    """
-    This function creates a segmentation map for an Image
-    :param magnification:
-    :return:
-    """
-    # Converting the image from RGBA to HSV and to a numpy array (from PIL):
-    image_array = np.array(image.convert('HSV'))
-    # otsu Thresholding:
-    _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
-
-    # Smoothing the tissue segmentation imaqe:
-    size = 30 * magnification
-    kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
-    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
-
-    th_val = 5
-    seg_map[seg_map > th_val] = 255
-    seg_map[seg_map <= th_val] = 0
-    seg_map_PIL = Image.fromarray(seg_map)
-
-    edge_image = cv.Canny(seg_map, 1, 254)
-    # Make the edge thicker by dilating:
-    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
-    seg_image = Image.blend(image, edge_image, 0.5)
-
-    return seg_map_PIL, seg_image'''
-
-
-def TCGA_dirs_2_files():
-    dirs = utils._get_tcga_id_list()
-    print('Creating one directory for all TCGA slides...')
-    if not os.path.isdir('All Data'):
-        os.mkdir('All Data')
-    if not os.path.isdir('All Data/TCGA'):
-        os.mkdir('All Data/TCGA')
-
-    for _, dir in enumerate(tqdm(dirs)):
-        files = glob.glob(os.path.join('tcga-data', dir, '*.svs'))
-        for _, path_file in enumerate(files):
-            shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
-
-    print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
-
-
-
-#Bladsdfsdf

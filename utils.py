@@ -712,7 +712,6 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
         try:
             run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
         except KeyError:
-            print('KeyError at function run_data')
             pass
 
         run_DF_exp = run_DF.set_index('Experiment', inplace=False)
