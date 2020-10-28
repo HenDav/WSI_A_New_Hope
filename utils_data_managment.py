@@ -147,12 +147,8 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
     :param tile_sz: size of tiles to be created
     :return:
     """
-    #splitter = '\\' if os.name=='nt' else '/'
-    #data_file = os.path.join(data_path.split('/')[0], 'slides_data.xlsx')
-    #data_file = os.path.join(splitter.join(data_path.split(splitter)[:-1]), 'slides_data.xlsx') #RanS 26.10.20
+    data_file = os.path.join(main_data_path, 'slides_data.xlsx')
 
-    data_file = os.path.join(main_data_path, 'slides_data.xlsx')  # RanS 26.10.20
-    #data_files = glob.glob(main_data_path + '/slides_data*.xlsx')
     #for data_file in data_files:
     BASIC_OBJ_PWR = 20
 
@@ -169,7 +165,7 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
     for i in tqdm(range(len(files))):
         file = files[i]
         database = basic_DF.loc[file, 'id']
-        if os.path.isfile(os.path.join(main_data_path, database, file)): #RanS, make sure file exists
+        if os.path.isfile(os.path.join(main_data_path, database, file)): #make sure file exists
             data_dict = {}
             height = basic_DF.loc[file, 'Height']
             width  = basic_DF.loc[file, 'Width']
@@ -186,7 +182,7 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
             #legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
-            legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'), #RanS 26.10.20
+            legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'),
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width))
@@ -198,7 +194,7 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
             # Save the grid to file:
             #if not os.path.isdir(os.path.join(data_path.split(splitter)[0], id, 'Grids')):
             #    os.mkdir(os.path.join(data_path.split(splitter)[0], id, 'Grids'))
-            if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')): #RanS 26.10.20
+            if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')):
                 os.mkdir(os.path.join(main_data_path, database, 'Grids'))
 
             #file_name = os.path.join(data_file.split(splitter)[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
@@ -218,7 +214,7 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
     total_tiles_all[file_inds] = total_tiles
     slide_usage_all[file_inds] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
 
-    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all #RanS 26.10.20
+    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all
     basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles_all
     basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage_all
     #basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
@@ -301,7 +297,7 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
 
     #slides = glob.glob(os.path.join(path, '*.svs'))
     for idx, file in enumerate(tqdm(slides)):
-        fn, data_format = os.path.splitext(os.path.basename(file)) #RanS 27.10.20
+        fn, data_format = os.path.splitext(os.path.basename(file))
         id_dict = {}
 
         # Create a dictionary to the files and id's:
@@ -316,7 +312,7 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
         img = openslide.open_slide(file)
         try:
             #id_dict['MPP'] = float(img.properties['aperio.MPP'])
-            id_dict['MPP'] = float(img.properties[mpp_dict[data_format]]) #RanS 27.10.20
+            id_dict['MPP'] = float(img.properties[mpp_dict[data_format]])
         except:
             id_dict['MPP'] = 'Missing Data'
         try:
@@ -329,12 +325,12 @@ def make_slides_xl_file(path: str = 'All Data/TCGA'):
             id_dict['Height'] = 'Missing Data'
         try:
             #id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
-            id_dict['Objective Power'] = int(float(img.properties[mag_dict[data_format]])) #RanS 27.10.20
+            id_dict['Objective Power'] = int(float(img.properties[mag_dict[data_format]]))
         except:
             id_dict['Objective Power'] = 'Missing Data'
         try:
             #id_dict['Scan Date'] = img.properties['aperio.Date']
-            id_dict['Scan Date'] = img.properties[date_dict[data_format]] #RanS 27.10.20
+            id_dict['Scan Date'] = img.properties[date_dict[data_format]]
         except:
             id_dict['Scan Date'] = 'Missing Data'
         img.close()
@@ -567,3 +563,4 @@ def TCGA_dirs_2_files():
 
 
 #Bladsdfsdf
+#comment for commit testing, RanS 28.10.20
