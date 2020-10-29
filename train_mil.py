@@ -22,6 +22,7 @@ parser.add_argument('-t', dest='transformation', action='store_true', help='Incl
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
+parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 
 args = parser.parse_args()
 
@@ -390,25 +391,24 @@ if __name__ == '__main__':
     cpu_available = utils.get_cpu()
 
     # Get data:
-    if DATA_TYPE == 'WSI':
-        train_dset = utils.WSI_MILdataset(data_path=data_path,
-                                          tile_size=TILE_SIZE,
-                                          bag_size=TILES_PER_BAG,
-                                          test_fold=args.test_fold,
-                                          train=True,
-                                          print_timing=timing,
-                                          transform=args.transformation,
-                                          DX=args.dx)
+    train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                      tile_size=TILE_SIZE,
+                                      bag_size=TILES_PER_BAG,
+                                      test_fold=args.test_fold,
+                                      train=True,
+                                      print_timing=timing,
+                                      transform=args.transformation,
+                                      DX=args.dx)
 
-        test_dset = utils.WSI_MILdataset(data_path=data_path,
-                                         tile_size=TILE_SIZE,
-                                         bag_size=TILES_PER_BAG,
-                                         test_fold=args.test_fold,
-                                         train=False,
-                                         print_timing=False,
-                                         transform=False,
-                                         DX=args.dx)
-    elif DATA_TYPE =='PRE':
+    test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                     tile_size=TILE_SIZE,
+                                     bag_size=TILES_PER_BAG,
+                                     test_fold=args.test_fold,
+                                     train=False,
+                                     print_timing=False,
+                                     transform=False,
+                                     DX=args.dx)
+    if DATA_TYPE =='PRE':
         train_dset = utils.PreSavedTiles_MILdataset(tile_size=TILE_SIZE,
                                                     bag_size=TILES_PER_BAG,
                                                     test_fold=args.test_fold,

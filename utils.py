@@ -757,7 +757,7 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
 class WSI_MILdataset(Dataset):
     def __init__(self,
                  #data_path: str = '/Users/wasserman/Developer/All data - outer scope',
-                 data_path: str = 'All Data',
+                 DataSet: str = 'TCGA',
                  tile_size: int = 256,
                  bag_size: int = 50,
                  target_kind: str = 'ER',
@@ -769,13 +769,21 @@ class WSI_MILdataset(Dataset):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
+        if DataSet is 'HEROHE':
+            target_kind = 'Her2'
+            test_fold = 2
 
-        meta_data_file = os.path.join(data_path, 'slides_data.xlsx')
+        self.ROOT_PATH = 'All Data'
+        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
+        if self.DataSet is not 'ALL':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
-        self.data_path = data_path
+        self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
@@ -809,6 +817,8 @@ class WSI_MILdataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+        if self.DataSet is not 'TCGA':
+            self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
@@ -852,8 +862,9 @@ class WSI_MILdataset(Dataset):
 
 
 
-        print('Initiation of WSI {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+        print('Initiation of WSI {} {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
+                      self.DataSet,
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
