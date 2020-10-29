@@ -16,7 +16,7 @@ args = parser.parse_args()
 
 if __name__ =='__main__':
     if args.data_collection:
-        utils_data_managment.make_slides_xl_file(root_dir=args.data_folder)
+        utils_data_managment.make_slides_xl_file(DataSet=args.dataset)
     if args.segmentation:
         utils_data_managment.make_segmentations(data_path=args.data_folder)
         '''
@@ -27,7 +27,7 @@ if __name__ =='__main__':
     if args.grid:
         utils_data_managment.make_grid(DataSet=args.dataset, tile_sz=args.tile_size)
     if args.stats:
-        utils_data_managment.compute_normalization_values()
+        utils_data_managment.compute_normalization_values(DataSet=args.dataset)
     if args.hard_copy:
         utils_data_managment.make_tiles_hard_copy(tile_size=args.tile_size)
 

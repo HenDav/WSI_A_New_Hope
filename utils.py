@@ -510,7 +510,8 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
     return image_tiles
 
 #def _choose_data_2(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
-def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+#def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -519,13 +520,13 @@ def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification:
     """
     BASIC_OBJ_POWER = 20
     adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
+    ### basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
     # open grid list:
-    grid_file = os.path.join(data_path, 'Grids', file_name[:-4] + '--tlsz' + str(tile_size) + '.data')
+    ### grid_file = os.path.join(data_path, 'Grids', file_name.split('.')[0] + '--tlsz' + str(tile_size) + '.data')
+
     #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], 'Grids', file_name.split('/')[2][:-4] + '--tlsz' + str(tile_size) + '.data')
     with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
         grid_list = pickle.load(filehandle)
 
     # Choose locations from the grid:
@@ -534,7 +535,7 @@ def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification:
     idxs = sample(range(loc_num), how_many)
     locs = [grid_list[idx] for idx in idxs]
 
-    image_file = os.path.join(data_path, file_name)
+    ### image_file = os.path.join(data_path, file_name)
     image_tiles, time_list = _get_tiles_2(image_file, locs, adjusted_tile_size, print_timing=print_timing)
 
     return image_tiles, time_list
@@ -698,7 +699,7 @@ def get_cpu():
 
 
 def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False,
-             tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False):
+             tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False, DataSet: str = 'TCGA'):
     """
     This function writes the run data to file
     :param experiment:
@@ -732,7 +733,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
                     'Location': location,
-                    'DX': DX
+                    'DX': DX,
+                    'DataSet': DataSet
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -750,8 +752,9 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
         tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
+        DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, DX
+        return location, test_fold, transformations, tile_size, tiles_per_bag, DX, DataSet
 
 
 class WSI_MILdataset(Dataset):
@@ -783,7 +786,7 @@ class WSI_MILdataset(Dataset):
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
-        self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
+        ### self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
@@ -841,6 +844,15 @@ class WSI_MILdataset(Dataset):
                 self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
+        mean = {}
+        std = {}
+
+        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
+        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
+
+        mean['HEROHE'] = [31.51838872 / 255, 65.25528123 / 255, 37.49780932 / 255]
+        std['HEROHE'] = [np.sqrt(1110.44122153) / 255, np.sqrt(2950.70309166) / 255, np.sqrt(1027.60832337) / 255]
+
         if self.transform and self.train:
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
@@ -851,14 +863,15 @@ class WSI_MILdataset(Dataset):
                 transforms.Compose([ transforms.RandomVerticalFlip(),
                                      transforms.RandomHorizontalFlip(),
                                      transforms.ToTensor(),
-                                     transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
-                                                          std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
+                                     transforms.Normalize(mean=(mean[self.DataSet][0], mean[self.DataSet][1], mean[self.DataSet][2]),
+                                                          std=(std[self.DataSet][0], std[self.DataSet][1], std[self.DataSet][2]))
                                      ])
         else:
             self.transform = transforms.Compose([transforms.ToTensor(),
-                                                 transforms.Normalize(mean=(0.22826, 0.37736, 0.275547),
-                                                                      std=(0.158447, 0.231005, 0.1768365))
+                                                 transforms.Normalize(mean=(mean[self.DataSet][0], mean[self.DataSet][1], mean[self.DataSet][2]),
+                                                                      std=(std[self.DataSet][0], std[self.DataSet][1], std[self.DataSet][2]))
                                                  ])
+
 
 
 
@@ -879,13 +892,21 @@ class WSI_MILdataset(Dataset):
 
     def __getitem__(self, idx):
         start_getitem = time.time()
-        data_path_extended = os.path.join(self.data_path, self.image_path_names[idx])
+        data_path_extended = os.path.join(self.ROOT_PATH, self.image_path_names[idx])
         # file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
         # tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size, print_timing=self.print_time)
         #tiles, time_list = _choose_data_2(self.data_path, file_name, self.bag_size, self.magnification[idx], self.tile_size, print_timing=self.print_time)
+        '''
         tiles, time_list = _choose_data_2(data_path_extended, self.image_file_names[idx], self.bag_size, self.magnification[idx],
                                           self.tile_size, print_timing=self.print_time)
+        '''
+        basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
+        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
 
+        tiles, time_list = _choose_data_2(grid_file, image_file, self.bag_size,
+                                          self.magnification[idx],
+                                          self.tile_size, print_timing=self.print_time)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 

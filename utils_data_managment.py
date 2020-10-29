@@ -130,31 +130,33 @@ def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, ti
             pickle.dump(tile, filehandle)
 
 
-def compute_normalization_values(data_path: str = 'All Data', DataSet: str = 'HEROHE') -> tuple:
+def compute_normalization_values(DataSet: str = 'HEROHE') -> tuple:
     """
     This function runs over a set of images and compute mean and variance of each channel.
     The function computes these statistic values over the thumbnail images which are at X1 magnification
     :return:
     """
+    ROOT_DIR = 'All Data'
 
-    # get a list of all directories with images:
-    # dirs = utils._get_tcga_id_list(data_path)
     stats_list =[]
-    print('Computing image data set Mean and Variance...')
-    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
-    # meta_data = meta_data.loc[meta_data['id'] == DataSet]
+    print('Computing image data set {} Mean and Variance...'.format(DataSet))
+    meta_data = pd.read_excel(os.path.join(ROOT_DIR, 'slides_data.xlsx'))
+    ### meta_data = meta_data.loc[meta_data['id'] == DataSet]
 
-    files = meta_data.loc[meta_data['id'] == DataSet]['file'].tolist()
-    #meta_data.set_index('id', inplace=True)
+    meta_data = meta_data.loc[meta_data['id'] == DataSet]
+    if DataSet == 'HEROHE':
+        meta_data = meta_data.loc[meta_data['test fold idx'] == 1]
+    files = meta_data['file'].tolist()
+    meta_data.set_index('file', inplace=True)
 
     # gather tissue image values from thumbnail image using the segmentation map:
     for i, file in enumerate(tqdm(files)):
-        if meta_data.loc[[dir], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
+        if meta_data.loc[[file], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
             continue
 
         image_stats = {}
-        thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
-        segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
+        thumb = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/Thumbs', file.split('.')[0] + '_thumb.png')))
+        segMap = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/SegMaps', file.split('.')[0] + '_SegMap.png')))
         tissue = thumb.transpose(2, 0, 1) * segMap
         tissue_pixels = (tissue[0] != 0).sum()
         tissue_matter = np.where(tissue[0] != 0)
@@ -165,7 +167,7 @@ def compute_normalization_values(data_path: str = 'All Data', DataSet: str = 'HE
         stats_list.append(image_stats)
 
     # Save data to file:
-    with open(os.path.join(data_path, 'ImageStatData.data'), 'wb') as filehandle:
+    with open(os.path.join(ROOT_DIR, 'ImageStatData.data'), 'wb') as filehandle:
         # store the data as binary data stream
         pickle.dump(stats_list, filehandle)
 
@@ -300,7 +302,7 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
     return grid
 
 
-def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
+def make_slides_xl_file(DataSet: str = 'HEROHE'):
     """
     This function goes over all directories and makes a table with slides data:
     (1) id
@@ -311,15 +313,17 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
     It also erases all 'log' subdirectories
     :return:
     """
+
+    ROOT_DIR = 'All Data'
     SLIDES_DATA_FILE = 'slides_data.xlsx'
     META_DATA_FILE = {}
     META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
 
-    data_file = os.path.join(root_dir, SLIDES_DATA_FILE)
+    data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     new_file = False if os.path.isfile(data_file) else True
 
-    meta_data_DF = pd.read_excel(os.path.join(root_dir, DataSet, META_DATA_FILE[DataSet]))
+    meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet]))
     # meta_data_DF = pd.read_excel(os.path.join(root_dir, 'TCGA_BRCA.xlsx'))
     meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -337,9 +341,9 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
     id_list = []
 
     #RanS 27.10.20, support slide types
-    slide_files_svs = glob.glob(os.path.join(root_dir, DataSet, '*.svs'))
-    slide_files_ndpi = glob.glob(os.path.join(root_dir, DataSet, '*.ndpi'))
-    slide_files_mrxs = glob.glob(os.path.join(root_dir, DataSet, '*.mrxs'))
+    slide_files_svs = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.svs'))
+    slide_files_ndpi = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.ndpi'))
+    slide_files_mrxs = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.mrxs'))
     slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs
     mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
     mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x'}

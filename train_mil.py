@@ -383,9 +383,10 @@ if __name__ == '__main__':
                                          transformations=args.transformation,
                                          tile_size=TILE_SIZE,
                                          tiles_per_bag=TILES_PER_BAG,
-                                         DX=args.dx)
+                                         DX=args.dx,
+                                         DataSet=args.dataset)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
 
     # Get number of available CPUs:
     cpu_available = utils.get_cpu()
