@@ -20,6 +20,7 @@ import glob
 import sys
 import cv2 as cv
 
+Image.MAX_IMAGE_PIXELS = None
 
 '''
 def make_dir(dirname):
@@ -129,7 +130,7 @@ def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, ti
             pickle.dump(tile, filehandle)
 
 
-def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
+def compute_normalization_values(data_path: str = 'All Data', DataSet: str = 'HEROHE') -> tuple:
     """
     This function runs over a set of images and compute mean and variance of each channel.
     The function computes these statistic values over the thumbnail images which are at X1 magnification
@@ -137,16 +138,17 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     """
 
     # get a list of all directories with images:
-    dirs = utils._get_tcga_id_list(data_path)
+    # dirs = utils._get_tcga_id_list(data_path)
     stats_list =[]
-    print('Computing image-set Mean and Variance...')
+    print('Computing image data set Mean and Variance...')
     meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
-    meta_data.set_index('id', inplace=True)
+    # meta_data = meta_data.loc[meta_data['id'] == DataSet]
+
+    files = meta_data.loc[meta_data['id'] == DataSet]['file'].tolist()
+    #meta_data.set_index('id', inplace=True)
 
     # gather tissue image values from thumbnail image using the segmentation map:
-    #for idx, dir in enumerate(dirs):
-    for i in tqdm(range(len(dirs))):
-        dir = dirs[i]
+    for i, file in enumerate(tqdm(files)):
         if meta_data.loc[[dir], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
             continue
 
@@ -187,35 +189,31 @@ def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
     return total_mean, total_var
 
 
-def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
+def make_grid(DataSet: str = 'HEROHE', tile_sz: int = 256):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
     :param tile_sz: size of tiles to be created
     :return:
     """
-    data_file = os.path.join(main_data_path, 'slides_data.xlsx')
-
-    #for data_file in data_files:
+    ROOT_PATH = 'All Data'
     BASIC_OBJ_PWR = 20
 
-    basic_DF = pd.read_excel(data_file)
-    files = list(basic_DF['file'])
-    objective_power = list(basic_DF['Objective Power'])
-    basic_DF.set_index('file', inplace=True)
+    data_file = os.path.join(ROOT_PATH, 'slides_data.xlsx')
+
+    meta_data_DF = pd.read_excel(data_file)
+    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
+    objective_power = list(meta_data_DF['Objective Power'])
+    meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
-    file_inds = []
     total_tiles =[]
     print('Starting Grid production...')
     print()
-    #for _, file in enumerate(files):
-    for i in tqdm(range(len(files))):
-        file = files[i]
-        database = basic_DF.loc[file, 'id']
-        if os.path.isfile(os.path.join(main_data_path, database, file)): #make sure file exists
-            data_dict = {}
-            height = basic_DF.loc[file, 'Height']
-            width  = basic_DF.loc[file, 'Width']
+    for i, file in enumerate(tqdm(files)):
+        database = meta_data_DF.loc[file, 'id']
+        if os.path.isfile(os.path.join(ROOT_PATH, database, file)): # make sure file exists
+            height = meta_data_DF.loc[file, 'Height']
+            width  = meta_data_DF.loc[file, 'Width']
 
             if objective_power[i] == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
@@ -228,46 +226,34 @@ def make_grid(main_data_path: str = 'All Data', tile_sz: int = 256):
             total_tiles.append((len(basic_grid)))
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            #legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'SegData', file[:-4] + '-segMap.png'),
-            legit_grid = _legit_grid(os.path.join(main_data_path, database, 'SegData', 'SegMaps', file[:-4] + '_SegMap.png'),
+            legit_grid = _legit_grid(os.path.join(ROOT_PATH, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width))
 
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
-            file_inds.append(i)
 
             # Save the grid to file:
-            #if not os.path.isdir(os.path.join(data_path.split(splitter)[0], id, 'Grids')):
-            #    os.mkdir(os.path.join(data_path.split(splitter)[0], id, 'Grids'))
-            if not os.path.isdir(os.path.join(main_data_path, database, 'Grids')):
-                os.mkdir(os.path.join(main_data_path, database, 'Grids'))
+            if not os.path.isdir(os.path.join(ROOT_PATH, database, 'Grids')):
+                os.mkdir(os.path.join(ROOT_PATH, database, 'Grids'))
 
-            #file_name = os.path.join(data_file.split(splitter)[0], id, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
-            file_name = os.path.join(main_data_path, database, 'Grids', file[:-4] + '--tlsz' + str(tile_sz) + '.data')
+            file_name = os.path.join(ROOT_PATH, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
             with open(file_name, 'wb') as filehandle:
                 # store the data as binary data stream
                 pickle.dump(legit_grid, filehandle)
 
 
     # Adding the number of tiles to the excel file:
-    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20
-    tile_nums_all = np.zeros(basic_DF.shape[0])
-    total_tiles_all = np.zeros(basic_DF.shape[0])
-    slide_usage_all = np.zeros(basic_DF.shape[0])
+    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
 
-    tile_nums_all[file_inds] = tile_nums
-    total_tiles_all[file_inds] = total_tiles
-    slide_usage_all[file_inds] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+    slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
 
-    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums_all
-    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles_all
-    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage_all
-    #basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-    #basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-    #basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
-    basic_DF.to_excel(data_file)
+    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
+    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage
+
+    meta_data_DF.to_excel(data_file)
 
     print('Finished Grid production phase !')
 
@@ -330,17 +316,16 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
     META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
 
-
     data_file = os.path.join(root_dir, SLIDES_DATA_FILE)
     new_file = False if os.path.isfile(data_file) else True
 
     meta_data_DF = pd.read_excel(os.path.join(root_dir, DataSet, META_DATA_FILE[DataSet]))
     # meta_data_DF = pd.read_excel(os.path.join(root_dir, 'TCGA_BRCA.xlsx'))
-
+    meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
 
     if new_file:
-        print('Creating a new data file in in \'{}\''.format(data_file))
+        print('Creating a new data file in \'{}\''.format(data_file))
     else:
         print('Adding data to file \'{}\''.format(data_file))
         slides_data_DF = pd.read_excel(data_file)
@@ -369,7 +354,7 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
         if DataSet is 'TCGA':
             id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
         elif DataSet is 'HEROHE':
-            id_dict['patient barcode'] = int(file.split('/')[-1].split('.')[0])
+            id_dict['patient barcode'] = str(file.split('/')[-1].split('.')[0])
 
         # id_dict['id'] = root.split('/')[-1]
         id_dict['id'] = DataSet
@@ -419,7 +404,7 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
         try:
             id_dict['test fold idx'] = meta_data_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
         except:
-            id_dict['test fold idx'] = 1
+            id_dict['test fold idx'] = 'Missing Data'
 
         id_list.append(id_dict)
 
@@ -435,7 +420,7 @@ def make_slides_xl_file(root_dir: str = 'All Data', DataSet: str = 'TCGA'):
 
 
 def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
-    print('Making Segmentation Maps for each slide file...')
+    print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
     if not os.path.isdir(os.path.join(data_path, 'SegData')):
         os.mkdir(os.path.join(data_path, 'SegData'))
     if not os.path.isdir(os.path.join(data_path, 'SegData','Thumbs')):

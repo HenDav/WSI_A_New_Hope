@@ -835,10 +835,11 @@ class WSI_MILdataset(Dataset):
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
             # TODO: Consider transforms.RandomHorizontalFlip()
+            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
 
             self.transform = \
-                transforms.Compose([ #transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-                                     transforms.RandomVerticalFlip(),
+                transforms.Compose([ transforms.RandomVerticalFlip(),
+                                     transforms.RandomHorizontalFlip(),
                                      transforms.ToTensor(),
                                      transforms.Normalize(mean=(58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255),
                                                           std=(40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255))
