@@ -15,7 +15,6 @@ class Flatten(nn.Module):
 
 class ResNet50_GatedAttention(nn.Module):
     def __init__(self):
-    #def __init__(self, tile_size: int = 256):
         super(ResNet50_GatedAttention, self).__init__()
         #self.tile_size = tile_size
         self.M = 500
@@ -23,8 +22,8 @@ class ResNet50_GatedAttention(nn.Module):
         self.K = 1    # in the paper referred a 1.
 
         self.infer = False
-        self.get_features = False
-        self.get_classification = False
+        self.part_1 = False
+        self.part_2 = False
 
         self._feature_extractor_ResNet50_part_1 = models.resnet50()
 
@@ -55,16 +54,16 @@ class ResNet50_GatedAttention(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x):
-        x = x.squeeze(0)
-        # In case we are training the model we'll use bags that contains only part of the tiles.
+    def forward(self, x, H = None, A = None):
         if not self.infer:
+            x = x.squeeze(0)
+            # In case we are training the model we'll use bags that contains only part of the tiles.
             H = self.feature_extractor(x)
 
             """
-        H = H.view(-1, 50 * 4 * 4) 
-        H = self.feature_extractor_part2(H)  # NxL
-        """
+            H = H.view(-1, 50 * 4 * 4) 
+            H = self.feature_extractor_part2(H)  # NxL
+            """
 
             A_V = self.attention_V(H)  # NxL
             A_U = self.attention_U(H)  # NxL
@@ -85,17 +84,17 @@ class ResNet50_GatedAttention(nn.Module):
 
         # In case we want an inference of a whole slide we need ALL the tiles from that slide:
         else:
-            if not self.get_features ^ self.get_classification:
-                raise Exception('Inference Mode should include feature extraction OR classification')
-            if self.get_features:
+            if not self.part_1 ^ self.part_2:
+                raise Exception('Inference Mode should include feature extraction (part 1) OR classification (part 2)')
+            if self.part_1:
                 H = self.feature_extractor(x)
-                return H
-
-            elif self.get_classification:
                 A_V = self.attention_V(H)  # NxL
                 A_U = self.attention_U(H)  # NxL
                 A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
                 A = torch.transpose(A, 1, 0)  # KxN
+                return H, A
+
+            elif self.part_2:
                 A = F.softmax(A, dim=1)  # softmax over N
 
                 M = torch.mm(A, H)  # KxM

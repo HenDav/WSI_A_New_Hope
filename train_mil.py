@@ -117,7 +117,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             elif target == 0:
                 total_neg_train += 1
                 true_labels_train[batch_idx] = 0
-                if target == 0:
+                if label == 0:
                     true_neg_train += 1
 
             scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
@@ -165,12 +165,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
-        """
-        train_writer.add_scalar('Balanced Accuracy', balanced_acc_train, e)
-        train_writer.add_scalar('Roc-Auc', roc_auc_train, e)
-        train_writer.add_scalar('Loss Per Epoch', train_loss, e)
-        train_writer.add_scalar('Accuracy', train_acc, e)
-        """
+
         print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
               .format(e,
                       train_loss,
@@ -189,8 +184,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             best_model = model
 
         if e % 5 == 0:
-            # acc_test, bacc_test = check_accuracy(model, dloader_test, test_writer, all_writer, DEVICE, e)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
         else:
             acc_test, bacc_test = None, None
 
@@ -242,23 +237,18 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     return best_model, best_train_acc, best_train_loss
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
-#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_test, writer_all, DEVICE, epoch: int):
-#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer, DEVICE, epoch:int, train_string: str ='', train: bool = False):
-#def check_accuracy(data_loader: DataLoader, epoch:int, train: bool = False):
-    """
-       if loader.dataset.train:
-        print('Checking accuracy on validation set')
-    else:
-        print('Checking accuracy on test sett')
-    """
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
     num_correct = 0
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
     true_labels, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
 
     # TODO: eval mode changes the mode of dropout and batchnorm layers. Activate this line only after the model is fully learned
-    model.eval()
+    if eval_mode:
+        model.eval()
+    else:
+        model.train()
+
     with torch.no_grad():
         for idx, (data, target, time_list) in enumerate(data_loader):
             if target == 1:
@@ -297,7 +287,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         if data_loader.dataset.train:
             writer_string = 'Train_2'
         else:
-            writer_string = 'Test'
+            if eval_mode:
+                writer_string = 'Test (eval mode)'
+            else:
+                writer_string = 'Test (train mode)'
 
         """
         writer_test.add_scalar('Accuracy', acc, epoch)
@@ -309,12 +302,12 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, num_correct, len(data_loader)))
+        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
     model.train()
     return acc, balanced_acc
 
 
-def infer(model: nn.Module, dloader: DataLoader, DEVICE):
+def infer(model: nn.Module, dloader: DataLoader, DEVICE, eval_mode: bool = False):
     """
     This function does inference of a slide from ALL the tiles of the slide
     :param model: model to be used for inference
@@ -325,7 +318,11 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
 
     print('Starting Inference...')
 
-    model.eval()
+    if eval_mode:
+        model.eval()
+    else:
+        model.train()
+
     model.infer = True
     torch.no_grad()
 
@@ -338,9 +335,11 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
     for batch_idx, (data, target) in enumerate(tqdm(dloader)):
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
-        model.get_features = True
+        model.part_1 = True
 
-        features = model(data)
+        features, weights = model(data)
+
+
         """
         if target == 1:
             total_pos += 1
@@ -355,7 +354,7 @@ def infer(model: nn.Module, dloader: DataLoader, DEVICE):
         
         scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
         """
-    torch.enable_grad
+    torch.enable_grad()
 
 
 ##################################################################################################
