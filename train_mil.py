@@ -371,11 +371,6 @@ if __name__ == '__main__':
     timing = True
     data_path = '/Users/wasserman/Developer/All data - outer scope'
 
-    if sys.platform == 'linux':
-        TILE_SIZE = 256
-        TILES_PER_BAG = 50
-        data_path = '/home/womer/project/All Data'
-
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir = utils.run_data(test_fold=args.test_fold,
@@ -424,8 +419,8 @@ if __name__ == '__main__':
                                                    transform=False)
 
 
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=False)
-    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=False)
+    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Load model
     model = ResNet50_GatedAttention() #tile_size=TILE_SIZE)

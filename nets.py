@@ -87,6 +87,7 @@ class ResNet50_GatedAttention(nn.Module):
             if not self.part_1 ^ self.part_2:
                 raise Exception('Inference Mode should include feature extraction (part 1) OR classification (part 2)')
             if self.part_1:
+                x = x.squeeze(0)
                 H = self.feature_extractor(x)
                 A_V = self.attention_V(H)  # NxL
                 A_U = self.attention_U(H)  # NxL
