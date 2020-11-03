@@ -1,0 +1,112 @@
+import utils
+from torch.utils.data import DataLoader
+import torch
+from nets import ResNet50_GatedAttention
+import numpy as np
+from sklearn.metrics import roc_curve, auc
+from matplotlib import pyplot as plt
+import os
+import sys
+import argparse
+from tqdm import tqdm
+import pickle
+
+parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
+parser.add_argument('-ex', '--experiment', type=int, default=29, help='Continue train of this experiment')
+parser.add_argument('-fe', '--from_epoch', type=int, default=779, help='Continue train from epoch')
+parser.add_argument('-p', '--patches', type = int, default=500, help='Number of patches to use')
+parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+
+args = parser.parse_args()
+
+
+DEVICE = utils.device_gpu_cpu()
+data_path = ''
+cpu_available = utils.get_cpu()
+
+# Load saved model:
+model = ResNet50_GatedAttention()
+
+print('Loading pre-saved model...')
+output_dir, _, _, TILE_SIZE, _, _, _ = utils.run_data(experiment=args.experiment)
+
+if sys.platform == 'linux':
+    TILE_SIZE = 256
+    data_path = '/home/womer/project'
+
+model_data_loaded = torch.load(os.path.join(data_path, output_dir,
+                                            'Model_CheckPoints',
+                                            'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
+
+model.load_state_dict(model_data_loaded['model_state_dict'])
+
+
+inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
+                                      tile_size=TILE_SIZE,
+                                      folds=[2],
+                                      print_timing=True,
+                                      DX=False)
+inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+
+model.infer = True
+model.part_1 = True
+in_between = True
+all_scores = []
+all_labels = []
+all_targets = []
+
+# The following 2 lines initialize variables to compute AUC for train dataset.
+total_pos, total_neg = 0, 0
+true_pos, true_neg = 0, 0
+
+with torch.no_grad():
+    for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
+        if in_between:
+            all_features = np.zeros([num_patches, model.M], dtype='float32')
+            all_weights = np.zeros([1, num_patches], dtype='float32')
+            slide_batch_num = 0
+            in_between = False
+
+        data, target = data.to(DEVICE), target.to(DEVICE)
+        model.to(DEVICE)
+        features, weights = model(data)
+        all_features[slide_batch_num * inf_dset.tiles_per_iter : (slide_batch_num + 1) * inf_dset.tiles_per_iter, :] = features.cpu().numpy()
+        all_weights[:, slide_batch_num * inf_dset.tiles_per_iter: (slide_batch_num + 1) * inf_dset.tiles_per_iter] = weights.cpu().numpy()
+        slide_batch_num += 1
+
+        if last_batch:
+            model.part_1, model.part_2 = False, True
+            in_between = True
+
+            all_features, all_weights = torch.from_numpy(all_features).to(DEVICE), torch.from_numpy(all_weights).to(DEVICE)
+            score, label, _ = model(data, all_features, all_weights)
+            all_scores.append(score.cpu().numpy()[0][0])
+            all_labels.append(label.cpu().numpy()[0][0])
+            all_targets.append(target.cpu().numpy()[0][0])
+
+            if target == 1:
+                total_pos += 1
+                if label == 1:
+                    true_pos += 1
+            elif target == 0:
+                total_neg += 1
+                if label == 0:
+                    true_neg += 1
+
+            model.part_1, model.part_2 = True, False
+
+fpr_train, tpr_train, _ = roc_curve(all_targets, all_scores)
+
+# Save roc_curve to file:
+if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+    os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+
+file_name = os.path.join(data_path, output_dir, 'Inference', 'inference.data')
+roc_curve_list = [fpr_train, tpr_train]
+with open(file_name, 'wb') as filehandle:
+    pickle.dump(roc_curve_list, filehandle)
+
+plt.plot(fpr_train, tpr_train)
+plt.show()
+
+print('Done !')

@@ -1299,8 +1299,8 @@ class Infer_WSI_MILdataset(Dataset):
                                              ])
 
         print(
-            'Initiation of WSI INFERENCE {} DataSet is Complete. {} Slides, Tiles of size {}^2.'
-            .format(self.DataSet, self.__len__(), self.tile_size))
+            'Initiation of WSI INFERENCE {} DataSet is Complete. {} Slides, Working on Tiles of size {}^2. {} iterations to complete full inference'
+            .format(self.DataSet, len(self.image_file_names), self.tile_size, self.__len__()))
 
     def __len__(self):
         ### return len(self.slide_multiple_filenames)
