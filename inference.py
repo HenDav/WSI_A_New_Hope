@@ -13,23 +13,25 @@ import pickle
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
 parser.add_argument('-ex', '--experiment', type=int, default=29, help='Continue train of this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=779, help='Continue train from epoch')
-parser.add_argument('-p', '--patches', type = int, default=500, help='Number of patches to use')
+parser.add_argument('-fe', '--from_epoch', type=int, default=779, help='Use this epoch model for inference')
+parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
-
+parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('-ev', dest='eval', action='store_true', help='Use eval mode (or train mode')
 args = parser.parse_args()
 
+args.folds = list(map(int, args.folds))
 
 DEVICE = utils.device_gpu_cpu()
 data_path = ''
-cpu_available = utils.get_cpu()
 
 # Load saved model:
 model = ResNet50_GatedAttention()
 
-print('Loading pre-saved model...')
+print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
 output_dir, _, _, TILE_SIZE, _, _, _ = utils.run_data(experiment=args.experiment)
 
+TILE_SIZE = 128
 if sys.platform == 'linux':
     TILE_SIZE = 256
     data_path = '/home/womer/project'
@@ -43,9 +45,10 @@ model.load_state_dict(model_data_loaded['model_state_dict'])
 
 inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
-                                      folds=[2],
+                                      folds=args.folds,
                                       print_timing=True,
-                                      DX=False)
+                                      DX=False,
+                                      num_tiles=args.num_tiles)
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
 model.infer = True
@@ -59,6 +62,11 @@ all_targets = []
 total_pos, total_neg = 0, 0
 true_pos, true_neg = 0, 0
 
+if args.eval:
+    model.eval()
+else:
+    model.train()
+
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
         if in_between:
@@ -70,6 +78,8 @@ with torch.no_grad():
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
         features, weights = model(data)
+        #print('iter: {}, file: {}'.format(batch_idx, inf_dset.current_file))
+        #print(features.size(), all_features[slide_batch_num * inf_dset.tiles_per_iter : (slide_batch_num + 1) * inf_dset.tiles_per_iter, :].shape)
         all_features[slide_batch_num * inf_dset.tiles_per_iter : (slide_batch_num + 1) * inf_dset.tiles_per_iter, :] = features.cpu().numpy()
         all_weights[:, slide_batch_num * inf_dset.tiles_per_iter: (slide_batch_num + 1) * inf_dset.tiles_per_iter] = weights.cpu().numpy()
         slide_batch_num += 1
@@ -101,12 +111,15 @@ fpr_train, tpr_train, _ = roc_curve(all_targets, all_scores)
 if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
     os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
 
-file_name = os.path.join(data_path, output_dir, 'Inference', 'inference.data')
-roc_curve_list = [fpr_train, tpr_train]
+file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch)
+                         + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + ('-EVAL_' if args.eval else '-TRAIN_') + 'MODE'
+                         + '.data')
+inference_data = [fpr_train, tpr_train, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, len(inf_dset)]
 with open(file_name, 'wb') as filehandle:
-    pickle.dump(roc_curve_list, filehandle)
+    pickle.dump(inference_data, filehandle)
 
-plt.plot(fpr_train, tpr_train)
-plt.show()
+#plt.plot(fpr_train, tpr_train)
+#plt.show()
 
+print('{} / {} correct classifications'.format(int(len(all_labels) - np.abs(np.array(all_targets) - np.array(all_labels)).sum()), len(all_labels)))
 print('Done !')

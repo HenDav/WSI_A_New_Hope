@@ -805,7 +805,7 @@ class WSI_MILdataset(Dataset):
             raise ValueError('target should be one of: ER, PR, Her2')
         if DataSet is 'HEROHE':
             target_kind = 'Her2'
-            test_fold = 2
+            #test_fold = 2
 
         self.ROOT_PATH = 'All Data'
         meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
@@ -1183,18 +1183,16 @@ class Infer_WSI_MILdataset(Dataset):
     def __init__(self,
                  DataSet: str = 'HEROHE',
                  tile_size: int = 256,
-                 tiles_per_iter: int = 3,
+                 tiles_per_iter: int = 400,
                  target_kind: str = 'ER',
                  folds: List = [1],
-                 ### train: bool = True,
                  print_timing: bool = False,
-                 ### transform: bool = False,
                  DX: bool = False,
-                 num_tiles: int = 10):
+                 num_tiles: int = 500):
 
         if target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
-        if DataSet is 'HEROHE':
+        if DataSet == 'HEROHE':
             target_kind = 'Her2'
 
         self.ROOT_PATH = 'All Data'
@@ -1259,13 +1257,13 @@ class Infer_WSI_MILdataset(Dataset):
                     self.num_patches.append(num_tiles)
                 else:
                     self.num_patches.append(all_tissue_tiles[slide_num])
-                    print('Slide available patches are less than {}'.format(num_tiles))
+                    print('{} Slide available patches are less than {}'.format(all_image_file_names[slide_num], num_tiles))
 
                 self.image_file_names.append(all_image_file_names[slide_num])
                 self.image_path_names.append(all_image_path_names[slide_num])
                 self.in_fold.append(all_in_fold[slide_num])
                 self.tissue_tiles.append(all_tissue_tiles[slide_num])
-                self.target.extend([all_targets[slide_num]] * self.num_patches[-1])
+                self.target.append(all_targets[slide_num])
                 self.magnification.extend([all_magnifications[slide_num]] * self.num_patches[-1])
 
                 full_image_filename = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
@@ -1299,12 +1297,18 @@ class Infer_WSI_MILdataset(Dataset):
                                              ])
 
         print(
-            'Initiation of WSI INFERENCE {} DataSet is Complete. {} Slides, Working on Tiles of size {}^2. {} iterations to complete full inference'
-            .format(self.DataSet, len(self.image_file_names), self.tile_size, self.__len__()))
+            'Initiation of WSI INFERENCE for {} DataSet of folds {} is Complete. {} Slides, Working on Tiles of size {}^2. {} Tiles per slide, {} tiles per iteration, {} iterations to complete full inference'
+            .format(self.DataSet,
+                    str(self.folds),
+                    len(self.image_file_names),
+                    self.tile_size,
+                    num_tiles,
+                    self.tiles_per_iter,
+                    self.__len__()))
 
     def __len__(self):
         ### return len(self.slide_multiple_filenames)
-        return int(np.ceil(np.array(self.num_patches)/3).sum())
+        return int(np.ceil(np.array(self.num_patches)/self.tiles_per_iter).sum())
 
     def __getitem__(self, idx):
         start_getitem = time.time()
@@ -1313,12 +1317,15 @@ class Infer_WSI_MILdataset(Dataset):
             self.current_file = self.image_full_filenames[self.slide_num]
             self.initial_num_patches = self.num_patches[self.slide_num]
 
-        if self.tiles_to_go < self.tiles_per_iter:
-            tiles_next_iter = self.tiles_to_go
+        label = [1] if self.target[self.slide_num] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        if self.tiles_to_go <= self.tiles_per_iter:
+            ### tiles_next_iter = self.tiles_to_go
             self.tiles_to_go = None
             self.slide_num += 1
         else:
-            tiles_next_iter = self.tiles_per_iter
+            ### tiles_next_iter = self.tiles_per_iter
             self.tiles_to_go -= self.tiles_per_iter
 
         adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
@@ -1326,9 +1333,6 @@ class Infer_WSI_MILdataset(Dataset):
                                        self.slide_grids[idx],
                                        adjusted_tile_size,
                                        self.print_time)
-
-        label = [1] if self.target[idx] == 'Positive' else [0]
-        label = torch.LongTensor(label)
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 

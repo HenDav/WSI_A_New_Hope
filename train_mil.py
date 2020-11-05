@@ -15,7 +15,7 @@ import numpy as np
 import sys
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=3, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 # parser.add_argument('-t', '--transformation', type=bool, default=True, help='Include transformations ?')
 parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
@@ -371,6 +371,11 @@ if __name__ == '__main__':
     timing = True
     data_path = '/Users/wasserman/Developer/All data - outer scope'
 
+    if sys.platform == 'linux':
+        TILE_SIZE = 256
+        TILES_PER_BAG = 50
+        data_path = '/home/womer/project/All Data'
+
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir = utils.run_data(test_fold=args.test_fold,
@@ -398,7 +403,7 @@ if __name__ == '__main__':
     test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
                                      bag_size=TILES_PER_BAG,
-                                     test_fold=args.test_fold,
+                                     test_fold=2,
                                      train=False,
                                      print_timing=False,
                                      transform=False,
