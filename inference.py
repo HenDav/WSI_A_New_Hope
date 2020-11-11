@@ -23,7 +23,8 @@ args = parser.parse_args()
 args.folds = list(map(int, args.folds))
 
 DEVICE = utils.device_gpu_cpu()
-data_path = ''
+#data_path = ''
+data_path = r'C:\ran_data\HEROHE_examples' #temp RanS 5.11.20
 
 # Load saved model:
 model = ResNet50_GatedAttention()

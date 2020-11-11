@@ -10,24 +10,25 @@ parser.add_argument('--grid', dest='grid', action='store_true', help='need to ma
 parser.add_argument('--tile_size', type=int, default=256, help='size of tiles')
 parser.add_argument('--stats', dest='stats', action='store_true', help='need to compute statistical data?')
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
-parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type of dataset to use')
+#parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
+parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type of dataset to use (HEROHE/TCGA/LUNG)')
+parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
 args = parser.parse_args()
 
 if __name__ =='__main__':
     if args.data_collection:
-        utils_data_managment.make_slides_xl_file(DataSet=args.dataset)
+        utils_data_managment.make_slides_xl_file(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.segmentation:
-        utils_data_managment.make_segmentations(data_path=args.data_folder)
+        utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root)
         '''
         data_dirs = [f.path for f in os.scandir(args.data_folder) if f.is_dir()]
         for data_dir in data_dirs:
             utils_data_managment.make_segmentations(data_path=data_dir, rewrite=False)
         '''
     if args.grid:
-        utils_data_managment.make_grid(DataSet=args.dataset, tile_sz=args.tile_size)
+        utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size)
     if args.stats:
-        utils_data_managment.compute_normalization_values(DataSet=args.dataset)
+        utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:
         utils_data_managment.make_tiles_hard_copy(tile_size=args.tile_size)
 
