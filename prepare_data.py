@@ -20,11 +20,6 @@ if __name__ =='__main__':
         utils_data_managment.make_slides_xl_file(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.segmentation:
         utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root)
-        '''
-        data_dirs = [f.path for f in os.scandir(args.data_folder) if f.is_dir()]
-        for data_dir in data_dirs:
-            utils_data_managment.make_segmentations(data_path=data_dir, rewrite=False)
-        '''
     if args.grid:
         utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size)
     if args.stats:

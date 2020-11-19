@@ -99,13 +99,15 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
 
     # gather tissue image values from thumbnail image using the segmentation map:
     for i, file in enumerate(tqdm(files)):
+        filename = os.path.basename(file).split('.')[0]
         if meta_data.loc[[file], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
             continue
 
         image_stats = {}
-        thumb = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/Thumbs', file.split('.')[0] + '_thumb.png')))
-        segMap = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/SegMaps', file.split('.')[0] + '_SegMap.png')))
-        tissue = thumb.transpose(2, 0, 1) * segMap
+        thumb = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/Thumbs', filename + '_thumb.png')))
+        segMap = np.array(Image.open(os.path.join(ROOT_DIR, DataSet, 'SegData/SegMaps', filename + '_SegMap.png')))
+        #tissue = thumb.transpose(2, 0, 1) * segMap
+        tissue = thumb.transpose(2, 0, 1) * (segMap > 0) #RanS 19.11.20, SegMap positive is to 255
         tissue_pixels = (tissue[0] != 0).sum()
         tissue_matter = np.where(tissue[0] != 0)
         values = tissue[:, tissue_matter[0], tissue_matter[1]]
@@ -164,6 +166,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     print('Starting Grid production...')
     print()
     for i, file in enumerate(tqdm(files)):
+        filename = os.path.basename(file).split('.')[0]
         database = meta_data_DF.loc[file, 'id']
         if os.path.isfile(os.path.join(ROOT_DIR, database, file)): # make sure file exists
             height = meta_data_DF.loc[file, 'Height']
@@ -180,7 +183,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             total_tiles.append((len(basic_grid)))
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
+            #legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
+            legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png'),
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width))
@@ -192,7 +196,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
                 os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
 
-            file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
+            #file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
+            file_name = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
             with open(file_name, 'wb') as filehandle:
                 # store the data as binary data stream
                 pickle.dump(legit_grid, filehandle)
@@ -321,13 +326,14 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
         if DataSet == 'TCGA':
             id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
         elif DataSet == 'HEROHE':
-            id_dict['patient barcode'] = str(file.split('/')[-1].split('.')[0])
+            id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
         elif DataSet == 'LUNG':
             id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
 
         # id_dict['id'] = root.split('/')[-1]
         id_dict['id'] = DataSet
-        id_dict['file'] = file.split('/')[-1]
+        #id_dict['file'] = file.split('/')[-1]
+        id_dict['file'] = os.path.basename(file)
         id_dict['DX'] = True if (file.find('DX') != -1 or DataSet != 'TCGA') else False
 
         # Get some basic data about the image like MPP (Microns Per Pixel) and size:
