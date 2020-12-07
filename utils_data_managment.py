@@ -78,6 +78,37 @@ def TCGA_dirs_2_files():
     print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
 '''
 
+
+def herohe_slides2images():
+    slide_files_mrxs = glob.glob(os.path.join('All Data', 'HEROHE', '*.mrxs'))
+    for _, file in enumerate(tqdm(slide_files_mrxs)):
+        file = file.split('/')[-1][:-5]
+        slide_2_image(file)
+
+
+def slide_2_image(slide_name: str, DataSet: str = 'HEROHE'):
+    slide_file = os.path.join('All Data', DataSet, slide_name + '.mrxs')
+    segMap_file = os.path.join('All Data', DataSet, 'SegData', 'SegMaps', slide_name + '_SegMap.png')
+
+    segMap = np.array(Image.open(segMap_file))
+    (rows, cols) = np.where(segMap == 255)
+    min_row, max_row = rows.min(), rows.max()
+    min_col, max_col = cols.min(), cols.max()
+
+    img = openslide.open_slide(slide_file)
+    scale = int(img.level_dimensions[0][1] / segMap.shape[0] / 2)
+
+    top_left = (min_row * scale * 2, min_col * scale * 2)
+    window_size = ((max_row - min_row) * scale, (max_col - min_col) * scale)
+
+    image = img.read_region((top_left[1], top_left[0]), 1, (window_size[1], window_size[0])).convert('RGB')
+    if not os.path.isdir(os.path.join('All Data', DataSet, 'images')):
+        os.mkdir(os.path.join('All Data', DataSet, 'images'))
+
+    image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.jpg'))
+    #image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.png'))
+
+
 def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
     This function makes a hard copy of the tile in order to avoid using openslide

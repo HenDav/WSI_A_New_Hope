@@ -1,6 +1,7 @@
 import utils_data_managment
 import argparse
 import os
+import glob
 
 parser = argparse.ArgumentParser(description='Data preparation script')
 
@@ -12,6 +13,7 @@ parser.add_argument('--stats', dest='stats', action='store_true', help='need to 
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
 parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type of dataset to use')
+parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
 args = parser.parse_args()
 
 if __name__ =='__main__':
@@ -30,6 +32,8 @@ if __name__ =='__main__':
         utils_data_managment.compute_normalization_values(DataSet=args.dataset)
     if args.hard_copy:
         utils_data_managment.make_tiles_hard_copy(tile_size=args.tile_size)
+    if args.sl2im:
+        utils_data_managment.herohe_slides2images()
 
     print('Data Preparation sequence is Done !')
 

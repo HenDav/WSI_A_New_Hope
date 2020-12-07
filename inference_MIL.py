@@ -1,7 +1,7 @@
 import utils
 from torch.utils.data import DataLoader
 import torch
-from nets import ResNet50_GatedAttention
+from nets_mil import ResNet34_GN_GatedAttention
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 from matplotlib import pyplot as plt
@@ -12,11 +12,11 @@ from tqdm import tqdm
 import pickle
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=29, help='Continue train of this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=779, help='Use this epoch model for inference')
+parser.add_argument('-ex', '--experiment', type=int, default=71, help='Continue train of this experiment')
+parser.add_argument('-fe', '--from_epoch', type=int, default=910, help='Use this epoch model for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('-f', '--folds', type=list, default=[2], help=' folds to infer')
 parser.add_argument('-ev', dest='eval', action='store_true', help='Use eval mode (or train mode')
 args = parser.parse_args()
 
@@ -26,7 +26,7 @@ DEVICE = utils.device_gpu_cpu()
 data_path = ''
 
 # Load saved model:
-model = ResNet50_GatedAttention()
+model = ResNet34_GN_GatedAttention()
 
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
 output_dir, _, _, TILE_SIZE, _, _, _ = utils.run_data(experiment=args.experiment)
@@ -62,11 +62,20 @@ all_targets = []
 total_pos, total_neg = 0, 0
 true_pos, true_neg = 0, 0
 
+'''
 if args.eval:
     model.eval()
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.track_running_stats = False
 else:
     model.train()
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.track_running_stats = True
+'''
 
+model.eval()
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
         if in_between:

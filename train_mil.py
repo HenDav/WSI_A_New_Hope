@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import ResNet50_GatedAttention
+from nets_mil import ResNet18_GatedAttention, ResNet34_GatedAttention, ResNet50_GatedAttention, ResNet34_GN_GatedAttention
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -13,15 +13,17 @@ import os
 from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
+import pandas as pd
+import torchvision.transforms as transforms
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=3, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-# parser.add_argument('-t', '--transformation', type=bool, default=True, help='Include transformations ?')
+parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
 parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
+parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 
 args = parser.parse_args()
@@ -73,6 +75,12 @@ def simple_train(model: nn.Module, dloader_train: DataLoader, dloadet_test: Data
             print('Post train accuracy: {:.2f}% ({} / {})'.format(accuracy_post_train, correct_post, num_sample_post))
 """
 
+def norm_img(img):
+    img-=img.min()
+    img/=img.max()
+    return img
+
+
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
     This function trains the model
@@ -80,45 +88,78 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     """
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
-    #train_writer = SummaryWriter(os.path.join(writer_folder, 'train'))
-    #test_writer = SummaryWriter(os.path.join(writer_folder, 'test'))
+    image_writer = SummaryWriter(os.path.join(writer_folder, 'image'))
+    if from_epoch == 0:
+        all_writer.add_text('Experiment No.', str(experiment))
+        all_writer.add_text('Train type', 'MIL')
+        all_writer.add_text('Model type', str(type(model)))
+        all_writer.add_text('Data type', dloader_train.dataset.DataSet)
+        all_writer.add_text('Train Folds', str(dloader_train.dataset.folds).strip('[]'))
+        all_writer.add_text('Test Folds', str(dloader_test.dataset.folds).strip('[]'))
+        all_writer.add_text('Transformations', str(dloader_train.dataset.transform))
+
     if print_timing:
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     print('Start Training...')
     best_train_loss = 1e5
     previous_epoch_loss = 1e5
-
-    # The following 3 lines initialize variables to compute AUC for train dataset.
-    total_pos_train, total_neg_train = 0, 0
-    true_pos_train, true_neg_train = 0, 0
-    true_labels_train, scores_train = np.zeros(len(dloader_train)), np.zeros(len(dloader_train))
-
     best_model = None
+
+    '''    
+    # The following part saves the random slides on file for further debugging
+    if os.path.isfile('random_slides.xlsx'):
+        random_slides = pd.read_excel('random_slides.xlsx')
+    else:
+        random_slides = pd.DataFrame()
+    ###############################################
+    '''
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
+        if e == 0:
+            data_list = []
+            # slide_random_list = []
+
+        # The following 3 lines initialize variables to compute AUC for train dataset.
+        total_pos_train, total_neg_train = 0, 0
+        true_pos_train, true_neg_train = 0, 0
+        targets_train, scores_train = np.zeros(len(dloader_train), dtype=np.int8), np.zeros(len(dloader_train))
         correct_labeling, train_loss = 0, 0
+
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
+        model.infer = False
+        for batch_idx, (data, target, time_list, image_file, basic_tile) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
+
+            '''
+            # The following section is rsponsible for saving the random slides for it's iteration - For debbugging purposes 
+            slide_dict = {'Epoch': e,
+                          'Main Slide index': idxx.cpu().detach().numpy()[0],
+                          'random Slides index': slides_idx_other}
+            slide_random_list.append(slide_dict)
+            '''
+
+            if e == 0:
+                data_dict = { 'File Name':  image_file,
+                              'Target': target.cpu().detach().item()
+                              }
+                data_list.append(data_dict)
 
             data, target = data.to(DEVICE), target.to(DEVICE)
             model.to(DEVICE)
 
             prob, label, _ = model(data)
 
-            if target == 1:
-                total_pos_train += 1
-                true_labels_train[batch_idx] = 1
-                if label == 1:
-                    true_pos_train += 1
-            elif target == 0:
-                total_neg_train += 1
-                true_labels_train[batch_idx] = 0
-                if label == 0:
-                    true_neg_train += 1
+            targets_train[batch_idx] = target.cpu().detach().item()
+            total_pos_train += target.eq(1).item()
+            total_neg_train += target.eq(0).item()
+
+            if target == 1 and label == 1:
+                true_pos_train += 1
+            elif target == 0 and label == 0:
+                true_neg_train += 1
 
             scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
 
@@ -133,7 +174,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
 
             # Calculate training accuracy
-            correct_labeling += (label == target).data.cpu().int().item()
+            correct_labeling += label.eq(target).cpu().detach().int().item()
 
             train_time = time.time() - train_start
             if print_timing:
@@ -150,6 +191,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     time_writer.add_scalar('Time/Augmentation [Sec]', time_list[1], time_stamp)
                     time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[2], time_stamp)
 
+        '''
+        random_slides = random_slides.append(pd.DataFrame(slide_random_list))
+        random_slides.to_excel('random_slides.xlsx')
+        '''
         time_epoch = (time.time() - time_epoch_start) / 60
         if print_timing:
             time_writer.add_scalar('Time/Full Epoch [min]', time_epoch, e)
@@ -158,7 +203,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         balanced_acc_train = 100 * (true_pos_train / total_pos_train + true_neg_train / total_neg_train) / 2
 
-        fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+        fpr_train, tpr_train, _ = roc_curve(targets_train, scores_train)
         roc_auc_train = auc(fpr_train, tpr_train)
 
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
@@ -184,10 +229,23 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             best_model = model
 
         if e % 5 == 0:
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
+            if e % 20 == 0:
+                image_writer.add_image('Train Images/Before Transforms', basic_tile.squeeze().detach().cpu().numpy(),
+                                       global_step=e, dataformats='CHW')
+                image_writer.add_image('Train Images/After Transforms', data.squeeze()[0].detach().cpu().numpy(),
+                                       global_step=e, dataformats='CHW')
+                image_writer.add_image('Train Images/After Transforms (De-Normalized)',
+                                       norm_img(data.squeeze()[0].detach().cpu().numpy()), global_step=e,
+                                       dataformats='CHW')
+
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=True)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=False)
+            # Update 'Last Epoch' at run_data.xlsx file:
+            utils.run_data(experiment=experiment, epoch=e)
         else:
             acc_test, bacc_test = None, None
+
+
 
         # Save model to file:
         if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
@@ -208,8 +266,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     'tiles_per_bag': TILES_PER_BAG},
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
-        # torch.save(model_state_dict, os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '_tag.pt'))
+        if e == 0:
+            pd.DataFrame(data_list).to_excel('validate_data.xlsx')
+            print('Saved validation data')
 
+    all_writer.close()
+    time_writer.close()
+    '''
     # If epochs ended - Save best model:
     if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
         os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
@@ -227,59 +290,62 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 'tiles_per_bag': TILES_PER_BAG},
                os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
 
-    """
-    train_writer.close()
-    test_writer.close()
-    """
-    all_writer.close()
-    time_writer.close()
-
-    return best_model, best_train_acc, best_train_loss
+    '''
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
+
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int, eval_mode: bool = False):
     num_correct = 0
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
-    true_labels, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
+    targets_test, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
 
     # TODO: eval mode changes the mode of dropout and batchnorm layers. Activate this line only after the model is fully learned
     if eval_mode:
         model.eval()
+        '''
+        for module in model.modules():
+            if isinstance(module, nn.BatchNorm2d):
+                module.track_running_stats = False
+        '''
     else:
         model.train()
-
+        '''
+        for module in model.modules():
+            if isinstance(module, nn.BatchNorm2d):
+                module.track_running_stats = False
+        '''
     with torch.no_grad():
-        for idx, (data, target, time_list) in enumerate(data_loader):
-            if target == 1:
-                total_pos += 1
-                true_labels[idx] = 1
-            elif target == 0:
-                total_neg += 1
-                true_labels[idx] = 0
+        for idx, (data, target, time_list, _, basic_tile) in enumerate(data_loader):
+            if epoch % 20 == 0:
+                image_writer.add_image('Test Images/Before Transforms', basic_tile.squeeze().detach().cpu().numpy(),
+                                     global_step=epoch, dataformats='CHW')
+                image_writer.add_image('Test Images/After Transforms', data.squeeze()[0].detach().cpu().numpy(),
+                                     global_step=epoch, dataformats='CHW')
+                image_writer.add_image('Test Images/After Transforms (De-Normalized)',
+                                     norm_img(data.squeeze()[0].detach().cpu().numpy()), global_step=epoch, dataformats='CHW')
 
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
             prob, label, _ = model(data)
 
-            num_correct += (label == target).data.cpu().int().item()
+            targets_test[idx] = target.cpu().detach().item()
+            total_pos += target.eq(1).item()
+            total_neg += target.eq(0).item()
 
-            scores[idx] = prob.cpu().detach().numpy()[0][0]
-
-            """
-            print('target={}, label={}'.format(target, label))
-            print('target is {} equal to label'.format('not' if (target != label) else ''))
-            """
             if target == 1 and label == 1:
                 true_pos += 1
             elif target == 0 and label == 0:
                 true_neg += 1
 
+            num_correct += label.eq(target).cpu().detach().int().item()
+            scores[idx] = prob.cpu().detach().item()
+
         acc = 100 * float(num_correct) / len(data_loader)
         balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
 
-        fpr, tpr, _ = roc_curve(true_labels, scores)
+        fpr, tpr, _ = roc_curve(targets_test, scores)
         roc_auc = auc(fpr, tpr)
 
 
@@ -292,72 +358,24 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             else:
                 writer_string = 'Test (train mode)'
 
-        """
-        writer_test.add_scalar('Accuracy', acc, epoch)
-        writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
-        writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
-        """
-
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
         print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
+
     model.train()
+    '''
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.track_running_stats = False
+    '''
     return acc, balanced_acc
 
 
-def infer(model: nn.Module, dloader: DataLoader, DEVICE, eval_mode: bool = False):
-    """
-    This function does inference of a slide from ALL the tiles of the slide
-    :param model: model to be used for inference
-    :param dloader_test:
-    :param DEVICE:
-    :return:
-    """
-
-    print('Starting Inference...')
-
-    if eval_mode:
-        model.eval()
-    else:
-        model.train()
-
-    model.infer = True
-    torch.no_grad()
-
-    # The following 3 lines initialize variables to compute AUC for train dataset.
-    total_pos, total_neg = 0, 0
-    true_pos, true_neg = 0, 0
-    correct_labeling = 0
-    true_labels, scores_train = np.zeros(len(dloader)), np.zeros(len(dloader))
-
-    for batch_idx, (data, target) in enumerate(tqdm(dloader)):
-        data, target = data.to(DEVICE), target.to(DEVICE)
-        model.to(DEVICE)
-        model.part_1 = True
-
-        features, weights = model(data)
-
-
-        """
-        if target == 1:
-            total_pos += 1
-            true_labels[batch_idx] = 1
-            if label == 1:
-                true_pos += 1
-        elif target == 0:
-            total_neg += 1
-            true_labels[batch_idx] = 0
-            if target == 0:
-                true_neg += 1
-        
-        scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
-        """
-    torch.enable_grad()
-
 
 ##################################################################################################
+
 
 if __name__ == '__main__':
     # Device definition:
@@ -378,58 +396,86 @@ if __name__ == '__main__':
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir = utils.run_data(test_fold=args.test_fold,
-                                         transformations=args.transformation,
-                                         tile_size=TILE_SIZE,
-                                         tiles_per_bag=TILES_PER_BAG,
-                                         DX=args.dx,
-                                         DataSet=args.dataset)
+        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
+                                                     transformations=args.transformation,
+                                                     tile_size=TILE_SIZE,
+                                                     tiles_per_bag=TILES_PER_BAG,
+                                                     DX=args.dx,
+                                                     DataSet=args.dataset)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
+        experiment = args.experiment
 
     # Get number of available CPUs:
     cpu_available = utils.get_cpu()
 
     # Get data:
-    train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
-                                      tile_size=TILE_SIZE,
-                                      bag_size=TILES_PER_BAG,
-                                      test_fold=args.test_fold,
-                                      train=True,
-                                      print_timing=timing,
-                                      transform=args.transformation,
-                                      DX=args.dx)
+    if not args.different_slides:
+        train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                          tile_size=TILE_SIZE,
+                                          bag_size=TILES_PER_BAG,
+                                          test_fold=args.test_fold,
+                                          train=True,
+                                          print_timing=timing,
+                                          transform=args.transformation,
+                                          DX=args.dx)
 
-    test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
-                                     tile_size=TILE_SIZE,
-                                     bag_size=TILES_PER_BAG,
-                                     test_fold=2,
-                                     train=False,
-                                     print_timing=False,
-                                     transform=False,
-                                     DX=args.dx)
-    if DATA_TYPE =='PRE':
-        train_dset = utils.PreSavedTiles_MILdataset(tile_size=TILE_SIZE,
-                                                    bag_size=TILES_PER_BAG,
-                                                    test_fold=args.test_fold,
-                                                    train=True,
-                                                    print_timing=timing,
-                                                    transform=args.transformation)
+        test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                         tile_size=TILE_SIZE,
+                                         bag_size=TILES_PER_BAG,
+                                         test_fold=2,
+                                         train=False,
+                                         print_timing=False,
+                                         transform=False,
+                                         DX=args.dx)
+    else:
+        train_dset = utils.WSI_MIL2_dataset(DataSet=args.dataset,
+                                            tile_size=TILE_SIZE,
+                                            bag_size=TILES_PER_BAG,
+                                            TPS=10,
+                                            test_fold=args.test_fold,
+                                            train=True,
+                                            print_timing=timing,
+                                            transform=args.transformation,
+                                            DX=args.dx)
 
-        test_dset = utils.PreSavedTiles_MILdataset(tile_size=TILE_SIZE,
-                                                   bag_size=TILES_PER_BAG,
-                                                   test_fold=args.test_fold,
-                                                   train=False,
-                                                   print_timing=False,
-                                                   transform=False)
+        test_dset = utils.WSI_MIL2_dataset(DataSet=args.dataset,
+                                           tile_size=TILE_SIZE,
+                                           bag_size=TILES_PER_BAG,
+                                           TPS=50,
+                                           test_fold=2,
+                                           train=False,
+                                           print_timing=timing,
+                                           transform=False,
+                                           DX=args.dx)
+
 
 
     train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
+    # Save transformation data to 'run_data.xlsx'
+    transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
+    utils.run_data(experiment=experiment, transformation_string=transformation_string)
+
     # Load model
-    model = ResNet50_GatedAttention() #tile_size=TILE_SIZE)
-    model = nn.DataParallel(model)  # TODO: Remove this line after the first runs
+    #model = ResNet34_GatedAttention()
+    model = ResNet34_GN_GatedAttention()
+
+    '''
+    counter = 0
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            setattr(model, module, nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine))
+            #module = nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine)
+            counter += 1
+            #module.momentum = 0.01
+            # module.track_running_stats = False
+    print('Updated {} model variables'.format(counter))
+    '''
+    utils.run_data(experiment=experiment, model='ResNet34_GN_GatedAttention()')
+
+    ### model = nn.DataParallel(model)  # TODO: Remove this line after the first runs  # Omer 5/11/20
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -443,26 +489,13 @@ if __name__ == '__main__':
 
         model.load_state_dict(model_data_loaded['model_state_dict'])
 
-        #  TODO: The following line are a tryout to fix the out of memory glitsch in one if state...
-        ##########################################################################
-
-
-
         from_epoch = args.from_epoch + 1
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-
-    # TODO: Check if the following can be written in such a way that there is only one if statement
-    # optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
-    # optimizer = optim.Adadelta(model.parameters())
     optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
 
     if DEVICE.type == 'cuda':
-        if torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model)
-            # TODO: check how to work with nn.parallel.DistributedDataParallel
-            print('Using {} GPUs'.format(torch.cuda.device_count()))
         cudnn.benchmark = True
 
     if args.experiment is not 0:
@@ -473,5 +506,4 @@ if __name__ == '__main__':
                     state[k] = v.to(DEVICE)
 
     # simple_train(model, train_loader, test_loader)
-    best_model, best_train_error, best_train_loss = train(model, train_loader, test_loader, DEVICE=DEVICE,
-                                                          optimizer=optimizer, print_timing=timing)
+    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=timing)
