@@ -1236,7 +1236,8 @@ class WSI_REGdataset(Dataset):
         else:
             time_list = [0]
 
-        return X, label, time_list
+        slide_name = self.image_file_names[idx] #RanS 8.12.20
+        return X, label, time_list, slide_name
 
 class Cutout(object):
     """Randomly mask out one or more patches from an image.

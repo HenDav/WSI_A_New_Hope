@@ -10,9 +10,10 @@ import time
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score
 import numpy as np
 import sys
+import pandas as pd
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -116,9 +117,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         ### true_pos_train, true_neg_train = 0, 0
         true_labels_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
+        slide_names = []
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list, f_names) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
 
             data, target = data.to(DEVICE), target.to(DEVICE)
@@ -134,8 +136,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             train_loss += loss.item()
             _, predicted = outputs.max(1)
 
+            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
             true_labels_train = np.concatenate((true_labels_train, target.cpu().detach().numpy()))
+            slide_names.extend(slide_names_batch)
 
             total += target.size(0)
             total_pos_train += target.eq(1).sum().item()
@@ -204,6 +208,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         previous_epoch_loss = train_loss
 
         if e % 5 == 0:
+            # RanS 8.12.20, perform slide inference
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
+            slide_mean_score_df = patch_df.groupby('slide').mean()
+            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
+
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
             #acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False) #cancelled RanS 8.12.20
             # Update 'Last Epoch' at run_data.xlsx file:
@@ -266,6 +276,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
     true_labels, scores = np.zeros(0), np.zeros(0)
+    slide_names = []
 
     test_loss, total = 0, 0
 
@@ -276,7 +287,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         model.train()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list) in enumerate(data_loader):
+        for idx, (data, targets, time_list, f_names) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
             model.to(DEVICE)
@@ -289,8 +300,11 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
+
+            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores = np.concatenate((scores, outputs[:, 1].cpu().detach().numpy()))
             true_labels = np.concatenate((true_labels, targets.cpu().detach().numpy()))
+            slide_names.extend(slide_names_batch)
 
             total += targets.size(0)
             num_correct += predicted.eq(targets).sum().item()
@@ -305,6 +319,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         fpr, tpr, _ = roc_curve(true_labels, scores)
         roc_auc = auc(fpr, tpr)
 
+        #RanS 8.12.20, perform slide inference
+        patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
+        slide_mean_score_df = patch_df.groupby('slide').mean()
+        roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
 
         # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
@@ -324,6 +342,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
+        writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
     model.train()
