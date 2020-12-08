@@ -22,6 +22,16 @@ parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue t
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='LUNG', help='DataSet to use')
+parser.add_argument('--data_root', default='/home/womer/project/All Data', type=str, help='data root directory')  # RanS 7.12.20
+parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
+parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
+parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
+parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
+parser.add_argument('--transform_type', default='flip', type=str, help='flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20 #TODO implement
+parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
+
 
 args = parser.parse_args()
 
@@ -195,7 +205,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         if e % 5 == 0:
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
+            #acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False) #cancelled RanS 8.12.20
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
         else:
@@ -249,7 +259,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     '''
     all_writer.close()
     time_writer.close()
-
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
@@ -334,11 +343,9 @@ if __name__ == '__main__':
     # Tile size definition:
     TILE_SIZE =128
     timing = True
-    data_path = '/Users/wasserman/Developer/All data - outer scope'
 
-    if sys.platform == 'linux':
+    if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
-        data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
@@ -363,7 +370,10 @@ if __name__ == '__main__':
                                       train=True,
                                       print_timing=timing,
                                       transform=args.transformation,
-                                      DX=args.dx)
+                                      DX=args.dx,
+                                      data_root=args.data_root,
+                                      target_kind=args.target,
+                                      transform_type = args.transform_type)
 
     test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
@@ -371,11 +381,15 @@ if __name__ == '__main__':
                                      train=False,
                                      print_timing=False,
                                      transform=False,
-                                     DX=args.dx)
+                                     DX=args.dx,
+                                     data_root=args.data_root,
+                                     target_kind=args.target,
+                                     n_patches_test=args.n_patches_test,
+                                     n_patches_train=args.n_patches_train)
 
 
-    train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader  = DataLoader(test_dset, batch_size=50, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -405,7 +419,7 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True

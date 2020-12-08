@@ -14,6 +14,7 @@ parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='
 #parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type of dataset to use (HEROHE/TCGA/LUNG)')
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
+parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
 args = parser.parse_args()
 
@@ -23,7 +24,7 @@ if __name__ =='__main__':
     if args.segmentation:
         utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.grid:
-        utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size)
+        utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size, tissue_coverage=args.tissue_coverage)
     if args.stats:
         utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:

@@ -147,11 +147,6 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
         image_stats['Var'] = values.var(axis=1)
         stats_list.append(image_stats)
 
-    # Save data to file:
-    with open(os.path.join(ROOT_DIR, 'ImageStatData.data'), 'wb') as filehandle:
-        # store the data as binary data stream
-        pickle.dump(stats_list, filehandle)
-
     # Compute total mean and var:
     N = 0
     running_mean = 0
@@ -170,10 +165,19 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
     print('Finished computing statistical data over {} thumbnail slides'.format(i+1))
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
+
+    # Save data to file:
+    try:
+        with open(os.path.join(ROOT_DIR, 'ImageStatData.data'), 'wb') as filehandle:
+            # store the data as binary data stream
+            pickle.dump(stats_list, filehandle)
+    except:
+        print('unable to save normalization values')
+
     return total_mean, total_var
 
 
-def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256):
+def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256, tissue_coverage: float = 0.5):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
@@ -218,7 +222,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png'),
                                      basic_grid,
                                      converted_tile_size,
-                                     (height, width))
+                                     (height, width),
+                                     coverage = tissue_coverage)
 
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
@@ -489,7 +494,10 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             height = slide.dimensions[1]
             width = slide.dimensions[0]
             try:
-                thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                try:
+                    thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except: #RanS 2.12.20, out of memory on my laptop
+                    thumb = slide.get_thumbnail((width / (8*objective_pwr / magnification), height / (8*objective_pwr / magnification)))
             except openslide.lowlevel.OpenSlideError as err:
                 error_dict = {}
                 e = sys.exc_info()
@@ -638,11 +646,26 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     else:
         _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
+    #RanS 2.12.20 - try otsu3 in HED color space
+    temp = False
+    if temp:
+        import HED_space
+        image_HED = HED_space.RGB2HED(np.array(image))
+        #image_HED_normed = (image_HED - np.min(image_HED,axis=(0,1))) / (np.max(image_HED,axis=(0,1)) - np.min(image_HED,axis=(0,1))) #rescale to 0-1
+        image_HED_normed = (image_HED - np.min(image_HED)) / (np.max(image_HED) - np.min(image_HED))  # rescale to 0-1
+        HED_space.plot_image_in_channels(image_HED_normed, '')
+        image_HED_int = (image_HED_normed*255).astype(np.uint8)
+        HED_space.plot_image_in_channels(image_HED_int, '')
+        thresh_HED = otsu3(image_HED_int[:, :, 0])
+        _, seg_map_HED = cv.threshold(image_HED[:, :, 0], thresh_HED[1], 255, cv.THRESH_BINARY)
+        plt.imshow(seg_map_HED)
+
+
     #RanS 9.11.20 - test median pixel color to inspect segmentation
     image_array_rgb = np.array(image)
     pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
     median_color = np.median(pixel_vec, axis=0)
-    if all(median_color > 200) and use_otsu3: #median pixel is white-ish
+    if all(median_color > 180) and use_otsu3: #median pixel is white-ish, changed from 200
         #take upper threshold
         _, seg_map = cv.threshold(image_array[:, :, 1], thresh[1], 255, cv.THRESH_BINARY)
 
