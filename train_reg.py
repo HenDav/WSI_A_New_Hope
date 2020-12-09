@@ -18,18 +18,17 @@ import pandas as pd
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
+#parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='LUNG', help='DataSet to use')
-parser.add_argument('--data_root', default='/home/womer/project/All Data', type=str, help='data root directory')  # RanS 7.12.20
 parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
-parser.add_argument('--transform_type', default='flip', type=str, help='flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20 #TODO implement
+parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20 #TODO implement
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 
@@ -369,13 +368,15 @@ if __name__ == '__main__':
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transformations=args.transformation,
+                                                     #transformations=args.transformation,
+                                                     transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
+        #args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -388,9 +389,8 @@ if __name__ == '__main__':
                                       test_fold=args.test_fold,
                                       train=True,
                                       print_timing=timing,
-                                      transform=args.transformation,
+                                      #transform=args.transformation,
                                       DX=args.dx,
-                                      data_root=args.data_root,
                                       target_kind=args.target,
                                       transform_type = args.transform_type)
 
@@ -401,7 +401,6 @@ if __name__ == '__main__':
                                      print_timing=False,
                                      transform=False,
                                      DX=args.dx,
-                                     data_root=args.data_root,
                                      target_kind=args.target,
                                      n_patches_test=args.n_patches_test,
                                      n_patches_train=args.n_patches_train)

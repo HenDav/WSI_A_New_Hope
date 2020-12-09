@@ -367,7 +367,7 @@ def get_cpu():
     return cpu
 
 
-def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False,
+def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none',#transformations: bool = False,
              tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False, DataSet: str = 'TCGA',
              epoch: int = None, model: str = None, transformation_string: str = None):
     """
@@ -403,7 +403,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
         location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
-                    'Transformations': transformations,
+                    #'Transformations': transformations,
+                    'Transformations': transform_type,
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
                     'Location': location,
@@ -440,7 +441,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
     else:
         location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
         test_fold = int(run_DF_exp.loc[[experiment], ['Test Fold']].values[0][0])
-        transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
+        #transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
+        transformations = run_DF_exp.loc[[experiment], ['Transformations']].values[0][0] #RanS 9.12.20
         tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
@@ -1043,12 +1045,28 @@ class WSI_REGdataset(Dataset):
                  print_timing: bool = False,
                  transform : bool = False,
                  DX : bool = False,
-                 data_root: str = 'All Data',
                  n_patches_test: int = 1,
                  n_patches_train: int = 50,
                  transform_type: str = 'flip'):
 
-        self.ROOT_PATH = data_root #'All Data'
+        #define data root
+        if sys.platform == 'linux': #GIPdeep
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'/home/womer/project/All Data'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'/home/rschley/All_Data/LUNG'
+        elif sys.platform == 'win32': #Ran local
+            if DataSet == 'HEROHE':
+                self.ROOT_PATH = r'C:\ran_data\HEROHE_examples'
+            elif DataSet == 'TCGA':
+                self.ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'C:\ran_data\Lung_examples'
+        else: #Omer local
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'All Data'
+            elif DataSet == 'LUNG':
+                pass #TODO omer, add your lung path if needed
 
         if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
             raise ValueError('target should be one of: PDL1, EGFR')
