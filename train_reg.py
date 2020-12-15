@@ -28,59 +28,12 @@ parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches 
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
-parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20 #TODO implement
+parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-
-
+parser.add_argument('--model', default='preact_resnet50', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC') # RanS 15.12.20
 args = parser.parse_args()
 
-"""
-def simple_train(model: nn.Module, dloader_train: DataLoader, dloadet_test: DataLoader):
-
-    print('Start Training...')
-    for e in range(epoch):
-        print('Epoch {}:'.format(e))
-        correct_train, num_samples, train_loss = 0, 0, 0
-
-        model.train()
-        for idx, (data, target) in enumerate(tqdm(dloader_train)):
-            data, target = data.to(DEVICE), target.to(DEVICE)
-            model.to(DEVICE)
-            prob, label, weights = model(data)
-            correct_train += (label == target).data.cpu().int().item()
-            num_samples += 1
-
-            prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
-            loss = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
-            train_loss += loss.data.cpu().item()
-            # criterion = nn.CrossEntropyLoss()
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        train_accuracy = 100 * float(correct_train) / num_samples
-        print('Finished Epoch: {}, Train Accuracy: {:.2f}% ({}/{}), Loss: {:.2f}'.format(e,
-                                                                                         train_accuracy,
-                                                                                         correct_train,
-                                                                                         num_samples,
-                                                                                         train_loss))
-        print('Checking post-epoch accuracy over training set...')
-        correct_post = 0
-        num_sample_post = 0
-        with torch.no_grad():
-            #model.eval()
-            for idx, (data_post, target_post) in enumerate(train_loader):
-                data_post, target_post = data_post.to(DEVICE), target_post.to(DEVICE)
-
-                prob_post, label_post, weights_post = model(data_post)
-                correct_post += (label_post == target_post).data.cpu().int().item()
-                num_sample_post += 1
-
-            accuracy_post_train = 100 * float(correct_post) / num_sample_post
-            print('Post train accuracy: {:.2f}% ({} / {})'.format(accuracy_post_train, correct_post, num_sample_post))
-"""
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -206,7 +159,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
-        if e % 5 == 0:
+        if (e % 5 == 0) or args.model=='resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # RanS 8.12.20, perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
@@ -360,7 +313,7 @@ if __name__ == '__main__':
 
     # Tile size definition:
     TILE_SIZE =128
-    timing = True
+    timing = False
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -399,7 +352,8 @@ if __name__ == '__main__':
                                      test_fold=args.test_fold,
                                      train=False,
                                      print_timing=False,
-                                     transform=False,
+                                     #transform=False,
+                                     transform_type='none',
                                      DX=args.dx,
                                      target_kind=args.target,
                                      n_patches_test=args.n_patches_test,
@@ -415,9 +369,18 @@ if __name__ == '__main__':
 
 
     # Load model
-    #model = ResNext_50()
-    model = PreActResNet50()
-    # model = ResNet50_2()
+    # RanS 14.12.20
+    if args.model == 'resnet50_3FC':
+        from torchvision.models import resnet50
+        from nets import net_with_3FC
+        model = resnet50(pretrained=True)
+        model = net_with_3FC(pretrained_model=model, reinit_last_layer=False)
+    elif args.model == 'preact_resnet50':
+        #model = ResNext_50()
+        model = PreActResNet50()
+        # model = ResNet50_2()
+    else:
+        print('model not defined!')
     utils.run_data(experiment=experiment, model='PreActResNet50()')
 
 

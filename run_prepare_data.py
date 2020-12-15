@@ -1,9 +1,9 @@
 import subprocess
 
 subprocess.run(['python', 'prepare_data.py',
-                    #'--segmentation',
+                    '--segmentation',
                     #'--data_collection',
-                    '--grid',
+                    #'--grid',
                     #'--stats',
                     #'--data_folder', r'C:\ran_data\TCGA',
                     #'--data_folder', r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat',

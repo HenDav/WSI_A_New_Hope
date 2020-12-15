@@ -31,7 +31,8 @@ STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330
        }
 
 
-def chunks(list: List, length: int):
+#def chunks(list: List, length: int):
+def chunks(list, length): #RanS 9.12.20
     new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
     return new_list
 
@@ -46,6 +47,7 @@ def make_dir(dirname):
 
 
 def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
+#def _choose_data(file_name, how_many, magnification=20, tile_size=256, resize=False, print_timing=False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -84,6 +86,7 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
 
 
 def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+#def _choose_data_2(grid_file, image_file, how_many, magnification=20, tile_size=256, print_timing=False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -114,6 +117,7 @@ def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification
 
 
 def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
+#def _get_tiles_2(file_name, locations, tile_sz, print_timing=False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -154,6 +158,7 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
 
 def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+#def _choose_data_3(grid_file, image_file, how_many, magnification = 20, tile_size = 256,  print_timing = False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -184,6 +189,7 @@ def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification
 
 
 def _get_tiles_3(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
+#def _get_tiles_3(file_name, locations, tile_sz, print_timing=False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -224,6 +230,7 @@ def _get_tiles_3(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
 
 def _get_tile(file_name: str, locations: Tuple, tile_sz: int, print_timing: bool = False):
+#def _get_tile(file_name, locations, tile_sz, print_timing = False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -251,6 +258,7 @@ def _get_tile(file_name: str, locations: Tuple, tile_sz: int, print_timing: bool
 
 
 def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
+#def _get_grid_list(file_name, magnification = 20, tile_size = 256): #RanS 9.12.20
     """
     This function returns the grid location of tile for a specific slide.
     :param file_name:
@@ -271,6 +279,7 @@ def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256
 
 
 def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int, print_timing: bool = False):
+#def _get_tiles(file_name, locations, tile_sz, resize_to, print_timing = False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -307,6 +316,7 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: 
 
 
 def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
+#def _get_slide(path, data_format = 'TCGA'):
     """
     This function returns an OpenSlide object from the file within the directory
     :param path:
@@ -332,6 +342,7 @@ def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
 
 
 def _get_tcga_id_list(path: str = 'tcga-data'):
+#def _get_tcga_id_list(path = 'tcga-data'): #RanS 9.12.20
     """
     This function returns the id of all images in the TCGA data directory given by 'path'
     :return:
@@ -1043,7 +1054,7 @@ class WSI_REGdataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform : bool = False,
+                 #transform : bool = False,
                  DX : bool = False,
                  n_patches_test: int = 1,
                  n_patches_train: int = 50,
@@ -1081,6 +1092,12 @@ class WSI_REGdataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
+        #RanS 10.12.20
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            self.meta_data_DF.reset_index(inplace=True)
+
         # self.meta_data_DF.set_index('id')
         self.tile_size = tile_size
         self.target_kind = target_kind
@@ -1088,7 +1105,7 @@ class WSI_REGdataset(Dataset):
         self.bag_size = 1
         self.train = train
         self.print_time = print_timing
-        self.transform = transform
+        #self.transform = transform
         self.DX = DX
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
@@ -1147,7 +1164,8 @@ class WSI_REGdataset(Dataset):
                                               transforms.Normalize(
                                                 mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
                                                 std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
-        if self.transform and self.train:
+        #if self.transform and self.train:
+        if transform_type != 'none' and self.train:
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
             # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
@@ -1186,7 +1204,8 @@ class WSI_REGdataset(Dataset):
                       self.real_length,
                       self.tile_size,
                       self.bag_size,
-                      'Without' if transform is False else 'With',
+                      #'Without' if transform is False else 'With',
+                      'Without' if transform_type == 'none' else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
 
