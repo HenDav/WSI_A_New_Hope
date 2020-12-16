@@ -32,6 +32,7 @@ parser.add_argument('--transform_type', default='flip', type=str, help='none / f
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--model', default='preact_resnet50', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC') # RanS 15.12.20
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 args = parser.parse_args()
 
 
@@ -268,14 +269,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         acc = 100 * float(num_correct) / total
         balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
 
-        fpr, tpr, _ = roc_curve(true_labels, scores)
-        roc_auc = auc(fpr, tpr)
-
-        #RanS 8.12.20, perform slide inference
-        patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
-        slide_mean_score_df = patch_df.groupby('slide').mean()
-        roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-
         # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
             writer_string = 'Train_2'
@@ -285,11 +278,38 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             else:
                 writer_string = 'Test (train mode)'
 
-        """
-        writer_test.add_scalar('Accuracy', acc, epoch)
-        writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
-        writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
-        """
+        if not args.bootstrap:
+            fpr, tpr, _ = roc_curve(true_labels, scores)
+            roc_auc = auc(fpr, tpr)
+
+            #RanS 8.12.20, perform slide inference
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
+            slide_mean_score_df = patch_df.groupby('slide').mean()
+            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+        else: #bootstrap, RanS 16.12.20
+
+            from sklearn.utils import resample
+            # load dataset
+            # configure bootstrap
+            n_iterations = scores.shape[0]
+            n_size = int(len(data) * 0.50)
+            # run bootstrap
+            roc_auc_array = np.zeros(n_iterations)
+            slide_roc_auc_array = np.zeros(n_iterations)
+            for ii in range(n_iterations):
+                slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
+                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
+                roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+
+                patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
+                slide_mean_score_df = patch_df.groupby('slide').mean()
+                slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            roc_auc = np.mean(roc_auc_array)
+            roc_auc_slide = np.mean(slide_roc_auc_array)
+            roc_auc_std = np.std(roc_auc_array)
+            roc_auc_slide_std = np.std(slide_roc_auc_array)
+            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
+            writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
