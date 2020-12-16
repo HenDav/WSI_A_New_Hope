@@ -36,6 +36,7 @@ def chunks(list: List, length: int):
     new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
     return new_list
 
+
 def make_dir(dirname):
     if not dirname in next(os.walk(os.getcwd()))[1]:
         try:
@@ -44,452 +45,6 @@ def make_dir(dirname):
             print('Creation of directory ', dirname, ' failed...')
             raise
 
-
-'''
-def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
-    dirs = _get_tcga_id_list(data_path)
-    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
-
-    for i in tqdm(range(meta_data.shape[0])):
-        if meta_data['Total tiles - 256 compatible @ X20'][i] == -1:
-            print('Could not find tile data for slide XXXXXXX')
-            continue
-
-        slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
-        tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
-        _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Objective Power'][i], tile_size)
-'''
-'''
-def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
-        grid_list = pickle.load(filehandle)
-
-    if not os.path.isdir(tile_basic_file_name):
-        os.mkdir(tile_basic_file_name)
-        os.mkdir(os.path.join(tile_basic_file_name, str(tile_size)))
-    if not os.path.isdir(os.path.join(tile_basic_file_name, str(tile_size))):
-        os.mkdir(os.path.join(tile_basic_file_name, str(tile_size)))
-
-    for tile_idx in range(from_tile, from_tile + num_tiles):
-        tile, _ = _get_tiles_2(file_name, [grid_list[tile_idx]], adjusted_tile_size)
-        tile_file_name = os.path.join(tile_basic_file_name, str(tile_size), str(tile_idx) + '.data')
-        with open(tile_file_name, 'wb') as filehandle:
-            pickle.dump(tile, filehandle)
-'''
-'''
-def copy_segImages(data_path: str = 'tcga-data'):    
-    dirs = _get_tcga_id_list(data_path)
-
-    print('Copying Segmentation Images...')
-    make_dir('Segmentation_Images')
-
-    if data_format == 'TCGA':
-        dirs = _get_tcga_id_list(data_path)
-        for _, dir in enumerate(dirs):
-            if 'segImage.png' in next(os.walk(os.path.join(data_path, dir)))[2]:
-                shutil.copy2(os.path.join(data_path, dir, 'segImage.png'),
-                             os.path.join('Segmentation_Images', dir + '_SegImage.png'))
-            else:
-                print('Found no segImage file for {}'.format(dir))
-    elif data_format == 'ABCTB' or data_format == 'MIRAX':
-        files = [file for file in os.listdir(data_path) if file.endswith("_segImage.png")]
-        for file in files:
-            shutil.copy2(os.path.join(data_path, file), os.path.join('Segmentation_Images', file))
-
-    print('Finished copying!')
-'''
-'''
-def compute_normalization_values(data_path: 'str'= 'tcga-data/') -> tuple:
-    # get a list of all directories with images:
-    dirs = _get_tcga_id_list(data_path)
-    stats_list =[]
-    print('Computing image-set Mean and Variance...')
-    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
-    meta_data.set_index('id', inplace=True)
-
-    # gather tissue image values from thumbnail image using the segmentation map:
-    #for idx, dir in enumerate(dirs):
-    for i in tqdm(range(len(dirs))):
-        dir = dirs[i]
-        if meta_data.loc[[dir], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
-            continue
-
-        image_stats = {}
-        thumb = np.array(Image.open(os.path.join(data_path, dir, 'thumb.png')))
-        segMap = np.array(Image.open(os.path.join(data_path, dir, 'segMap.png')))
-        tissue = thumb.transpose(2, 0, 1) * segMap
-        tissue_pixels = (tissue[0] != 0).sum()
-        tissue_matter = np.where(tissue[0] != 0)
-        values = tissue[:, tissue_matter[0], tissue_matter[1]]
-        image_stats['Pixels'] = tissue_pixels
-        image_stats['Mean'] = values.mean(axis=1)
-        image_stats['Var'] = values.var(axis=1)
-        stats_list.append(image_stats)
-
-    # Save data to file:
-    with open(os.path.join(data_path, 'ImageStatData.data'), 'wb') as filehandle:
-        # store the data as binary data stream
-        pickle.dump(stats_list, filehandle)
-
-    # Compute total mean and var:
-    N = 0
-    running_mean = 0
-    running_mean_squared = 0
-    running_var = 0
-    for i, item in enumerate(stats_list):
-        n = item['Pixels']
-        N += n
-        running_mean += item['Mean'] * n
-        running_mean_squared += (item['Mean'] ** 2) * n
-        running_var += item['Var'] * n
-
-    total_mean = running_mean / N
-    total_var = (running_mean_squared + running_var) / N - total_mean ** 2
-    print('Finished computing statistical data over {} thumbnail slides'.format(i+1))
-    print('Mean: {}'.format(total_mean))
-    print('Variance: {}'.format(total_var))
-    return total_mean, total_var
-'''
-'''
-def make_grid(data_path: str = 'tcga-data', tile_sz: int = 256):
-    """
-    This function creates a location for all top left corners of the grid
-    :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
-    :param tile_sz: size of tiles to be created
-    :return:
-    """
-    data_file = os.path.join(data_path, 'slides_data.xlsx')
-
-    BASIC_OBJ_PWR = 20
-
-    basic_DF = pd.read_excel(data_file)
-    files = list(basic_DF['file'])
-    objective_power = list(basic_DF['Objective Power'])
-    basic_DF.set_index('file', inplace=True)
-    tile_nums = []
-    total_tiles =[]
-    print('Starting Grid production...')
-    print()
-    #for _, file in enumerate(files):
-    for i in tqdm(range(len(files))):
-        file = files[i]
-        data_dict = {}
-        height = basic_DF.loc[file, 'Height']
-        width  = basic_DF.loc[file, 'Width']
-
-        id = basic_DF.loc[file, 'id']
-        if objective_power[i] == 'Missing Data':
-            print('Grid was not computed for path {}'.format(id))
-            tile_nums.append(0)
-            total_tiles.append(-1)
-            continue
-
-        converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
-        basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
-        total_tiles.append((len(basic_grid)))
-
-        # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-        legit_grid = _legit_grid(os.path.join(data_file.split('/')[0], id, 'segMap.png'),
-                                 basic_grid,
-                                 converted_tile_size,
-                                 (height, width))
-
-        # create a list with number of tiles in each file
-        tile_nums.append(len(legit_grid))
-
-        # Save the grid to file:
-        file_name = os.path.join(data_file.split('/')[0], id, 'grid_tlsz' + str(converted_tile_size) + '.data')
-        with open(file_name, 'wb') as filehandle:
-            # store the data as binary data stream
-            pickle.dump(legit_grid, filehandle)
-
-    # Adding the number of tiles to the excel file:
-    basic_DF['Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-    basic_DF['Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-    basic_DF['Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
-    basic_DF.to_excel(data_file)
-
-    print('Finished Grid production phase !')
-'''
-'''
-def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
-    # Check if coverage is a number in the range (0, 1]
-    if not (coverage > 0 and coverage <= 1):
-        raise ValueError('Coverage Parameter should be in the range (0,1]')
-
-    # open the segmentation map image from which the coverage will be calculated:
-    segMap = np.array(Image.open(image_file_name))
-    rows = size[0] / segMap.shape[0]
-    cols = size[1] / segMap.shape[1]
-
-    # the complicated next line only rounds up the numbers
-    small_tile = (int(-(-tile_size//rows)), int(-(-tile_size//cols)))
-    # computing the compatible grid for the small segmenatation map:
-    idx_to_remove =[]
-    for idx, (row, col) in enumerate(grid):
-        new_row = int(-(-(row // rows)))
-        new_col = int(-(-(col // cols)))
-
-        # collect the data from the segMap:
-        tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
-        tile_pixels = small_tile[0] * small_tile[1]
-        tissue_coverage = tile.sum() / tile_pixels
-        if tissue_coverage < coverage:
-            idx_to_remove.append(idx)
-
-    # We'll now remove items from the grid. starting from the end to the beginning in order to keep the indices correct:
-    for idx in reversed(idx_to_remove):
-        grid.pop(idx)
-
-    return grid
-'''
-'''
-def make_slides_xl_file(path: str = 'tcga-data'):
-    TCGA_BRCA_DF = pd.read_excel(os.path.join(path, 'TCGA_BRCA.xlsx'))
-    TCGA_BRCA_DF.set_index('bcr_patient_barcode', inplace=True)
-
-    print('Creating a new data file in path: {}'.format(path))
-
-    id_list = []
-
-    for idx, (root, dirs, files) in enumerate(tqdm(os.walk(path))):
-        id_dict = {}
-        if idx is 0:
-            continue
-        else:
-            # get all *.svs files in the directory:
-            files = glob.glob(os.path.join(root, '*.svs'))
-            for _, file in enumerate(files):
-                # Create a dictionary to the files and id's:
-                id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
-                id_dict['id'] = root.split('/')[-1]
-                id_dict['file'] = file.split('/')[-1]
-
-                # Get some basic data about the image like MPP (Microns Per Pixel) and size:
-                img = openslide.open_slide(file)
-                try:
-                    id_dict['MPP'] = float(img.properties['aperio.MPP'])
-                except:
-                    id_dict['MPP'] = 'Missing Data'
-                try:
-                    id_dict['Width'] = int(img.dimensions[0])
-                except:
-                    id_dict['Width'] = 'Missing Data'
-                try:
-                    id_dict['Height'] = int(img.dimensions[1])
-                except:
-                    id_dict['Height'] = 'Missing Data'
-                try:
-                    id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
-                except:
-                    id_dict['Objective Power'] = 'Missing Data'
-                try:
-                    id_dict['Scan Date'] = img.properties['aperio.Date']
-                except:
-                    id_dict['Scan Date'] = 'Missing Data'
-                img.close()
-
-                # Get data from 'TCGA_BRCA.xlsx' and add to the dictionary ER_status, PR_status, Her2_status
-                try:
-                    id_dict['ER status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
-                    id_dict['PR status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['PR_status']].values[0][0]
-                    id_dict['Her2 status'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Her2_status']].values[0][0]
-                    id_dict['test fold idx'] = TCGA_BRCA_DF.loc[[id_dict['patient barcode']], ['Test_fold_idx']].values[0][0]
-                except:
-                    id_dict['ER status'] = 'Missing Data'
-                    id_dict['PR status'] = 'Missing Data'
-                    id_dict['Her2 status'] = 'Missing Data'
-                    id_dict['test fold idx'] = 'Missing Data'
-
-
-                id_list.append(id_dict)
-
-    slides_data = pd.DataFrame(id_list)
-    slides_data.to_excel(os.path.join(path, 'slides_data.xlsx'))
-    print('Created data file {}'.format(os.path.join(path, 'slides_data.xlsx')))
-'''
-'''
-def make_segmentations(data_path: str = 'tcga-data/', rewrite: bool = False, magnification: int = 1,
-                       data_format: str = 'TCGA'):
-    # RanS, save locally
-    make_dir('Segmentation_Images')
-    make_dir('Thumbs')
-    make_dir('Segmentation_Maps')
-
-    if data_format == 'TCGA':
-        print('Making Segmentation Maps for each .svs file...')
-        dirs = _get_tcga_id_list(data_path)
-        error_list = []
-        # for _, dir in enumerate(dirs):
-        for i in tqdm(range(len(dirs))):  # In order to get rid of tqdm, just erase this line and un-comment the line above
-            dir = dirs[i]
-            fn = dir
-            #if (not rewrite and 'segMap.png' in next(os.walk(os.path.join(data_path, dir)))[2]):
-            if not rewrite:
-                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
-                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
-                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
-                if pic1 and pic2 and pic3:
-                    continue
-
-            print('Working on {}'.format(dir))
-            slide = _get_slide(os.path.join(data_path, dir), data_format)
-            if slide is not None:
-                # Get a thunmbnail image to create the segmentation for:
-                try:
-                    objective_pwr = int(float(slide.properties['aperio.AppMag']))
-                except KeyError:
-                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
-                    continue
-                height = slide.dimensions[1]
-                width = slide.dimensions[0]
-                try:
-                    thumb = slide.get_thumbnail(
-                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-                except openslide.lowlevel.OpenSlideError as err:
-                    error_dict = {}
-                    e = sys.exc_info()
-                    error_dict['Path'] = dir
-                    error_dict['Error'] = err
-                    error_dict['Error Details 1'] = e[0]
-                    error_dict['Error Details 2'] = e[1]
-                    error_list.append(error_dict)
-                    print('Exception on path {}'.format(dir))
-                    continue
-
-                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
-                slide.close()
-                # Saving segmentation map, segmentation image and thumbnail:
-                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
-                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
-                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
-
-
-            else:
-                print('Error: Found no slide in path {}'.format(dir))
-                # TODO: implement a case for a slide that cannot be opened.
-                continue
-
-    elif data_format == 'ABCTB' or data_format == 'MIRAX':
-        if data_format == 'ABCTB':
-            print('Making Segmentation Maps for each .ndpi file...')
-            files = [file for file in os.listdir(data_path) if file.endswith(".ndpi")]
-        elif data_format == 'MIRAX':
-            print('Making Segmentation Maps for each .mrxs file...')
-            files = [file for file in os.listdir(data_path) if file.endswith(".mrxs")]
-        error_list = []
-        for file in files:
-            fn = file[:-5]
-            if not rewrite:
-                pic1 = os.path.exists(os.path.join(os.getcwd(), 'Thumbs', fn + '_thumb.png'))
-                pic2 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Maps', fn + '_SegMap.png'))
-                pic3 = os.path.exists(os.path.join(os.getcwd(), 'Segmentation_Images', fn + '_SegImage.png'))
-                if pic1 and pic2 and pic3:
-                    continue
-
-            print('Working on {}'.format(file))
-            slide = _get_slide(os.path.join(data_path, file), data_format)
-            if slide is not None:
-                # Get a thunmbnail image to create the segmentation for:
-                try:
-                    if data_format == 'ABCTB':
-                        objective_pwr = int(float(slide.properties['hamamatsu.SourceLens']))
-                    elif data_format == 'MIRAX':
-                        objective_pwr = int(float(slide.properties['openslide.objective-power']))
-                except KeyError:
-                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
-                    continue
-                height = slide.dimensions[1]
-                width = slide.dimensions[0]
-                try:
-                    thumb = slide.get_thumbnail(
-                        (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-                except openslide.lowlevel.OpenSlideError as err:
-                    error_dict = {}
-                    e = sys.exc_info()
-                    error_dict['Path'] = file
-                    error_dict['Error'] = err
-                    error_dict['Error Details 1'] = e[0]
-                    error_dict['Error Details 2'] = e[1]
-                    error_list.append(error_dict)
-                    print('Exception on file {}'.format(file))
-                    continue
-
-                thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
-                slide.close()
-                # Saving segmentation map, segmentation image and thumbnail:
-                thumb.save(os.path.join('Thumbs', fn + '_thumb.png'))
-                thmb_seg_map.save(os.path.join('Segmentation_Maps', fn + '_SegMap.png'))
-                thmb_seg_image.save(os.path.join('Segmentation_Images', fn + '_SegImage.png'))
-
-            else:
-                print('Error: Found no slide in path {}'.format(data_path))
-                # TODO: implement a case for a slide that cannot be opened.
-                continue
-
-    if len(error_list) != 0:
-        # Saving all error data to excel file:
-        error_DF = pd.DataFrame(error_list)
-        error_DF.to_excel('Segmentation_Errors.xlsx')
-        print('Segmentation Process finished WITH EXCEPTIONS!!!!')
-        print('Check "Segmenatation_Errors.xlsx" file for details...')
-    else:
-        print('Segmentation Process finished without exceptions!')
-'''
-'''        
-def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):    
-
-    # Converting the image from RGBA to HSV and to a numpy array (from PIL):
-    image_array = np.array(image.convert('HSV'))
-    # otsu Thresholding:
-    use_otsu3 = True
-    if use_otsu3:
-        # RanS 25.10.20 - 3way binarization
-        thresh = otsu3(image_array[:, :, 1])
-        _, seg_map = cv.threshold(image_array[:, :, 1], thresh[0], 255, cv.THRESH_BINARY)
-    else:
-        _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
-
-    # Smoothing the tissue segmentation imaqe:
-    size = 30 * magnification
-    kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
-    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
-
-    th_val = 5
-    seg_map[seg_map > th_val] = 255
-    seg_map[seg_map <= th_val] = 0
-
-    # find small contours and delete them from segmentation map
-    size_thresh = 10000
-    contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-    # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
-    # cv.imshow("Contours", drawContours)
-    # cv.waitKey()
-    small_contours = []
-    for contour in contours:
-        contour_area = cv.contourArea(contour)
-        if contour_area < size_thresh:
-            small_contours.append(contour)
-    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1)
-
-    seg_map_PIL = Image.fromarray(seg_map)
-
-    edge_image = cv.Canny(seg_map, 1, 254)
-    # Make the edge thicker by dilating:
-    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
-    seg_image = Image.blend(image, edge_image, 0.5)
-
-    return seg_map_PIL, seg_image
-'''
 
 def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
     """
@@ -528,8 +83,7 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
 
     return image_tiles
 
-#def _choose_data_2(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
-#def _choose_data_2(data_path: str, file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+
 def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
     """
     This function choose and returns data to be held by DataSet
@@ -598,7 +152,6 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
         time_list = [0]
 
     return tiles_PIL, time_list
-
 
 
 def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
@@ -815,7 +368,7 @@ def get_cpu():
     return cpu
 
 
-def run_data(experiment: str = None, test_fold: int = 1, transformations: bool = False,
+def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none',#transformations: bool = False,
              tile_size: int = 256, tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
              epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
              MultiSlide: bool = False):
@@ -852,7 +405,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
         location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
-                    'Transformations': transformations,
+                    #'Transformations': transformations,
+                    'Transformations': transform_type,
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
                     'MultiSlide Per Bag': MultiSlide,
@@ -892,15 +446,14 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
     else:
         location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
         test_fold = int(run_DF_exp.loc[[experiment], ['Test Fold']].values[0][0])
-        transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
+        #transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
+        transformations = run_DF_exp.loc[[experiment], ['Transformations']].values[0][0] #RanS 9.12.20
         tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
         DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
-
-
 
         return location, test_fold, transformations, tile_size, tiles_per_bag, DX, DataSet, Receptor, MultiSlide
 
@@ -1578,26 +1131,44 @@ class Infer_WSI_MILdataset(Dataset):
 
 class WSI_REGdataset(Dataset):
     def __init__(self,
-                 #data_path: str = '/Users/wasserman/Developer/All data - outer scope',
                  DataSet: str = 'TCGA',
                  tile_size: int = 256,
-                 #bag_size: int = 1,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform : bool = False,
-                 DX : bool = False):
+                 #transform : bool = False,
+                 DX : bool = False,
+                 n_patches_test: int = 1,
+                 n_patches_train: int = 50,
+                 transform_type: str = 'flip'):
 
-        self.ROOT_PATH = 'All Data'
-        if DataSet == 'LUNG':
-            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+        # Define data root:
+        if sys.platform == 'linux': #GIPdeep
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'/home/womer/project/All Data'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'/home/rschley/All_Data/LUNG'
+        elif sys.platform == 'win32': #Ran local
+            if DataSet == 'HEROHE':
+                self.ROOT_PATH = r'C:\ran_data\HEROHE_examples'
+            elif DataSet == 'TCGA':
+                self.ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'C:\ran_data\Lung_examples'
+        else: #Omer local
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'All Data'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = 'All Data/LUNG'
+                # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
 
         meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
-        if sys.platform != 'linux' and DataSet == 'LUNG':
-            self.ROOT_PATH = 'All Data/LUNG'
-            meta_data_file = 'All Data/slides_data_LUNG.xlsx'
-
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
@@ -1605,12 +1176,7 @@ class WSI_REGdataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if self.DataSet == 'HEROHE':
-            target_kind = 'Her2'
+        #RanS 10.12.20
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
@@ -1623,7 +1189,7 @@ class WSI_REGdataset(Dataset):
         self.bag_size = 1
         self.train = train
         self.print_time = print_timing
-        self.transform = transform
+        #self.transform = transform
         self.DX = DX
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
@@ -1638,8 +1204,11 @@ class WSI_REGdataset(Dataset):
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if self.train:
-            folds = list(range(1, 7))
+            #folds = list(range(1, 7))
+            folds = list(self.meta_data_DF['test fold idx'].unique())  # RanS 17.11.20
             folds.remove(self.test_fold)
+            if 'test' in folds:
+                folds.remove('test')
         else:
             folds = [self.test_fold]
         self.folds = folds
@@ -1675,50 +1244,42 @@ class WSI_REGdataset(Dataset):
                 self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
-        '''
-        mean = {}
-        std = {}
-
-        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
-        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
-
-        mean['HEROHE'] = [31.51838872 / 255, 65.25528123 / 255, 37.49780932 / 255]
-        std['HEROHE'] = [np.sqrt(1110.44122153) / 255, np.sqrt(2950.70309166) / 255, np.sqrt(1027.60832337) / 255]
-        '''
-
-        if self.transform and self.train:
+        final_transform = transforms.Compose([transforms.ToTensor(),
+                                              transforms.Normalize(
+                                                mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+        #if self.transform and self.train:
+        if transform_type != 'none' and self.train:
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
             # TODO: Consider transforms.RandomHorizontalFlip()
             # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-
-            self.transform = \
-                transforms.Compose([ transforms.RandomVerticalFlip(),
-                                     transforms.RandomHorizontalFlip(),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize(
-                                         mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                         std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                     ])
-            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-            '''
-            self.transform = \
-                transforms.Compose([transforms.RandomVerticalFlip(),
-                                    transforms.RandomHorizontalFlip(),
-                                    transforms.ToTensor()
-                                    ])
-            '''
+            if transform_type == 'flip':
+                self.scale_factor = 0
+                transform1 = \
+                    transforms.Compose([ transforms.RandomVerticalFlip(),
+                                         transforms.RandomHorizontalFlip()])
+            elif transform_type == 'wcfrs': #weak color, flip, rotate, scale
+                self.scale_factor = 0.2
+                transform1 = \
+                    transforms.Compose([
+                        # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
+                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                               saturation=0.1, hue=(-0.1, 0.1)),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomHorizontalFlip(),
+                        MyRotation(angles=[0, 90, 180, 270]),
+                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
+                        transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
+                    ])
+            self.transform = transforms.Compose([transform1,
+                                                 final_transform])
         else:
-            self.transform = transforms.Compose([transforms.ToTensor(),
-                                                 transforms.Normalize(
-                                                     mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                     std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                                 ])
+            self.scale_factor = 0
+            self.transform = final_transform
 
-        '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-
-
-        self.factor = 10 if self.train else 50
+        #self.factor = 10 if self.train else 1
+        self.factor = n_patches_train if self.train else n_patches_test  # RanS 7.12.20
         self.real_length = int(self.__len__() / self.factor)
 
 
@@ -1729,7 +1290,8 @@ class WSI_REGdataset(Dataset):
                       self.real_length,
                       self.tile_size,
                       self.bag_size,
-                      'Without' if transform is False else 'With',
+                      #'Without' if transform is False else 'With',
+                      'Without' if transform_type == 'none' else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
 
@@ -1752,7 +1314,9 @@ class WSI_REGdataset(Dataset):
 
         tiles, time_list = _choose_data_2(grid_file, image_file, self.bag_size,
                                           self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
+                                          #self.tile_size,
+                                          int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+                                          print_timing=self.print_time)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -1795,7 +1359,8 @@ class WSI_REGdataset(Dataset):
         else:
             time_list = [0]
 
-        return X, label, time_list
+        slide_name = self.image_file_names[idx] #RanS 8.12.20
+        return X, label, time_list, slide_name
 
 
 class WSI_MIL2_dataset(Dataset):

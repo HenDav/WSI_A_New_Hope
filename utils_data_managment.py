@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 Image.MAX_IMAGE_PIXELS = None
 
 
-
 def herohe_slides2images():
     slide_files_mrxs = glob.glob(os.path.join('All Data', 'HEROHE', '*.mrxs'))
     for _, file in enumerate(tqdm(slide_files_mrxs)):
@@ -147,11 +146,6 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
         image_stats['Var'] = values.var(axis=1)
         stats_list.append(image_stats)
 
-    # Save data to file:
-    with open(os.path.join(ROOT_DIR, 'ImageStatData.data'), 'wb') as filehandle:
-        # store the data as binary data stream
-        pickle.dump(stats_list, filehandle)
-
     # Compute total mean and var:
     N = 0
     running_mean = 0
@@ -170,10 +164,19 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
     print('Finished computing statistical data over {} thumbnail slides'.format(i+1))
     print('Mean: {}'.format(total_mean))
     print('Variance: {}'.format(total_var))
+
+    # Save data to file:
+    try:
+        with open(os.path.join(ROOT_DIR, 'ImageStatData.data'), 'wb') as filehandle:
+            # store the data as binary data stream
+            pickle.dump(stats_list, filehandle)
+    except:
+        print('unable to save normalization values')
+
     return total_mean, total_var
 
 
-def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256):
+def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256, tissue_coverage: float = 0.5):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
@@ -202,7 +205,6 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
         if os.path.isfile(os.path.join(ROOT_DIR, database, file)): # make sure file exists
             height = meta_data_DF.loc[file, 'Height']
             width  = meta_data_DF.loc[file, 'Width']
-
             if objective_power[i] == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
                 tile_nums.append(0)
@@ -218,11 +220,10 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png'),
                                      basic_grid,
                                      converted_tile_size,
-                                     (height, width))
-
+                                     (height, width),
+                                     coverage = tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
-
             # Save the grid to file:
             if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
                 os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
@@ -232,7 +233,6 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             with open(file_name, 'wb') as filehandle:
                 # store the data as binary data stream
                 pickle.dump(legit_grid, filehandle)
-
 
     # Adding the number of tiles to the excel file:
     #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
@@ -489,7 +489,10 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             height = slide.dimensions[1]
             width = slide.dimensions[0]
             try:
-                thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                try:
+                    thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+                except:  #RanS 2.12.20, out of memory on my laptop
+                    thumb = slide.get_thumbnail((width / (8*objective_pwr / magnification), height / (8*objective_pwr / magnification)))
             except openslide.lowlevel.OpenSlideError as err:
                 error_dict = {}
                 e = sys.exc_info()
@@ -578,57 +581,10 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     :return:
     """
 
-    '''
-    remove_grid = False
-    if remove_grid:
-        #RanS 8.11.20 - remove grid, not working yet - TODO
-        image_array = np.array(image)
-        from Icp2d import icp
 
-        plt.imshow(image)
-        small_image = image_array[5200:6900,2140:3960, :]
-        kernel = image_array[5389:5493, 2906:3044, :]
-        img_gray = cv.cvtColor(small_image, cv.COLOR_BGR2GRAY)
-        template = cv.cvtColor(kernel, cv.COLOR_BGR2GRAY)
-        w, h = template.shape[::-1]
-
-        res = cv.matchTemplate(img_gray, template, cv.TM_CCOEFF_NORMED)
-        xy = _get_image_maxima(res, threshold=0.2, neighborhood_size=200)
-        plt.imshow(res)
-        plt.plot(xy[:, 1], xy[:, 0], 'ro')
-        min_x, max_x = np.min(xy[:, 1]).astype(int), np.max(xy[:, 1]).astype(int)
-        min_y, max_y = np.min(xy[:, 0]).astype(int), np.max(xy[:, 0]).astype(int)
-        Nx = np.round(((max_x - min_x) / kernel.shape[1])).astype(int)
-        Ny = np.round((max_y - min_y) / kernel.shape[0]).astype(int)
-        x_pos = min_x + kernel.shape[1]* np.arange(Nx + 1)
-        y_pos = min_y + kernel.shape[0] * np.arange(Ny + 1)
-        xv, yv = np.meshgrid(x_pos, y_pos)
-        plt.plot(xv, yv, 'go')
-
-        #ICP algorithm
-        #https://github.com/KojiKobayashi/iterative_closest_point_2d
-        ret = icp(np.vstack([xv.ravel(), yv.ravel()]).T, xy)
-
-        #kill grid
-        small_image_inv = 255 - small_image
-        plt.imshow(small_image_inv)
-        kernel_inv = 255-kernel
-
-        qq = np.zeros_like(small_image)
-        for ix in x_pos:
-            for iy in y_pos:
-                #small_image_inv[iy:iy+kernel.shape[0], ix:ix+kernel.shape[1], :] -= kernel_inv
-                qq[iy:iy+kernel.shape[0], ix:ix+kernel.shape[1], :] = kernel_inv
-                #plt.imshow(small_image[iy:iy+kernel.shape[0], ix:ix+kernel.shape[1],:])
-        plt.figure()
-        plt.imshow(qq)
-
-        small_image_fixed = 255 - small_image_inv
-        plt.figure()
-        plt.imshow(small_image_fixed)
-    '''
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
-    image_array = np.array(image.convert('HSV'))
+    #image_array = np.array(image.convert('HSV'))
+    image_array = np.array(image.convert('CMYK')) #temp RanS 9.12.20
     # otsu Thresholding:
     use_otsu3 = True
     if use_otsu3:
@@ -638,16 +594,34 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     else:
         _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
 
+    #RanS 2.12.20 - try otsu3 in HED color space
+    temp = False
+    if temp:
+        import HED_space
+        image_HED = HED_space.RGB2HED(np.array(image))
+        #image_HED_normed = (image_HED - np.min(image_HED,axis=(0,1))) / (np.max(image_HED,axis=(0,1)) - np.min(image_HED,axis=(0,1))) #rescale to 0-1
+        image_HED_normed = (image_HED - np.min(image_HED)) / (np.max(image_HED) - np.min(image_HED))  # rescale to 0-1
+        HED_space.plot_image_in_channels(image_HED_normed, '')
+        image_HED_int = (image_HED_normed*255).astype(np.uint8)
+        HED_space.plot_image_in_channels(image_HED_int, '')
+        thresh_HED = otsu3(image_HED_int[:, :, 0])
+        _, seg_map_HED = cv.threshold(image_HED[:, :, 0], thresh_HED[1], 255, cv.THRESH_BINARY)
+        plt.imshow(seg_map_HED)
+
+
     #RanS 9.11.20 - test median pixel color to inspect segmentation
     image_array_rgb = np.array(image)
-    pixel_vec = image_array_rgb.reshape(-1, 3)[seg_map.reshape(-1) > 0]
+    pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
     median_color = np.median(pixel_vec, axis=0)
-    if all(median_color > 200) and use_otsu3: #median pixel is white-ish
+    if all(median_color > 180) and use_otsu3: #median pixel is white-ish, changed from 200
         #take upper threshold
         _, seg_map = cv.threshold(image_array[:, :, 1], thresh[1], 255, cv.THRESH_BINARY)
 
     # Smoothing the tissue segmentation imaqe:
-    size = 30 * magnification
+    #size = 30 * magnification
+    #size = 15 * magnification
+    size = 10 * magnification
+    #size = 5*magnification #RanS 9.12.20
     kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
     seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
 
@@ -656,17 +630,28 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     seg_map[seg_map <= th_val] = 0
 
     # find small contours and delete them from segmentation map
-    size_thresh = 30000 #10000
+    #size_thresh = 30000 #10000
+    #size_thresh = 10000 #RanS 9.12.20, lung cancer biopsies can be very small
+    size_thresh = 5000  # RanS 9.12.20, lung cancer biopsies can be very small
     contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
     # cv.imshow("Contours", drawContours)
     # cv.waitKey()
     small_contours = []
-    for contour in contours:
+    '''for contour in contours:
         contour_area = cv.contourArea(contour)
         if contour_area < size_thresh:
-            small_contours.append(contour)
-    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1)
+            small_contours.append(contour)'''
+    #RanS 9.12.20, kill small contours only if much smaller than largest contour
+    contour_area = np.zeros(len(contours))
+    for ii in range(len(contours)):
+        contour_area[ii] = cv.contourArea(contours[ii])
+    max_contour = np.max(contour_area)
+    #small_contours_bool = (contour_area<size_thresh) & (contour_area < max_contour*0.2)
+    small_contours_bool = (contour_area < size_thresh) & (contour_area < max_contour * 0.02)
+    small_contours = [contours[ii] for ii in range(len(contours)) if small_contours_bool[ii]==True]
+
+    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1) #delete the small contours
 
     seg_map_PIL = Image.fromarray(seg_map)
 

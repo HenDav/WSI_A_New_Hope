@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import resnet
 
 '''
 class Flatten(nn.Module):
@@ -293,6 +292,61 @@ class ResNet50_GN(nn.Module):
 
         return x
 
+
+
+#RanS 14.12.20
+class net_with_3FC(nn.Module):
+    def __init__(self, pretrained_model, reinit_last_layer=True):
+        super(net_with_3FC, self).__init__()
+        self.pretrained = pretrained_model
+        num_ftrs = self.pretrained.fc.in_features
+        # RanS 18.11.20, change momentum to 0.5
+        # for layer in self.pretrained.modules():
+        # if layer._get_name() == 'BatchNorm2d':
+        # layer.momentum = 0.5
+        # print(layer)
+        # re-init last bottleneck.layer! RanS 17.11.20
+        # nn.init.kaiming_normal_(self.pretrained.layer4[0].downsample[0].weight, mode='fan_in', nonlinearity='relu')
+        # nn.init.constant_(self.pretrained.layer4[0].downsample[1].weight, 0)
+        # nn.init.constant_(self.pretrained.layer4[0].downsample[1].bias, 0)
+        # for ii in range(3):
+        # for ii in range(2,3):
+        if reinit_last_layer:
+            for ii in range(1, 3):
+                nn.init.kaiming_normal_(self.pretrained.layer4[ii].conv1.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.kaiming_normal_(self.pretrained.layer4[ii].conv2.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.kaiming_normal_(self.pretrained.layer4[ii].conv3.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.constant_(self.pretrained.layer4[ii].bn1.weight, 0)
+                nn.init.constant_(self.pretrained.layer4[ii].bn2.weight, 0)
+                nn.init.constant_(self.pretrained.layer4[ii].bn3.weight, 0)
+                nn.init.constant_(self.pretrained.layer4[ii].bn1.bias, 0)
+                nn.init.constant_(self.pretrained.layer4[ii].bn2.bias, 0)
+                nn.init.constant_(self.pretrained.layer4[ii].bn3.bias, 0)
+                # RanS 18.11.20, reset all running bn stats
+                # self.pretrained.layer4[ii].bn1.reset_running_stats()
+                # self.pretrained.layer4[ii].bn2.reset_running_stats()
+                # self.pretrained.layer4[ii].bn3.reset_running_stats()
+            # nn.init.kaiming_normal_(self.pretrained.layer4[-1].conv1.weight, mode='fan_in', nonlinearity='relu')
+            # nn.init.kaiming_normal_(self.pretrained.layer4[-1].conv2.weight, mode='fan_in', nonlinearity='relu')
+            # nn.init.kaiming_normal_(self.pretrained.layer4[-1].conv3.weight, mode='fan_in', nonlinearity='relu')
+        self.pretrained.fc = nn.Identity()
+        self.dropout = nn.Dropout(p=0.5)
+        #self.fc = nn.Linear(num_ftrs, 2)
+        self.fc1 = nn.Linear(num_ftrs, 512)
+        self.fc2 = nn.Linear(512, 512)
+        self.fc3 = nn.Linear(512, 2)
+        #nn.init.kaiming_normal_(self.fc.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        nn.init.kaiming_normal_(self.fc1.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        nn.init.kaiming_normal_(self.fc3.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+    def forward(self, x):
+        x = self.pretrained(x)
+        # x = self.fc(x)
+        #x = self.fc(self.dropout(x))
+        x = F.relu(self.fc1(self.dropout(x)))
+        x = F.relu(self.fc2(self.dropout(x)))
+        x = self.fc3(x)
+        return x
 
 
 

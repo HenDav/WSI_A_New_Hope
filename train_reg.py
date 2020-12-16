@@ -10,22 +10,30 @@ import time
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score
 import numpy as np
 import sys
+import pandas as pd
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
-parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
+parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
+#parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='LUNG', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
-
-
+parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
+parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
+parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
+parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
+parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
+parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
+parser.add_argument('--model', default='preact_resnet50', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC') # RanS 15.12.20
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 args = parser.parse_args()
 
 """
@@ -110,9 +118,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         ### true_pos_train, true_neg_train = 0, 0
         true_labels_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
+        slide_names = []
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list, f_names) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
 
             data, target = data.to(DEVICE), target.to(DEVICE)
@@ -128,8 +137,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             train_loss += loss.item()
             _, predicted = outputs.max(1)
 
+            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
             true_labels_train = np.concatenate((true_labels_train, target.cpu().detach().numpy()))
+            slide_names.extend(slide_names_batch)
 
             total += target.size(0)
             total_pos_train += target.eq(1).sum().item()
@@ -197,7 +208,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
-        if e % 20 == 0:
+        if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
+            # RanS 8.12.20, perform slide inference
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
+            slide_mean_score_df = patch_df.groupby('slide').mean()
+            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
+
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
             # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
@@ -261,6 +278,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
     true_labels, scores = np.zeros(0), np.zeros(0)
+    slide_names = []
 
     test_loss, total = 0, 0
 
@@ -271,7 +289,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         model.train()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list) in enumerate(data_loader):
+        for idx, (data, targets, time_list, f_names) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
             model.to(DEVICE)
@@ -284,8 +302,11 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
+
+            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores = np.concatenate((scores, outputs[:, 1].cpu().detach().numpy()))
             true_labels = np.concatenate((true_labels, targets.cpu().detach().numpy()))
+            slide_names.extend(slide_names_batch)
 
             total += targets.size(0)
             num_correct += predicted.eq(targets).sum().item()
@@ -297,10 +318,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         acc = 100 * float(num_correct) / total
         balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
 
-        fpr, tpr, _ = roc_curve(true_labels, scores)
-        roc_auc = auc(fpr, tpr)
-
-
         # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
             writer_string = 'Train_2'
@@ -310,15 +327,43 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             else:
                 writer_string = 'Test (train mode)'
 
-        """
-        writer_test.add_scalar('Accuracy', acc, epoch)
-        writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
-        writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
-        """
+        if not args.bootstrap:
+            fpr, tpr, _ = roc_curve(true_labels, scores)
+            roc_auc = auc(fpr, tpr)
+
+            #RanS 8.12.20, perform slide inference
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
+            slide_mean_score_df = patch_df.groupby('slide').mean()
+            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+        else: #bootstrap, RanS 16.12.20
+
+            from sklearn.utils import resample
+            # load dataset
+            # configure bootstrap
+            n_iterations = scores.shape[0]
+            n_size = int(len(data) * 0.50)
+            # run bootstrap
+            roc_auc_array = np.zeros(n_iterations)
+            slide_roc_auc_array = np.zeros(n_iterations)
+            for ii in range(n_iterations):
+                slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
+                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
+                roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+
+                patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
+                slide_mean_score_df = patch_df.groupby('slide').mean()
+                slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            roc_auc = np.mean(roc_auc_array)
+            roc_auc_slide = np.mean(slide_roc_auc_array)
+            roc_auc_std = np.std(roc_auc_array)
+            roc_auc_slide_std = np.std(slide_roc_auc_array)
+            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
+            writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
+        writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
     model.train()
@@ -337,23 +382,23 @@ if __name__ == '__main__':
 
     # Tile size definition:
     TILE_SIZE =128
-    # data_path = '/Users/wasserman/Developer/All data - outer scope'
+    timing = False
 
-    if sys.platform == 'linux':
+    if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
-        data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transformations=args.transformation,
+                                                     #transformations=args.transformation,
+                                                     transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
-            TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
+            TILES_PER_BAG, args.dx, args.dataset, args.target = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -363,25 +408,29 @@ if __name__ == '__main__':
     # Get data:
     train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
-                                      target_kind=args.look_for,
+                                      target_kind=args.target,
                                       test_fold=args.test_fold,
                                       train=True,
                                       print_timing=args.time,
-                                      transform=args.transformation,
-                                      DX=args.dx)
+                                      #transform=args.transformation,
+                                      DX=args.dx,
+                                      transform_type=args.transform_type)
 
     test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
-                                     target_kind=args.look_for,
+                                     target_kind=args.target,
                                      test_fold=args.test_fold,
                                      train=False,
                                      print_timing=False,
-                                     transform=False,
-                                     DX=args.dx)
+                                     #transform=False,
+                                     transform_type='none',
+                                     DX=args.dx,
+                                     n_patches_test=args.n_patches_test,
+                                     n_patches_train=args.n_patches_train)
 
 
-    train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader  = DataLoader(test_dset, batch_size=50, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -389,12 +438,21 @@ if __name__ == '__main__':
 
 
     # Load model
-    #model = ResNext_50()
-    # model = PreActResNet50()
-    # model = ResNet_50()
+    # RanS 14.12.20
+    if args.model == 'resnet50_3FC':
+        from torchvision.models import resnet50
+        from nets import net_with_3FC
+        model = resnet50(pretrained=True)
+        model = net_with_3FC(pretrained_model=model, reinit_last_layer=False)
+    elif args.model == 'preact_resnet50':
+        #model = ResNext_50()
+        model = PreActResNet50()
+        # model = ResNet50_2()
+    else:
+        print('model not defined!')
+
     model = ResNet50_GN()
     utils.run_data(experiment=experiment, model=model.model_name)
-
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -412,7 +470,8 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    #optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
