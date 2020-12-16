@@ -17,22 +17,10 @@ ax1.set_prop_cycle(custom_cycler)
 
 
 inference_files = {}
-#inference_files['train_500-EVAL'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[1]-Tiles_500-EVAL_MODE.data'
-#inference_files['train_500-TRAIN'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[1]-Tiles_500-TRAIN_MODE.data'
-'''
-inference_files['train_50-EVAL'] = 'Data from gipdeep/runs/91/Inference/Model_Epoch_4295-Folds_[1]-Tiles_50-EVAL_MODE.data'
-inference_files['train_500-TRAIN'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_4295-Folds_[1]-Tiles_500-EVAL_MODE.data'
 
-inference_files['test_1000-EVAL'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[2]-Tiles_1000-EVAL_MODE.data'
-inference_files['test_1000-TRAIN'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[2]-Tiles_1000-TRAIN_MODE.data'
-
-inference_files['test_2000-EVAL'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[2]-Tiles_2000-EVAL_MODE.data'
-inference_files['test_2000-TRAIN'] = 'Data from gipdeep/runs/69/Inference/Model_Epoch_195-Folds_[2]-Tiles_2000-TRAIN_MODE.data'
-'''
-
-inference_files['train_500'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[1]-Tiles_500.data'
-inference_files['test_500'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_500.data'
-inference_files['test_1000'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_1000.data'
+inference_files['train_50'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[1]-Tiles_50.data'
+inference_files['test_50'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[2]-Tiles_50.data'
+inference_files['test_500'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[2]-Tiles_500.data'
 
 
 

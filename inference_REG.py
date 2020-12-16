@@ -1,7 +1,7 @@
 import utils
 from torch.utils.data import DataLoader
 import torch
-from nets import PreActResNet50
+from nets import PreActResNet50, ResNet_50
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 import os
@@ -25,10 +25,11 @@ DEVICE = utils.device_gpu_cpu()
 data_path = ''
 
 # Load saved model:
-model = PreActResNet50()
+#model = PreActResNet50()
+model = ResNet_50()
 
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, _, _, TILE_SIZE, _, _, _ = utils.run_data(experiment=args.experiment)
+output_dir, _, _, TILE_SIZE, _, _, _, args.look_for = utils.run_data(experiment=args.experiment)
 
 TILE_SIZE = 128
 if sys.platform == 'linux':
@@ -45,6 +46,7 @@ model.load_state_dict(model_data_loaded['model_state_dict'])
 inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
                                       tiles_per_iter=150,
+                                      target_kind=args.look_for,
                                       folds=args.folds,
                                       print_timing=True,
                                       DX=False,
@@ -70,6 +72,7 @@ with torch.no_grad():
             slide_batch_num = 0
             in_between = False
 
+        data = data.squeeze()
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
 

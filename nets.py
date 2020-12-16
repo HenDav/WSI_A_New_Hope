@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torchvision.models import resnet
 
 '''
 class Flatten(nn.Module):
@@ -122,6 +123,18 @@ class ResNet50_GatedAttention(nn.Module):
     """
 '''
 
+
+class MyGroupNorm(nn.Module):
+    def __init__(self, num_channels):
+        super(MyGroupNorm, self).__init__()
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=num_channels,
+                                 eps=1e-5, affine=True)
+
+    def forward(self, x):
+        x = self.norm(x)
+        return x
+
+
 def PreActResNet50():
     return PreActResNet(PreActBottleneck, [3, 4, 6, 3])
     #return PreActResNet(PreActBottleneck, [3, 4, 4, 2])
@@ -233,5 +246,57 @@ class ResNext_50(nn.Module):
         x = x.squeeze(0)
         out = self.net(x)
         return out
+
+def ResNet_50():
+    print('Using model ResNet_50')
+    model = models.resnet50(pretrained=False)
+    model.fc.out_features = 2
+    return model
+
+
+class ResNet34_GN(nn.Module):
+    def __init__(self):
+        super(ResNet34_GN, self).__init__()
+        self.model_name = 'ResNet34_GN'
+        print('Using model {}'.format(self.model_name))
+        # Replace all BatchNorm layers with GroupNorm:
+
+        self.con_layers = resnet.ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=1000, zero_init_residual=False,
+                         groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                         norm_layer=MyGroupNorm)
+
+        self.linear_layer = nn.Linear(in_features=1000, out_features=2)
+
+    def forward(self, x):
+        x = x.squeeze()
+        x = self.linear_layer(self.con_layers(x))
+
+        return x
+
+
+class ResNet50_GN(nn.Module):
+    def __init__(self):
+        super(ResNet50_GN, self).__init__()
+        self.model_name = 'ResNet50_GN'
+        print('Using model {}'.format(self.model_name))
+        # Replace all BatchNorm layers with GroupNorm:
+
+        self.con_layers = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=1000, zero_init_residual=False,
+                                        groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                                        norm_layer=MyGroupNorm)
+
+        self.linear_layer = nn.Linear(in_features=1000, out_features=2)
+
+    def forward(self, x):
+        x = x.squeeze()
+        x = self.linear_layer(self.con_layers(x))
+
+        return x
+
+
+
+
+
+
 
 

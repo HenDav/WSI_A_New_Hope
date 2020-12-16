@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import PreActResNet50, ResNet50_2, ResNext_50
+from nets import PreActResNet50, ResNet50_2, ResNet_50, ResNet50_GN
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -16,12 +16,15 @@ import sys
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
 parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='LUNG', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
+parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
+
 
 args = parser.parse_args()
 
@@ -88,6 +91,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_text('Train Folds', str(dloader_train.dataset.folds).strip('[]'))
         all_writer.add_text('Test Folds', str(dloader_test.dataset.folds).strip('[]'))
         all_writer.add_text('Transformations', str(dloader_train.dataset.transform))
+        all_writer.add_text('Receptor Type', str(dloader_train.dataset.target_kind))
 
     if print_timing:
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
@@ -193,9 +197,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
-        if e % 5 == 0:
+        if e % 20 == 0:
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
+            # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
         else:
@@ -333,8 +337,7 @@ if __name__ == '__main__':
 
     # Tile size definition:
     TILE_SIZE =128
-    timing = True
-    data_path = '/Users/wasserman/Developer/All data - outer scope'
+    # data_path = '/Users/wasserman/Developer/All data - outer scope'
 
     if sys.platform == 'linux':
         TILE_SIZE = 256
@@ -349,7 +352,8 @@ if __name__ == '__main__':
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
+            TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -359,14 +363,16 @@ if __name__ == '__main__':
     # Get data:
     train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
+                                      target_kind=args.look_for,
                                       test_fold=args.test_fold,
                                       train=True,
-                                      print_timing=timing,
+                                      print_timing=args.time,
                                       transform=args.transformation,
                                       DX=args.dx)
 
     test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
+                                     target_kind=args.look_for,
                                      test_fold=args.test_fold,
                                      train=False,
                                      print_timing=False,
@@ -384,9 +390,10 @@ if __name__ == '__main__':
 
     # Load model
     #model = ResNext_50()
-    model = PreActResNet50()
-    # model = ResNet50_2()
-    utils.run_data(experiment=experiment, model='PreActResNet50()')
+    # model = PreActResNet50()
+    # model = ResNet_50()
+    model = ResNet50_GN()
+    utils.run_data(experiment=experiment, model=model.model_name)
 
 
     epoch = args.epochs
@@ -419,4 +426,4 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     # simple_train(model, train_loader, test_loader)
-    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=timing)
+    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

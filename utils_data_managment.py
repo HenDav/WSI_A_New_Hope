@@ -578,7 +578,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     :return:
     """
 
-
+    '''
     remove_grid = False
     if remove_grid:
         #RanS 8.11.20 - remove grid, not working yet - TODO
@@ -626,7 +626,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
         small_image_fixed = 255 - small_image_inv
         plt.figure()
         plt.imshow(small_image_fixed)
-
+    '''
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     image_array = np.array(image.convert('HSV'))
     # otsu Thresholding:
@@ -640,7 +640,7 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
     #RanS 9.11.20 - test median pixel color to inspect segmentation
     image_array_rgb = np.array(image)
-    pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
+    pixel_vec = image_array_rgb.reshape(-1, 3)[seg_map.reshape(-1) > 0]
     median_color = np.median(pixel_vec, axis=0)
     if all(median_color > 200) and use_otsu3: #median pixel is white-ish
         #take upper threshold
