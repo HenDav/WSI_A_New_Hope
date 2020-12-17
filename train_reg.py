@@ -34,7 +34,7 @@ parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # Ra
 parser.add_argument('--model', default='preact_resnet50', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 args = parser.parse_args()
-
+eps = 1e-7
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -139,10 +139,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         train_acc = 100 * correct_labeling / total
 
-        balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
+        #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
+        balanced_acc_train = 100. * ((correct_pos + eps) / (total_pos_train + eps) + (correct_neg + eps) / (total_neg_train + eps)) / 2
 
-        fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
-        roc_auc_train = auc(fpr_train, tpr_train)
+        roc_auc_train = np.nan
+        if not all(true_labels_train==true_labels_train[0]): #more than one label
+            fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+            roc_auc_train = auc(fpr_train, tpr_train)
 
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
         all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
@@ -164,7 +167,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # RanS 8.12.20, perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            roc_auc_slide = np.nan
+            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
+                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
 
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
@@ -195,31 +200,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     'tiles_per_bag': 1},
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
-        '''
-        if train_loss < best_train_loss:
-            best_train_loss = train_loss
-            best_train_acc = train_acc
-            best_epoch = e
-            best_model = model
-
-    
-    # If epochs ended - Save best model:
-    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-    try:
-        best_model_state_dict = best_model.module.state_dict()
-    except AttributeError:
-        best_model_state_dict = best_model.state_dict()
-    
-    torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model_state_dict,
-                'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc,
-                'tile_size': TILE_SIZE,
-                'tiles_per_bag': 1},
-               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
-    '''
     all_writer.close()
     time_writer.close()
 
@@ -267,7 +247,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             true_neg += predicted[targets.eq(0)].eq(0).sum().item()
 
         acc = 100 * float(num_correct) / total
-        balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+        #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+        balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
 
         # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
@@ -279,35 +260,52 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 writer_string = 'Test (train mode)'
 
         if not args.bootstrap:
-            fpr, tpr, _ = roc_curve(true_labels, scores)
-            roc_auc = auc(fpr, tpr)
+            roc_auc = np.nan
+            if not all(true_labels==true_labels[0]): #more than one label
+                fpr, tpr, _ = roc_curve(true_labels, scores)
+                roc_auc = auc(fpr, tpr)
 
             #RanS 8.12.20, perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
             slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            roc_auc_slide = np.nan
+            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
+                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
         else: #bootstrap, RanS 16.12.20
 
             from sklearn.utils import resample
             # load dataset
             # configure bootstrap
-            n_iterations = scores.shape[0]
-            n_size = int(len(data) * 0.50)
-            # run bootstrap
-            roc_auc_array = np.zeros(n_iterations)
-            slide_roc_auc_array = np.zeros(n_iterations)
-            for ii in range(n_iterations):
-                slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
-                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
-                roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+            n_iterations = 100
 
+            # run bootstrap
+            roc_auc_array = np.empty(n_iterations)
+            slide_roc_auc_array = np.empty(n_iterations)
+            roc_auc_array[:], slide_roc_auc_array[:] = np.nan, np.nan
+            for ii in range(n_iterations):
+                #slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
+                #fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
+                #patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
+
+                #patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
+                slide_names = np.array(slide_names)
+                slide_choice = resample(np.unique(np.array(slide_names)))
+                slide_resampled = np.concatenate([slide_names[slide_names==slide] for slide in slide_choice])
+                scores_resampled = np.concatenate([scores[slide_names == slide] for slide in slide_choice])
+                labels_resampled = np.concatenate([true_labels[slide_names == slide] for slide in slide_choice])
                 patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
+
+                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
+                if not all(labels_resampled == labels_resampled[0]): #more than one label
+                    roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+
                 slide_mean_score_df = patch_df.groupby('slide').mean()
-                slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            roc_auc = np.mean(roc_auc_array)
-            roc_auc_slide = np.mean(slide_roc_auc_array)
-            roc_auc_std = np.std(roc_auc_array)
-            roc_auc_slide_std = np.std(slide_roc_auc_array)
+                if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  # more than one label
+                    slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+            roc_auc = np.nanmean(roc_auc_array)
+            roc_auc_slide = np.nanmean(slide_roc_auc_array)
+            roc_auc_std = np.nanstd(roc_auc_array)
+            roc_auc_slide_std = np.nanstd(slide_roc_auc_array)
             writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
             writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
 
@@ -365,7 +363,8 @@ if __name__ == '__main__':
                                       #transform=args.transformation,
                                       DX=args.dx,
                                       target_kind=args.target,
-                                      transform_type = args.transform_type)
+                                      transform_type = args.transform_type,
+                                      n_patches=args.n_patches_train)
 
     test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
@@ -376,8 +375,7 @@ if __name__ == '__main__':
                                      transform_type='none',
                                      DX=args.dx,
                                      target_kind=args.target,
-                                     n_patches_test=args.n_patches_test,
-                                     n_patches_train=args.n_patches_train)
+                                     n_patches=args.n_patches_test)
 
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)

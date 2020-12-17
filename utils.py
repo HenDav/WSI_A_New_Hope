@@ -1056,8 +1056,9 @@ class WSI_REGdataset(Dataset):
                  print_timing: bool = False,
                  #transform : bool = False,
                  DX : bool = False,
-                 n_patches_test: int = 1,
-                 n_patches_train: int = 50,
+                 #n_patches_test: int = 1,
+                 #n_patches_train: int = 50,
+                 n_patches: int = 50,
                  transform_type: str = 'flip'):
 
         #define data root
@@ -1095,7 +1096,7 @@ class WSI_REGdataset(Dataset):
         #RanS 10.12.20
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma'] #temp cancelled RanS 17.12.20
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
@@ -1194,7 +1195,8 @@ class WSI_REGdataset(Dataset):
             self.transform = final_transform
 
         #self.factor = 10 if self.train else 1
-        self.factor = n_patches_train if self.train else n_patches_test  # RanS 7.12.20
+        #self.factor = n_patches_train if self.train else n_patches_test  # RanS 7.12.20
+        self.factor = n_patches  # RanS 17.12.20
         self.real_length = int(self.__len__() / self.factor)
 
 

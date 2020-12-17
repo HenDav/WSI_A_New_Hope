@@ -308,6 +308,7 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
     META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['LUNG'] = 'LISTA COMPLETA pdl1 - Gil - V3.xlsx'
+    META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
 
     data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     new_file = False if os.path.isfile(data_file) else True
@@ -316,6 +317,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
     # meta_data_DF = pd.read_excel(os.path.join(root_dir, 'TCGA_BRCA.xlsx'))
     if DataSet == 'LUNG':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
+    elif DataSet == 'CARMEL':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Scanned_SlideID'].astype(str) #RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -353,10 +356,11 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
         # Create a dictionary to the files and id's:
         if DataSet == 'TCGA':
             id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
-        elif DataSet == 'HEROHE':
+        else:
+        #elif DataSet == 'HEROHE':
             id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
-        elif DataSet == 'LUNG':
-            id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
+        #elif DataSet == 'LUNG':
+            #id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
 
         # id_dict['id'] = root.split('/')[-1]
         id_dict['id'] = DataSet
