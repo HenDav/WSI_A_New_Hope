@@ -298,6 +298,7 @@ class ResNet50_GN(nn.Module):
 class net_with_3FC(nn.Module):
     def __init__(self, pretrained_model, reinit_last_layer=True):
         super(net_with_3FC, self).__init__()
+        self.model_name = 'net_with_3FC'
         self.pretrained = pretrained_model
         num_ftrs = self.pretrained.fc.in_features
         # RanS 18.11.20, change momentum to 0.5
@@ -346,4 +347,17 @@ class net_with_3FC(nn.Module):
         x = F.relu(self.fc1(self.dropout(x)))
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
+        return x
+
+
+#RanS 17.12.20
+class resnet50_with_3FC(nn.Module):
+    def __init__(self, pretrained=True):
+        super(resnet50_with_3FC, self).__init__()
+        self.model_name = 'resnet50_with_3FC'
+        pretrained_model = models.resnet50(pretrained=pretrained)
+        self.model = net_with_3FC(pretrained_model=pretrained_model, reinit_last_layer=False)
+
+    def forward(self, x):
+        x = self.model(x)
         return x

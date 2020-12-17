@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import PreActResNet50, ResNet50_2, ResNext_50, ResNet50_GN
+from nets import PreActResNet50, ResNet50_2, ResNext_50, ResNet50_GN, resnet50_with_3FC
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -417,10 +417,7 @@ if __name__ == '__main__':
     # Load model
     # RanS 14.12.20
     if args.model == 'resnet50_3FC':
-        from torchvision.models import resnet50
-        from nets import net_with_3FC
-        model = resnet50(pretrained=True)
-        model = net_with_3FC(pretrained_model=model, reinit_last_layer=False)
+        model = resnet50_with_3FC()
     elif args.model == 'preact_resnet50':
         #model = ResNext_50()
         model = PreActResNet50()
