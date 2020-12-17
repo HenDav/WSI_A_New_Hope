@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import PreActResNet50, ResNet50_2, ResNext_50
+from nets import PreActResNet50, ResNet50_2, ResNext_50, ResNet50_GN
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -32,7 +32,7 @@ parser.add_argument('--balanced_sampling', action='store_true', help='balanced_s
 parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch') # RanS 8.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-parser.add_argument('--model', default='preact_resnet50', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC') # RanS 15.12.20
+parser.add_argument('--model', default='resnet50_gn', type=str, help='preact_resnet50 / resnet50 / resnet50_3FC / resnet50_gn') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 args = parser.parse_args()
 eps = 1e-7
@@ -425,10 +425,11 @@ if __name__ == '__main__':
         #model = ResNext_50()
         model = PreActResNet50()
         # model = ResNet50_2()
+    elif args.model == 'resnet50_gn':
+        model = ResNet50_GN()
     else:
         print('model not defined!')
 
-    model = ResNet50_GN()
     utils.run_data(experiment=experiment, model=model.model_name)
 
     epoch = args.epochs
