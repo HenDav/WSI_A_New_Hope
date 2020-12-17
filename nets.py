@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import resnet
 
 '''
 class Flatten(nn.Module):
@@ -293,6 +292,8 @@ class ResNet50_GN(nn.Module):
 
         return x
 
+
+
 #RanS 14.12.20
 class net_with_3FC(nn.Module):
     def __init__(self, pretrained_model, reinit_last_layer=True):
@@ -346,10 +347,3 @@ class net_with_3FC(nn.Module):
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
         return x
-
-
-
-
-
-
-

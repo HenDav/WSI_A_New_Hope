@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention
+from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention_MultiBag_2, ResNet50_GN_GatedAttention_MultiBag_1
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -18,17 +18,18 @@ import torchvision.transforms as transforms
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
 parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
+parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-
+parser.add_argument('-nb', '--num_bags', type=int, default=2, help='Number of bags in each minibatch')
+parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=5, help='Tiles Per Bag')
 
 args = parser.parse_args()
 
@@ -108,6 +109,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     if print_timing:
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
+    print()
+    print('Training will be conducted with {} bags per MiniBatch'.format(num_bags))
     print('Start Training...')
     best_train_loss = 1e5
     previous_epoch_loss = 1e5
@@ -129,14 +132,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # slide_random_list = []
 
         # The following 3 lines initialize variables to compute AUC for train dataset.
+        total_train, correct_pos_train, correct_neg_train = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
-        true_pos_train, true_neg_train = 0, 0
-        targets_train, scores_train = np.zeros(len(dloader_train), dtype=np.int8), np.zeros(len(dloader_train))
+        targets_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
 
         print('Epoch {}:'.format(e))
         model.train()
-        model.infer = False
         for batch_idx, (data, target, time_list, image_file, basic_tiles) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
             '''
@@ -156,38 +158,64 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             if e == 0:
                 data_dict = { 'File Name':  image_file,
-                              'Target': target.cpu().detach().item()
+                              'Target': target.cpu().detach().numpy()
                               }
                 data_list.append(data_dict)
 
+            '''this_num_bags, _, _, _, _ = Data.shape
+            data = torch.reshape(Data, (this_num_bags * TILES_PER_BAG, 3, TILE_SIZE, TILE_SIZE))'''
+            target = target.squeeze(1)
             data, target = data.to(DEVICE), target.to(DEVICE)
+
+            optimizer.zero_grad()
             model.to(DEVICE)
 
-            prob, label, _ = model(data)
+            scores = model(data)
 
-            targets_train[batch_idx] = target.cpu().detach().item()
-            total_pos_train += target.eq(1).item()
-            total_neg_train += target.eq(0).item()
+            loss = criterion(scores, target)
+            #print(scores.shape, loss.detach().cpu().item())
+            loss.backward()
+            optimizer.step()
 
-            if target == 1 and label == 1:
-                true_pos_train += 1
-            elif target == 0 and label == 0:
-                true_neg_train += 1
+            train_loss += loss.item()
+            _, predicted = scores.max(1)
+            scores_train = np.concatenate((scores_train, scores[:, 1].cpu().detach().numpy()))
+            targets_train = np.concatenate((targets_train, target.cpu().detach().numpy()))
 
-            scores_train[batch_idx] = prob.cpu().detach().numpy()[0][0]
+            total_train += target.size(0)
+            total_pos_train += target.eq(1).sum().item()
+            total_neg_train += target.eq(0).sum().item()
+            correct_labeling += predicted.eq(target).sum().item()
+            correct_pos_train += predicted[target.eq(1)].eq(1).sum().item()
+            correct_neg_train += predicted[target.eq(0)].eq(0).sum().item()
 
+            '''
+            targets_train[batch_idx * num_bags : (batch_idx + 1) * this_num_bags] = target.cpu().detach().numpy().reshape(2)
+            total_pos_train += target.eq(1).numpy().sum()
+            total_neg_train += target.eq(0).numpy().sum()
+
+            true_labels = target.eq(label)
+            for label_idx, correctness in enumerate(true_labels):
+                if correctness == True:
+                    if label[label_idx] == 1:
+                        true_pos_train += 1
+                    elif label[label_idx] == 0:
+                        true_neg_train += 1
+
+            scores_train[batch_idx * num_bags : (batch_idx + 1) * num_bags] = prob.cpu().detach().numpy().reshape(2)
+            '''
+            '''
             prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
             neg_log_likelihood = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
             loss = neg_log_likelihood
             train_loss += loss.item()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
+            '''
 
             # Calculate training accuracy
-            correct_labeling += label.eq(target).cpu().detach().int().item()
+            #correct_labeling += label.eq(target).cpu().detach().int().item()
+
+            #all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
+            all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
             train_time = time.time() - train_start
             if print_timing:
@@ -212,9 +240,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         if print_timing:
             time_writer.add_scalar('Time/Full Epoch [min]', time_epoch, e)
 
-        train_acc = 100 * correct_labeling / len(dloader_train)
+        train_acc = 100 * correct_labeling / len(dloader_train.dataset)
 
-        balanced_acc_train = 100 * (true_pos_train / total_pos_train + true_neg_train / total_neg_train) / 2
+        balanced_acc_train = 100 * (correct_pos_train / total_pos_train + correct_neg_train / total_neg_train) / 2
 
         fpr_train, tpr_train, _ = roc_curve(targets_train, scores_train)
         roc_auc_train = auc(fpr_train, tpr_train)
@@ -230,7 +258,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                       previous_epoch_loss - train_loss,
                       train_acc,
                       int(correct_labeling),
-                      len(train_loader),
+                      len(train_loader.dataset),
                       time_epoch))
 
         previous_epoch_loss = train_loss
@@ -251,8 +279,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                                        norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
                                        dataformats='NCHW')
 
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=True)
-            ### acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=False)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e)
+
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
         else:
@@ -272,7 +300,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         torch.save({'epoch': e,
                     'model_state_dict': model_state_dict,
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.data[0],
+                    'loss': loss.item(),
                     'acc_test': acc_test,
                     'bacc_test': bacc_test,
                     'tile_size': TILE_SIZE,
@@ -308,26 +336,19 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int, eval_mode: bool = False):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int):
+
+
+
+    test_loss, total = 0, 0
+
     num_correct = 0
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
-    targets_test, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
+    targets_test, scores_test = np.zeros(0), np.zeros(0)  #  targets_test, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
 
-    if eval_mode:
-        model.eval()
-        '''
-        for module in model.modules():
-            if isinstance(module, nn.BatchNorm2d):
-                module.track_running_stats = False
-        '''
-    else:
-        model.train()
-        '''
-        for module in model.modules():
-            if isinstance(module, nn.BatchNorm2d):
-                module.track_running_stats = False
-        '''
+    model.eval()
+
     with torch.no_grad():
         for idx, (data, target, time_list, _, basic_tiles) in enumerate(data_loader):
             if epoch % 20 == 0 and args.images:
@@ -338,44 +359,37 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
                 image_writer.add_images('Test Images/After Transforms (De-Normalized)',
                                      norm_img(data.squeeze().detach().cpu().numpy()), global_step=epoch, dataformats='NCHW')
 
+            target = target.squeeze(1)
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
-            prob, label, _ = model(data)
+            scores = model(data)
+            loss = criterion(scores, target)
 
-            targets_test[idx] = target.cpu().detach().item()
-            total_pos += target.eq(1).item()
-            total_neg += target.eq(0).item()
+            test_loss += loss.item()
+            _, predicted = scores.max(1)
+            scores_test = np.concatenate((scores_test, scores[:, 1].cpu().detach().numpy()))
+            targets_test = np.concatenate((targets_test, target.cpu().detach().numpy()))
 
-            if target == 1 and label == 1:
-                true_pos += 1
-            elif target == 0 and label == 0:
-                true_neg += 1
+            total += target.size(0)
+            num_correct += predicted.eq(target).sum().item()
+            total_pos += target.eq(1).sum().item()
+            total_neg += target.eq(0).sum().item()
+            true_pos += predicted[target.eq(1)].eq(1).sum().item()
+            true_neg += predicted[target.eq(0)].eq(0).sum().item()
 
-            num_correct += label.eq(target).cpu().detach().int().item()
-            scores[idx] = prob.cpu().detach().item()
-
-        acc = 100 * float(num_correct) / len(data_loader)
+        acc = 100 * float(num_correct) / total
         balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
 
-        fpr, tpr, _ = roc_curve(targets_test, scores)
+        fpr, tpr, _ = roc_curve(targets_test, scores_test)
         roc_auc = auc(fpr, tpr)
 
-
-        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
-        if data_loader.dataset.train:
-            writer_string = 'Train_2'
-        else:
-            if eval_mode:
-                writer_string = 'Test (eval mode)'
-            else:
-                writer_string = 'Test (train mode)'
-
+        writer_string = 'Test (eval mode)'
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
+        print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, num_correct, len(data_loader.dataset)))
 
     model.train()
     '''
@@ -398,12 +412,12 @@ if __name__ == '__main__':
 
     # Tile size definition:
     TILE_SIZE =128
-    TILES_PER_BAG = 10
-    # data_path = '/Users/wasserman/Developer/All data - outer scope'
+    TILES_PER_BAG = args.tiles_per_bag
+    num_bags = args.num_bags
 
     if sys.platform == 'linux':
         TILE_SIZE = 256
-        TILES_PER_BAG = 50
+        TILES_PER_BAG = args.tiles_per_bag
         # data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
@@ -412,65 +426,41 @@ if __name__ == '__main__':
                                                      transformations=args.transformation,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=TILES_PER_BAG,
+                                                     num_bags=num_bags,
                                                      DX=args.dx,
                                                      DataSet=args.dataset,
-                                                     Receptor=args.look_for,
-                                                     MultiSlide=args.multi_slides)
+                                                     Receptor=args.look_for)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx,\
-            args.dataset, args.look_for, args.multi_slides = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation,TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
     cpu_available = utils.get_cpu()
 
     # Get data:
-    if not args.multi_slides:
-        train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
-                                          tile_size=TILE_SIZE,
-                                          bag_size=TILES_PER_BAG,
-                                          target_kind=args.look_for,
-                                          test_fold=args.test_fold,
-                                          train=True,
-                                          print_timing=args.time,
-                                          transform=args.transformation,
-                                          DX=args.dx,
-                                          get_images=args.images)
+    train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                      tile_size=TILE_SIZE,
+                                      bag_size=TILES_PER_BAG,
+                                      target_kind=args.look_for,
+                                      test_fold=args.test_fold,
+                                      train=True,
+                                      print_timing=args.time,
+                                      transform=args.transformation,
+                                      DX=args.dx,
+                                      get_images=args.images)
 
-        test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
-                                         tile_size=TILE_SIZE,
-                                         bag_size=TILES_PER_BAG,
-                                         target_kind=args.look_for,
-                                         test_fold=args.test_fold,
-                                         train=False,
-                                         print_timing=False,
-                                         transform=False,
-                                         DX=args.dx,
-                                         get_images=args.images)
-    else:
-        train_dset = utils.WSI_MIL3_dataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            bag_size=TILES_PER_BAG,
-                                            target_kind=args.look_for,
-                                            TPS=10,
-                                            test_fold=args.test_fold,
-                                            train=True,
-                                            print_timing=args.time,
-                                            transform=args.transformation,
-                                            DX=args.dx)
+    test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+                                     tile_size=TILE_SIZE,
+                                     bag_size=TILES_PER_BAG,
+                                     target_kind=args.look_for,
+                                     test_fold=args.test_fold,
+                                     train=False,
+                                     print_timing=False,
+                                     transform=False,
+                                     DX=args.dx,
+                                     get_images=args.images)
 
-        test_dset = utils.WSI_MIL3_dataset(DataSet=args.dataset,
-                                           tile_size=TILE_SIZE,
-                                           bag_size=TILES_PER_BAG,
-                                           target_kind=args.look_for,
-                                           TPS=10,
-                                           test_fold=args.test_fold,
-                                           train=False,
-                                           print_timing=False,
-                                           transform=False,
-                                           DX=args.dx)
-
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
@@ -478,9 +468,8 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    print()
-    model = ResNet50_GN_GatedAttention()
-    print()
+    #model = ResNet34_GN_GatedAttention()
+    model = ResNet50_GN_GatedAttention_MultiBag_2(tiles=TILES_PER_BAG)
 
     '''
     counter = 0
@@ -525,5 +514,6 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
+    criterion = nn.CrossEntropyLoss()
     # simple_train(model, train_loader, test_loader)
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

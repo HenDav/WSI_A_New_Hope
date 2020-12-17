@@ -23,6 +23,7 @@ parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue t
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='LUNG', help='DataSet to use')
+parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
@@ -52,6 +53,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_text('Train Folds', str(dloader_train.dataset.folds).strip('[]'))
         all_writer.add_text('Test Folds', str(dloader_test.dataset.folds).strip('[]'))
         all_writer.add_text('Transformations', str(dloader_train.dataset.transform))
+        all_writer.add_text('Receptor Type', str(dloader_train.dataset.target_kind))
 
     if print_timing:
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
@@ -163,7 +165,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
-        if (e % 5 == 0) or args.model=='resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
+        if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # RanS 8.12.20, perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
@@ -173,7 +175,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
 
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            #acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False) #cancelled RanS 8.12.20
+            # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
         else:
@@ -200,8 +202,34 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     'tiles_per_bag': 1},
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
+        '''
+        if train_loss < best_train_loss:
+            best_train_loss = train_loss
+            best_train_acc = train_acc
+            best_epoch = e
+            best_model = model
+
+    
+    # If epochs ended - Save best model:
+    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
+        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+
+    try:
+        best_model_state_dict = best_model.module.state_dict()
+    except AttributeError:
+        best_model_state_dict = best_model.state_dict()
+    
+    torch.save({'epoch': best_epoch,
+                'model_state_dict': best_model_state_dict,
+                'best_train_loss': best_train_loss,
+                'best_train_acc': best_train_acc,
+                'tile_size': TILE_SIZE,
+                'tiles_per_bag': 1},
+               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
+    '''
     all_writer.close()
     time_writer.close()
+
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
@@ -346,8 +374,8 @@ if __name__ == '__main__':
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
-        #args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
-        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
+            TILES_PER_BAG, args.dx, args.dataset, args.target = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -357,24 +385,24 @@ if __name__ == '__main__':
     # Get data:
     train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
+                                      target_kind=args.target,
                                       test_fold=args.test_fold,
                                       train=True,
-                                      print_timing=timing,
+                                      print_timing=args.time,
                                       #transform=args.transformation,
                                       DX=args.dx,
-                                      target_kind=args.target,
-                                      transform_type = args.transform_type,
+                                      transform_type=args.transform_type,
                                       n_patches=args.n_patches_train)
 
     test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
+                                     target_kind=args.target,
                                      test_fold=args.test_fold,
                                      train=False,
                                      print_timing=False,
                                      #transform=False,
                                      transform_type='none',
                                      DX=args.dx,
-                                     target_kind=args.target,
                                      n_patches=args.n_patches_test)
 
 
@@ -399,8 +427,9 @@ if __name__ == '__main__':
         # model = ResNet50_2()
     else:
         print('model not defined!')
-    utils.run_data(experiment=experiment, model='PreActResNet50()')
 
+    model = ResNet50_GN()
+    utils.run_data(experiment=experiment, model=model.model_name)
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -419,6 +448,7 @@ if __name__ == '__main__':
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    #optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
@@ -432,4 +462,4 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     # simple_train(model, train_loader, test_loader)
-    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=timing)
+    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

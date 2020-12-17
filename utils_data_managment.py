@@ -210,9 +210,11 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                 tile_nums.append(0)
                 total_tiles.append(-1)
                 continue
+
             converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
             basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
             total_tiles.append((len(basic_grid)))
+
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
             #legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
             legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png'),
@@ -225,6 +227,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             # Save the grid to file:
             if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
                 os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
+
             #file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
             file_name = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
             with open(file_name, 'wb') as filehandle:
@@ -492,7 +495,7 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             try:
                 try:
                     thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-                except: #RanS 2.12.20, out of memory on my laptop
+                except:  #RanS 2.12.20, out of memory on my laptop
                     thumb = slide.get_thumbnail((width / (8*objective_pwr / magnification), height / (8*objective_pwr / magnification)))
             except openslide.lowlevel.OpenSlideError as err:
                 error_dict = {}

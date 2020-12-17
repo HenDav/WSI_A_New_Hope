@@ -31,8 +31,8 @@ STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330
        }
 
 
-#def chunks(list: List, length: int):
-def chunks(list, length): #RanS 9.12.20
+
+def chunks(list: List, length: int):
     new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
     return new_list
 
@@ -47,7 +47,6 @@ def make_dir(dirname):
 
 
 def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
-#def _choose_data(file_name, how_many, magnification=20, tile_size=256, resize=False, print_timing=False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -86,7 +85,6 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
 
 
 def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
-#def _choose_data_2(grid_file, image_file, how_many, magnification=20, tile_size=256, print_timing=False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -117,7 +115,6 @@ def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification
 
 
 def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
-#def _get_tiles_2(file_name, locations, tile_sz, print_timing=False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -158,7 +155,6 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
 
 def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
-#def _choose_data_3(grid_file, image_file, how_many, magnification = 20, tile_size = 256,  print_timing = False): #RanS 9.12.20
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -189,7 +185,6 @@ def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification
 
 
 def _get_tiles_3(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
-#def _get_tiles_3(file_name, locations, tile_sz, print_timing=False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -230,7 +225,6 @@ def _get_tiles_3(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
 
 def _get_tile(file_name: str, locations: Tuple, tile_sz: int, print_timing: bool = False):
-#def _get_tile(file_name, locations, tile_sz, print_timing = False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -258,7 +252,6 @@ def _get_tile(file_name: str, locations: Tuple, tile_sz: int, print_timing: bool
 
 
 def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
-#def _get_grid_list(file_name, magnification = 20, tile_size = 256): #RanS 9.12.20
     """
     This function returns the grid location of tile for a specific slide.
     :param file_name:
@@ -279,7 +272,6 @@ def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256
 
 
 def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int, print_timing: bool = False):
-#def _get_tiles(file_name, locations, tile_sz, resize_to, print_timing = False): #RanS 9.12.20
     """
     This function returns an array of tiles
     :param file_name:
@@ -316,7 +308,6 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: 
 
 
 def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
-#def _get_slide(path, data_format = 'TCGA'):
     """
     This function returns an OpenSlide object from the file within the directory
     :param path:
@@ -342,7 +333,6 @@ def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
 
 
 def _get_tcga_id_list(path: str = 'tcga-data'):
-#def _get_tcga_id_list(path = 'tcga-data'): #RanS 9.12.20
     """
     This function returns the id of all images in the TCGA data directory given by 'path'
     :return:
@@ -379,8 +369,9 @@ def get_cpu():
 
 
 def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none',#transformations: bool = False,
-             tile_size: int = 256, tiles_per_bag: int = 50, DX: bool = False, DataSet: str = 'TCGA',
-             epoch: int = None, model: str = None, transformation_string: str = None):
+             tile_size: int = 256, tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
+             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
+             MultiSlide: bool = False):
     """
     This function writes the run data to file
     :param experiment:
@@ -418,9 +409,12 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
                     'Transformations': transform_type,
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
+                    'MultiSlide Per Bag': MultiSlide,
+                    'No. of Bags': num_bags,
                     'Location': location,
                     'DX': DX,
                     'DataSet': DataSet,
+                    'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,
                     'Transformation String': 'None'
@@ -458,8 +452,10 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
         DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
+        Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
+        MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, DX, DataSet
+        return location, test_fold, transformations, tile_size, tiles_per_bag, DX, DataSet, Receptor, MultiSlide
 
 
 def get_concat(im1, im2):
@@ -467,6 +463,64 @@ def get_concat(im1, im2):
     dst.paste(im1, (0, 0))
     dst.paste(im2, (im1.width, 0))
     return dst
+
+
+class Cutout(object):
+    """Randomly mask out one or more patches from an image.
+    Args:
+        n_holes (int): Number of patches to cut out of each image.
+        length (int): The length (in pixels) of each square patch.
+    """
+    def __init__(self, n_holes, length):
+        self.n_holes = n_holes
+        self.length = length
+
+    def __call__(self, img):
+        """
+        Args:
+            img (Tensor): Tensor image of size (C, H, W).
+        Returns:
+            Tensor: Image with n_holes of dimension length x length cut out of it.
+        """
+        h = img.size(1)
+        w = img.size(2)
+
+        mask = np.ones((h, w), np.float32)
+
+        for n in range(self.n_holes):
+            y = torch.randint(low=0, high=h, size=(1,)).numpy()[0]
+            x = torch.randint(low=0, high=w, size=(1,)).numpy()[0]
+            '''
+            # Numpy random numbers will produce the same numbers in every epoch - I changed the random number producer
+            # to torch.random to overcome this issue. 
+            y = np.random.randint(h)            
+            x = np.random.randint(w)
+            '''
+
+
+            y1 = np.clip(y - self.length // 2, 0, h)
+            y2 = np.clip(y + self.length // 2, 0, h)
+            x1 = np.clip(x - self.length // 2, 0, w)
+            x2 = np.clip(x + self.length // 2, 0, w)
+
+            mask[y1: y2, x1: x2] = 0.
+
+        mask = torch.from_numpy(mask)
+        mask = mask.expand_as(img)
+        img = img * mask
+
+        return img
+
+
+class MyRotation:
+    """Rotate by one of the given angles."""
+
+    def __init__(self, angles):
+        self.angles = angles
+
+    def __call__(self, x):
+        angle = random.choice(self.angles)
+        return transforms.functional.rotate(x, angle)
 
 
 class WSI_MILdataset(Dataset):
@@ -480,22 +534,33 @@ class WSI_MILdataset(Dataset):
                  train: bool = True,
                  print_timing: bool = False,
                  transform : bool = False,
-                 DX : bool = False):
+                 DX : bool = False,
+                 get_images: bool = False):
 
         self.ROOT_PATH = 'All Data'
-
-        if target_kind not in ['ER', 'PR', 'Her2', 'PDL1']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if DataSet == 'HEROHE':
-            target_kind = 'Her2'
-            #test_fold = 2
+        if DataSet == 'LUNG':
+            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
         meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+
+
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
+
         if self.DataSet is not 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+        if self.DataSet == 'HEROHE':
+            target_kind = 'Her2'
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
@@ -508,6 +573,7 @@ class WSI_MILdataset(Dataset):
         self.print_time = print_timing
         self.transform = transform
         self.DX = DX
+        self.get_images = get_images
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -583,7 +649,7 @@ class WSI_MILdataset(Dataset):
                 transforms.Compose([ MyRotation(angles=[0, 90, 180, 270]),
                                      transforms.RandomVerticalFlip(),
                                      transforms.ToTensor(),
-                                     Cutout(n_holes=1, length=100),
+                                     #Cutout(n_holes=1, length=100),
                                      transforms.Normalize(
                                          mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
                                          std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
@@ -606,9 +672,10 @@ class WSI_MILdataset(Dataset):
 
 
 
-        print('Initiation of WSI(MIL) {} {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+        print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
                       self.DataSet,
+                      self.target_kind,
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
@@ -640,7 +707,7 @@ class WSI_MILdataset(Dataset):
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
-        # The following section is written for tiles in PIL format
+        # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
         '''
@@ -661,7 +728,6 @@ class WSI_MILdataset(Dataset):
             transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
 
         start_aug = time.time()
-        ### trans = transforms.ToPILImage()
         for i in range(self.bag_size):
             X[i] = transform(tiles[i])
             '''
@@ -670,6 +736,14 @@ class WSI_MILdataset(Dataset):
             time.sleep(3)
             '''
 
+        if self.get_images:
+            images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+            trans = transforms.ToTensor()
+            for i in range(self.bag_size):
+                images[i] = trans(tiles[i])
+        else:
+            images = 0
+
         aug_time = (time.time() - start_aug) / self.bag_size
         total_time = time.time() - start_getitem
         if self.print_time:
@@ -677,8 +751,7 @@ class WSI_MILdataset(Dataset):
         else:
             time_list = [0]
 
-        trans = transforms.ToTensor()
-        return X, label, time_list, self.image_file_names[idx], trans(tiles[0])
+        return X, label, time_list, self.image_file_names[idx], images
 
 
 '''
@@ -855,7 +928,6 @@ def _save_tile_list_to_file(slide_name: str, tile_list: list, path: str = 'tcga-
 '''
 
 
-
 class Infer_WSI_MILdataset(Dataset):
     def __init__(self,
                  DataSet: str = 'HEROHE',
@@ -867,18 +939,27 @@ class Infer_WSI_MILdataset(Dataset):
                  DX: bool = False,
                  num_tiles: int = 500):
 
-        if target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if DataSet == 'HEROHE':
-            target_kind = 'Her2'
-
         self.ROOT_PATH = 'All Data'
+        if DataSet == 'LUNG':
+            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+
         meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
         if self.DataSet is not 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+        if self.DataSet == 'HEROHE':
+            target_kind = 'Her2'
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         self.tiles_per_iter = tiles_per_iter
@@ -983,8 +1064,9 @@ class Infer_WSI_MILdataset(Dataset):
         print("Normalization Values are:")
         print(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2], STD['Ron'][0], STD['Ron'][1], STD['Ron'][2])
         print(
-            'Initiation of WSI INFERENCE for {} DataSet of folds {} is Complete. {} Slides, Working on Tiles of size {}^2. {} Tiles per slide, {} tiles per iteration, {} iterations to complete full inference'
+            'Initiation of WSI INFERENCE for {} DataSet and {} of folds {} is Complete. {} Slides, Working on Tiles of size {}^2. {} Tiles per slide, {} tiles per iteration, {} iterations to complete full inference'
             .format(self.DataSet,
+                    self.target_kind,
                     str(self.folds),
                     len(self.image_file_names),
                     self.tile_size,
@@ -1043,8 +1125,9 @@ class Infer_WSI_MILdataset(Dataset):
         else:
             last_batch = False
 
-        print('Slide: {}, tiles: {}'.format(self.current_file, self.slide_grids[idx]))
+        #print('Slide: {}, tiles: {}'.format(self.current_file, self.slide_grids[idx]))
         return X, label, time_list, last_batch, self.initial_num_patches
+
 
 class WSI_REGdataset(Dataset):
     def __init__(self,
@@ -1061,7 +1144,7 @@ class WSI_REGdataset(Dataset):
                  n_patches: int = 50,
                  transform_type: str = 'flip'):
 
-        #define data root
+        # Define data root:
         if sys.platform == 'linux': #GIPdeep
             if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
                 self.ROOT_PATH = r'/home/womer/project/All Data'
@@ -1078,7 +1161,8 @@ class WSI_REGdataset(Dataset):
             if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
                 self.ROOT_PATH = r'All Data'
             elif DataSet == 'LUNG':
-                pass #TODO omer, add your lung path if needed
+                self.ROOT_PATH = 'All Data/LUNG'
+                # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
 
         if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
             raise ValueError('target should be one of: PDL1, EGFR')
@@ -1169,8 +1253,9 @@ class WSI_REGdataset(Dataset):
         if transform_type != 'none' and self.train:
             # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: Consider transforms.RandomHorizontalFlip()
             # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-            if transform_type=='flip':
+            if transform_type == 'flip':
                 self.scale_factor = 0
                 transform1 = \
                     transforms.Compose([ transforms.RandomVerticalFlip(),
@@ -1200,9 +1285,10 @@ class WSI_REGdataset(Dataset):
         self.real_length = int(self.__len__() / self.factor)
 
 
-        print('Initiation of REG {} {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+        print('Initiation of REG {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
                       self.DataSet,
+                      self.target_kind,
                       self.real_length,
                       self.tile_size,
                       self.bag_size,
@@ -1278,74 +1364,17 @@ class WSI_REGdataset(Dataset):
         slide_name = self.image_file_names[idx] #RanS 8.12.20
         return X, label, time_list, slide_name
 
-class Cutout(object):
-    """Randomly mask out one or more patches from an image.
-    Args:
-        n_holes (int): Number of patches to cut out of each image.
-        length (int): The length (in pixels) of each square patch.
-    """
-    def __init__(self, n_holes, length):
-        self.n_holes = n_holes
-        self.length = length
-
-    def __call__(self, img):
-        """
-        Args:
-            img (Tensor): Tensor image of size (C, H, W).
-        Returns:
-            Tensor: Image with n_holes of dimension length x length cut out of it.
-        """
-        h = img.size(1)
-        w = img.size(2)
-
-        mask = np.ones((h, w), np.float32)
-
-        for n in range(self.n_holes):
-            y = torch.randint(low=0, high=h, size=(1,)).numpy()[0]
-            x = torch.randint(low=0, high=w, size=(1,)).numpy()[0]
-            '''
-            # Numpy random numbers will produce the same numbers in every epoch - I changed the random number producer
-            # to torch.random to overcome this issue. 
-            y = np.random.randint(h)            
-            x = np.random.randint(w)
-            '''
-
-
-            y1 = np.clip(y - self.length // 2, 0, h)
-            y2 = np.clip(y + self.length // 2, 0, h)
-            x1 = np.clip(x - self.length // 2, 0, w)
-            x2 = np.clip(x + self.length // 2, 0, w)
-
-            mask[y1: y2, x1: x2] = 0.
-
-        mask = torch.from_numpy(mask)
-        mask = mask.expand_as(img)
-        img = img * mask
-
-        return img
-
-
-class MyRotation:
-    """Rotate by one of the given angles."""
-
-    def __init__(self, angles):
-        self.angles = angles
-
-    def __call__(self, x):
-        angle = random.choice(self.angles)
-        return transforms.functional.rotate(x, angle)
-
 
 class WSI_MIL2_dataset(Dataset):
     """
     This DataSet class is used for MIL paradigm training.
     This class uses patches from different slides (corresponding to the same label) is a bag.
+    Half of the tiles will be taken from the main slide and all other tiles will be taken evenly from other slides
     """
     def __init__(self,
-                 #data_path: str = '/Users/wasserman/Developer/All data - outer scope',
                  DataSet: str = 'TCGA',
                  tile_size: int = 256,
-                 bag_size: int = 50,
+                 bag_size: int = 60,
                  TPS: int = 10, # Tiles Per Slide
                  target_kind: str = 'ER',
                  test_fold: int = 1,
@@ -1354,19 +1383,27 @@ class WSI_MIL2_dataset(Dataset):
                  transform : bool = False,
                  DX : bool = False):
 
-        if target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if DataSet == 'HEROHE':
-            target_kind = 'Her2'
-            #test_fold = 2
-
         self.ROOT_PATH = 'All Data'
+        if DataSet == 'LUNG':
+            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+
         meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
         if self.DataSet is not 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+        if self.DataSet == 'HEROHE':
+            target_kind = 'Her2'
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
@@ -1382,9 +1419,251 @@ class WSI_MIL2_dataset(Dataset):
 
         # In test mode we want all tiles to be from the same slide:
         if self.train:
+            self.TPS_original = int(self.bag_size / 2) # Half of bag will consist tiles from main slide
+            self.TPS_others = TPS
+        else:
+            self.TPS_original = self.bag_size
+
+        self.slides_in_bag = int((bag_size - self.TPS_original) / TPS)
+
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+
+        # Also remove slides without grid data:
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
+        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
+
+        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+        if self.train:
+            folds = list(range(1, 7))
+            folds.remove(self.test_fold)
+        else:
+            folds = [self.test_fold]
+        self.folds = folds
+
+        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
+        all_image_file_names = list(self.meta_data_DF['file'])
+        all_image_path_names = list(self.meta_data_DF['id'])
+        all_in_fold = list(self.meta_data_DF['test fold idx'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+        if self.DataSet is not 'TCGA':
+            self.DX = False
+        if self.DX:
+            all_is_DX_cut = list(self.meta_data_DF['DX'])
+
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+        self.magnification = []
+        self.POS_slides, self.NEG_slides = [], []
+
+
+        for i, index in enumerate(valid_slide_indices):
+            if all_targets[index] == 'Positive':
+                self.POS_slides.append(i)
+            else:
+                self.NEG_slides.append(i)
+
+            if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                self.image_file_names.append(all_image_file_names[index])
+                self.image_path_names.append(all_image_path_names[index])
+                self.in_fold.append(all_in_fold[index])
+                self.tissue_tiles.append(all_tissue_tiles[index])
+                self.target.append(all_targets[index])
+                self.magnification.append(all_magnifications[index])
+
+
+        # Setting the transformation:
+        '''
+        mean = {}
+        std = {}
+
+        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
+        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
+
+        mean['HEROHE'] = [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255]
+        std['HEROHE'] = [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255]
+
+        mean['Ron'] = [0.8998, 0.8253, 0.9357]
+        std['Ron'] = [0.1125, 0.1751, 0.0787]
+        '''
+        if self.transform and self.train:
+
+            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
+            # TODO: Cutout(n_holes=1, length=100),
+            # TODO: transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5), saturation=(0.1), hue=(-0.1, 0.1)),
+            # TODO: transforms.RandomHorizontalFlip(),
+
+            self.transform = \
+                transforms.Compose([ transforms.RandomHorizontalFlip(),
+                                     transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(
+                                         mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                         std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                     ])
+            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
+            '''transforms.Normalize(
+                                         mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
+                                         std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
+        else:
+            self.transform = transforms.Compose([transforms.ToTensor(),
+                                                 transforms.Normalize(
+                                                     mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                     std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                                 ])
+            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
+            '''transforms.Normalize(
+                                                     mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
+                                                     std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
+
+
+
+
+
+        print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+              .format('Train' if self.train else 'Test',
+                      self.DataSet,
+                      self.target_kind,
+                      self.__len__(),
+                      self.tile_size,
+                      self.bag_size,
+                      'Without' if transform is False else 'With',
+                      self.test_fold,
+                      'ON' if self.DX else 'OFF'))
+        print('{} Tiles in a bag are gathered from: {} tiles from main slide + {} other slides'
+              .format(self.bag_size, self.TPS_original, self.slides_in_bag))
+
+    def __len__(self):
+        return len(self.target)
+
+
+    def __getitem__(self, idx):
+        start_getitem = time.time()
+
+        basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
+        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+        tiles, time_list = _choose_data_3(grid_file, image_file, self.TPS_original,
+                                          self.magnification[idx],
+                                          self.tile_size, print_timing=self.print_time)
+        label = [1] if self.target[idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        # Sample tiles from other slides with same label - ONLY IN TRAIN MODE:
+        if self.train:
+            if self.target[idx] == 'Positive':
+                slide_list = self.POS_slides
+                slide_list.remove(idx)
+                slides_idx_other = sample(slide_list, self.bag_size - 1)
+            else:
+                slide_list = self.NEG_slides
+                slide_list.remove(idx)
+                slides_idx_other = sample(slide_list, self.bag_size - 1)
+
+        if self.train:
+            for _, index in enumerate(slides_idx_other):
+                basic_file_name_other = '.'.join(self.image_file_names[index].split('.')[:-1])
+                grid_file_other = os.path.join(self.ROOT_PATH, self.image_path_names[index], 'Grids',
+                                           basic_file_name_other + '--tlsz' + str(self.tile_size) + '.data')
+                image_file_other = os.path.join(self.ROOT_PATH, self.image_path_names[index], self.image_file_names[index])
+
+                tiles_other, time_list_other = _choose_data_3(grid_file_other, image_file_other, self.TPS_others,
+                                                          self.magnification[index],
+                                                          self.tile_size, print_timing=self.print_time)
+                tiles.extend(tiles_other)
+
+        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+
+        transform = self.transform
+        '''
+        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        if magnification_relation != 1:
+            transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
+        '''
+        start_aug = time.time()
+        ### trans = transforms.ToPILImage()
+        for i in range(self.bag_size):
+            X[i] = transform(tiles[i])
+
+        aug_time = (time.time() - start_aug) / self.bag_size
+        total_time = time.time() - start_getitem
+        if self.print_time:
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+        else:
+            time_list = [0]
+
+        trans = transforms.ToTensor()
+        return X, label, time_list, self.image_file_names[idx], trans(tiles[0])
+
+
+class WSI_MIL3_dataset(Dataset):
+    """
+    This DataSet class is used for MIL paradigm training.
+    This class uses patches from different slides (corresponding to the same label) is a bag.
+    It will use equall amount of tiles from each slide
+    """
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 tile_size: int = 256,
+                 bag_size: int = 50,
+                 TPS: int = 10, # Tiles Per Slide
+                 target_kind: str = 'ER',
+                 test_fold: int = 1,
+                 train: bool = True,
+                 print_timing: bool = False,
+                 transform : bool = False,
+                 DX : bool = False):
+
+        self.ROOT_PATH = 'All Data'
+        if DataSet == 'LUNG':
+            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+
+        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        self.DataSet = DataSet
+        self.BASIC_MAGNIFICATION = 20
+        self.meta_data_DF = pd.read_excel(meta_data_file)
+        if self.DataSet is not 'ALL':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+        if self.DataSet == 'HEROHE':
+            target_kind = 'Her2'
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            self.meta_data_DF.reset_index(inplace=True)
+
+        self.tile_size = tile_size
+        self.target_kind = target_kind
+        self.test_fold = test_fold
+        self.bag_size = bag_size
+        self.train = train
+        self.print_time = print_timing
+        self.transform = transform
+        self.DX = DX
+
+        # In test mode we want all tiles to be from the same slide.
+        # in train mode all tiles will be taken evenly from slides with same label
+        if self.train:
             self.TPS = TPS
         else:
             self.TPS = self.bag_size
+
         self.slides_in_bag = int(bag_size / self.TPS)
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
@@ -1492,16 +1771,18 @@ class WSI_MIL2_dataset(Dataset):
 
 
 
-        print('Initiation of WSI(MIL) {} {} DataSet is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+        print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
                       self.DataSet,
+                      self.target_kind,
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
                       'Without' if transform is False else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
-        print('Tiles in a bag are gathered from {} slides'.format(self.slides_in_bag))
+        print('{} Tiles in a bag are gathered EVENLY from {} slides'
+              .format(self.bag_size, self.slides_in_bag))
 
     def __len__(self):
         return len(self.target)
@@ -1538,8 +1819,8 @@ class WSI_MIL2_dataset(Dataset):
                 image_file_other = os.path.join(self.ROOT_PATH, self.image_path_names[index], self.image_file_names[index])
 
                 tiles_other, time_list_other = _choose_data_3(grid_file_other, image_file_other, self.TPS,
-                                                          self.magnification[index],
-                                                          self.tile_size, print_timing=self.print_time)
+                                                              self.magnification[index],
+                                                              self.tile_size, print_timing=self.print_time)
                 tiles.extend(tiles_other)
 
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
@@ -1564,3 +1845,244 @@ class WSI_MIL2_dataset(Dataset):
 
         trans = transforms.ToTensor()
         return X, label, time_list, self.image_file_names[idx], trans(tiles[0])
+
+
+class WSI_MIL_OFTest_dataset(Dataset):
+    def __init__(self,
+                 DataSet: str = 'LUNG',
+                 tile_size: int = 256,
+                 bag_size: int = 50,
+                 target_kind: str = 'PDL1',
+                 test_fold: int = 5,
+                 train: bool = True,
+                 print_timing: bool = False,
+                 transform : bool = True,
+                 DX : bool = False,
+                 get_images: bool = False):
+
+        self.ROOT_PATH = 'All Data'
+        if DataSet == 'LUNG':
+            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+
+        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        if sys.platform != 'linux':
+            self.ROOT_PATH = 'All Data/LUNG'
+            meta_data_file = os.path.join('All Data/slides_data_LUNG.xlsx')
+
+        self.DataSet = DataSet
+        self.BASIC_MAGNIFICATION = 20
+        self.meta_data_DF = pd.read_excel(meta_data_file)
+        if self.DataSet is not 'ALL':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
+            self.meta_data_DF.reset_index(inplace=True)
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
+        if self.DataSet == 'HEROHE':
+            target_kind = 'Her2'
+        if self.DataSet == 'LUNG':
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            self.meta_data_DF.reset_index(inplace=True)
+
+        # self.meta_data_DF.set_index('id')
+        ### self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
+        self.tile_size = tile_size
+        self.target_kind = target_kind
+        self.test_fold = test_fold
+        self.bag_size = bag_size
+        self.train = train
+        self.print_time = print_timing
+        self.transform = transform
+        self.DX = DX
+        self.get_images = get_images
+
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+
+        all_slide_names = list(self.meta_data_DF['patient barcode'])
+
+        slides_in_train = ['1076-17 HE',  # POSITIVE
+                           '12607-17',
+                           '11207-17',  # NEGATIVE
+                           '12815-17']
+
+        valid_slide_indices_OFTest = np.where(np.isin(np.array(all_slide_names), slides_in_train) == True)[0]
+
+        # Also remove slides without grid data:
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
+        valid_slide_indices = np.array(list(set(valid_slide_indices_OFTest) - slides_without_grid))
+
+        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
+        if self.train:
+            folds = list(range(1, 7))
+            folds.remove(self.test_fold)
+        else:
+            folds = [self.test_fold]
+        self.folds = folds
+
+        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
+        all_image_file_names = list(self.meta_data_DF['file'])
+        all_image_path_names = list(self.meta_data_DF['id'])
+        all_in_fold = list(self.meta_data_DF['test fold idx'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+        if self.DataSet is not 'TCGA':
+            self.DX = False
+        if self.DX:
+            all_is_DX_cut = list(self.meta_data_DF['DX'])
+
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+        self.magnification = []
+
+        for _, index in enumerate(valid_slide_indices):
+            if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                self.image_file_names.append(all_image_file_names[index])
+                self.image_path_names.append(all_image_path_names[index])
+                self.in_fold.append(all_in_fold[index])
+                self.tissue_tiles.append(all_tissue_tiles[index])
+                self.target.append(all_targets[index])
+                self.magnification.append(all_magnifications[index])
+
+        # Setting the transformation:
+        '''
+        mean = {}
+        std = {}
+
+        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
+        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
+
+        mean['HEROHE'] = [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255]
+        std['HEROHE'] = [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255]
+
+        mean['Ron'] = [0.8998, 0.8253, 0.9357]
+        std['Ron'] = [0.1125, 0.1751, 0.0787]
+        '''
+        if self.transform and self.train:
+
+            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
+            # TODO: Cutout(n_holes=1, length=100),
+            # TODO: transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5), saturation=(0.1), hue=(-0.1, 0.1)),
+            # TODO: transforms.RandomHorizontalFlip(),
+
+            self.transform = \
+                transforms.Compose([ MyRotation(angles=[0, 90, 180, 270]),
+                                     transforms.RandomVerticalFlip(),
+                                     transforms.ToTensor(),
+                                     #Cutout(n_holes=1, length=100),
+                                     transforms.Normalize(
+                                         mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                         std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                     ])
+            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
+            '''transforms.Normalize(
+                mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
+                std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
+        else:
+            self.transform = transforms.Compose([transforms.ToTensor(),
+                                                 transforms.Normalize(
+                                                     mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                     std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                                 ])
+            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
+            '''transforms.Normalize(mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
+                                                     std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
+
+
+
+
+
+        print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+              .format('Train' if self.train else 'Test',
+                      self.DataSet,
+                      self.target_kind,
+                      self.__len__(),
+                      self.tile_size,
+                      self.bag_size,
+                      'Without' if transform is False else 'With',
+                      self.test_fold,
+                      'ON' if self.DX else 'OFF'))
+
+    def __len__(self):
+        return len(self.target)
+
+
+    def __getitem__(self, idx):
+        start_getitem = time.time()
+        #data_path_extended = os.path.join(self.ROOT_PATH, self.image_path_names[idx])
+        # file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
+        # tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size, print_timing=self.print_time)
+        #tiles, time_list = _choose_data_2(self.data_path, file_name, self.bag_size, self.magnification[idx], self.tile_size, print_timing=self.print_time)
+        '''
+        tiles, time_list = _choose_data_2(data_path_extended, self.image_file_names[idx], self.bag_size, self.magnification[idx],
+                                          self.tile_size, print_timing=self.print_time)
+        '''
+        basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
+        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+
+        tiles, time_list = _choose_data_2(grid_file, image_file, self.bag_size,
+                                          self.magnification[idx],
+                                          self.tile_size, print_timing=self.print_time)
+        label = [1] if self.target[idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        # X will hold the images after all the transformations
+        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+
+        '''
+        # Updating RandomRotation angle in the data transformations only for train set:
+        if self.train:
+            rotate_by = sample([0, 90, 180, 270], 1)[0]
+            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
+                                             self.transform
+                                             ])
+        else:
+            transform = self.transform
+        '''
+        transform = self.transform
+
+
+        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        if magnification_relation != 1:
+            transform = transforms.Compose([ transforms.Resize(self.tile_size), transform ])
+
+        start_aug = time.time()
+        for i in range(self.bag_size):
+            X[i] = transform(tiles[i])
+            '''
+            img = get_concat(tiles[i], trans(X[i]))
+            img.show()
+            time.sleep(3)
+            '''
+
+        if self.get_images:
+            images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+            trans = transforms.ToTensor()
+            for i in range(self.bag_size):
+                images[i] = trans(tiles[i])
+        else:
+            images = 0
+
+        aug_time = (time.time() - start_aug) / self.bag_size
+        total_time = time.time() - start_getitem
+        if self.print_time:
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+        else:
+            time_list = [0]
+
+        return X, label, time_list, self.image_file_names[idx], images
+
