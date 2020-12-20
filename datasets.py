@@ -9,7 +9,8 @@ import sys
 import time
 from torch.utils.data import Dataset
 from typing import List
-from utils import MyRotation, Cutout, _get_tiles_2, _choose_data_3, _get_tiles, _choose_data_2, _choose_data, chunks
+from utils import MyRotation, Cutout, _get_tiles_2, _choose_data_3, _choose_data_2, chunks, HEDColorJitter
+import matplotlib.pyplot as plt
 
 
 MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
@@ -463,10 +464,7 @@ class WSI_REGdataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 #transform : bool = False,
-                 DX : bool = False,
-                 #n_patches_test: int = 1,
-                 #n_patches_train: int = 50,
+                 DX: bool = False,
                  n_patches: int = 50,
                  transform_type: str = 'flip'):
 
@@ -503,20 +501,18 @@ class WSI_REGdataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        #RanS 10.12.20
+        #for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
-        # self.meta_data_DF.set_index('id')
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
         self.bag_size = 1
         self.train = train
         self.print_time = print_timing
-        #self.transform = transform
         self.DX = DX
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
@@ -531,8 +527,7 @@ class WSI_REGdataset(Dataset):
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if self.train:
-            #folds = list(range(1, 7))
-            folds = list(self.meta_data_DF['test fold idx'].unique())  # RanS 17.11.20
+            folds = list(self.meta_data_DF['test fold idx'].unique())
             folds.remove(self.test_fold)
             if 'test' in folds:
                 folds.remove('test')
@@ -547,7 +542,7 @@ class WSI_REGdataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -597,19 +592,32 @@ class WSI_REGdataset(Dataset):
                         transforms.RandomHorizontalFlip(),
                         MyRotation(angles=[0, 90, 180, 270]),
                         transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                        transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
+                        #transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
+                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)  # fix boundary when scaling<1
                     ])
+            elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
+                self.scale_factor = 0.2
+                transform1 = \
+                    transforms.Compose([
+                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
+                        HEDColorJitter(sigma=0.05),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomHorizontalFlip(),
+                        MyRotation(angles=[0, 90, 180, 270]),
+                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
+                        #transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
+                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)  # fix boundary when scaling<1
+                    ])
+
+
             self.transform = transforms.Compose([transform1,
                                                  final_transform])
         else:
             self.scale_factor = 0
             self.transform = final_transform
 
-        #self.factor = 10 if self.train else 1
-        #self.factor = n_patches_train if self.train else n_patches_test  # RanS 7.12.20
-        self.factor = n_patches  # RanS 17.12.20
+        self.factor = n_patches
         self.real_length = int(self.__len__() / self.factor)
-
 
         print('Initiation of REG {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
@@ -631,11 +639,7 @@ class WSI_REGdataset(Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
-        data_path_extended = os.path.join(self.ROOT_PATH, self.image_path_names[idx])
-        '''
-        tiles, time_list = _choose_data_2(data_path_extended, self.image_file_names[idx], self.bag_size, self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
-        '''
+
         basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
@@ -672,6 +676,25 @@ class WSI_REGdataset(Dataset):
         trans = transforms.ToPILImage()
 
         X = transform(tiles[0])
+
+
+        temp = False
+        if temp:
+            trans1 = transforms.Compose([
+                        #transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
+                        HEDColorJitter(sigma=0.05)])
+            trans2 = transforms.ColorJitter(saturation=0.1, hue=(-0.1, 0.1))
+
+            colored_tile = trans1(tiles[0])
+            colored_tile2 = trans2(tiles[0])
+            fig, ax = plt.subplots(1,3)
+            ax[0].imshow(tiles[0])
+            ax[0].set_title('original')
+            ax[1].imshow(colored_tile)
+            ax[1].set_title('HED jitter')
+            ax[2].imshow(colored_tile2)
+            ax[2].set_title('RGB jitter')
+            plt.show()
         '''
         img = get_concat(tiles[0], trans(X))
         img.show()

@@ -14,17 +14,7 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-
-
-MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
-        'HEROHE': [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255],
-        'Ron': [0.8998, 0.8253, 0.9357]
-        }
-
-STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255],
-       'HEROHE': [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255],
-       'Ron': [0.1125, 0.1751, 0.0787]
-       }
+from HED_space import HED_color_jitter
 
 
 def chunks(list: List, length: int):
@@ -124,6 +114,34 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
     end_openslide = time.time()
 
     tiles_num = len(locations)
+
+    #RanS 20.12.20 - plot thumbnail with tile locations
+    temp = False
+    if temp:
+        from matplotlib.patches import Rectangle
+        import matplotlib.pyplot as plt
+        level_1 = img.level_count - 5
+        ld = int(img.level_downsamples[level_1]) #level downsample
+        thumb = (img.read_region(location=(0, 0), level=level_1, size=img.level_dimensions[level_1])).convert('RGB')
+        fig, ax = plt.subplots()
+        plt.imshow(thumb)
+        for idx, loc in enumerate(locations):
+            print((loc[1]/ld, loc[0]/ld))
+            rect = Rectangle((loc[1]/ld, loc[0]/ld), tile_sz / ld, tile_sz / ld, color='r', linewidth=3, fill=False)
+            ax.add_patch(rect)
+            #rect = Rectangle((loc[1] / ld, loc[0] / ld), tile_sz / ld, tile_sz / ld, color='g', linewidth=3, fill=False)
+            #ax.add_patch(rect)
+
+        patch1 = img.read_region((loc[1], loc[0]), 0, (600, 600)).convert('RGB')
+        plt.figure()
+        plt.imshow(patch1)
+
+        patch2 = img.read_region((loc[1], loc[0]), 0, (2000, 2000)).convert('RGB')
+        plt.figure()
+        plt.imshow(patch2)
+
+        plt.show()
+
     # TODO: Checking Pil vs. np array. Delete one of them...
     #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
     tiles_PIL = []
@@ -516,3 +534,14 @@ class MyRotation:
     def __call__(self, x):
         angle = random.choice(self.angles)
         return transforms.functional.rotate(x, angle)
+
+
+class HEDColorJitter:
+    """Jitter colors in HED color space rather than RGB color space."""
+    def __init__(self, sigma):
+        self.sigma = sigma
+    def __call__(self, x):
+        x_arr = np.array(x)
+        x2 = HED_color_jitter(x_arr, self.sigma)
+        x2 = Image.fromarray(x2)
+        return x2

@@ -114,8 +114,11 @@ def HED2RGB(image_HED, eps = 1e-10):
     OD_image = OD_image_vec.reshape(OD_image_HED.shape[0], OD_image_HED.shape[1], 3)
     #plot_image_in_channels(OD_image, 'OD_image')
     image = np.exp(-OD_image) - eps
+    #clip where saturated
+    image[image > 1] = 1
+    image[image < 0] = 0
     #plot_image_in_channels(image, 'image')
-    image = (image*255).astype(int)
+    image = (image*255).astype(np.uint8)
     #plot_image_in_channels(image, 'image*255')
     #image = 255 - image
     #plot_image_in_channels(image, '255-image')
