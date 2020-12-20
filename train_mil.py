@@ -1,4 +1,5 @@
 import utils
+import datasets
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -426,7 +427,7 @@ if __name__ == '__main__':
 
     # Get data:
     if not args.multi_slides:
-        train_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+        train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                           tile_size=TILE_SIZE,
                                           bag_size=TILES_PER_BAG,
                                           target_kind=args.look_for,
@@ -437,7 +438,7 @@ if __name__ == '__main__':
                                           DX=args.dx,
                                           get_images=args.images)
 
-        test_dset = utils.WSI_MILdataset(DataSet=args.dataset,
+        test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                          tile_size=TILE_SIZE,
                                          bag_size=TILES_PER_BAG,
                                          target_kind=args.look_for,
@@ -448,7 +449,7 @@ if __name__ == '__main__':
                                          DX=args.dx,
                                          get_images=args.images)
     else:
-        train_dset = utils.WSI_MIL3_dataset(DataSet=args.dataset,
+        train_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
                                             tile_size=TILE_SIZE,
                                             bag_size=TILES_PER_BAG,
                                             target_kind=args.look_for,
@@ -459,7 +460,7 @@ if __name__ == '__main__':
                                             transform=args.transformation,
                                             DX=args.dx)
 
-        test_dset = utils.WSI_MIL3_dataset(DataSet=args.dataset,
+        test_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
                                            tile_size=TILE_SIZE,
                                            bag_size=TILES_PER_BAG,
                                            target_kind=args.look_for,

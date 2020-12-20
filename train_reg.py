@@ -1,4 +1,5 @@
 import utils
+import datasets
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -228,8 +229,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
     '''
     all_writer.close()
-    time_writer.close()
-
+    if print_timing:
+        time_writer.close()
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
@@ -383,7 +384,7 @@ if __name__ == '__main__':
     #cpu_available = 1
 
     # Get data:
-    train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
                                       target_kind=args.target,
                                       test_fold=args.test_fold,
@@ -394,7 +395,7 @@ if __name__ == '__main__':
                                       transform_type=args.transform_type,
                                       n_patches=args.n_patches_train)
 
-    test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                      tile_size=TILE_SIZE,
                                      target_kind=args.target,
                                      test_fold=args.test_fold,
