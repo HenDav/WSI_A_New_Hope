@@ -243,19 +243,19 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             best_model = model
 
         if e % 5 == 0:
-            if e % 20 == 0 and args.images:
-                image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
-                                       global_step=e, dataformats='NCHW')
-                image_writer.add_images('Train Images/After Transforms', data.squeeze().detach().cpu().numpy(),
-                                       global_step=e, dataformats='NCHW')
-                image_writer.add_images('Train Images/After Transforms (De-Normalized)',
-                                       norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
-                                       dataformats='NCHW')
-
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=True)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e,
+                                                 eval_mode=True)
             ### acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
+            if e % 20 == 0 and args.images:
+                image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
+                                        global_step=e, dataformats='NCHW')
+                image_writer.add_images('Train Images/After Transforms', data.squeeze().detach().cpu().numpy(),
+                                        global_step=e, dataformats='NCHW')
+                image_writer.add_images('Train Images/After Transforms (De-Normalized)',
+                                        norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
+                                        dataformats='NCHW')
         else:
             acc_test, bacc_test = None, None
 

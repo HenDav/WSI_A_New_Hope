@@ -251,8 +251,23 @@ def ResNet_50():
     print('Using model ResNet_50')
     model = models.resnet50(pretrained=False)
     model.fc.out_features = 2
+    model.model_name = 'ResNet_50()'
     return model
 
+
+def ResNet_18():
+    print('Using model ResNet_18')
+    model = models.resnet18(pretrained=False)
+    model.fc.out_features = 2
+    model.model_name = 'ResNet_18()'
+    return model
+
+def ResNet_34():
+    print('Using model ResNet_34')
+    model = models.resnet34(pretrained=False)
+    model.fc.out_features = 2
+    model.model_name = 'ResNet_34()'
+    return model
 
 class ResNet34_GN(nn.Module):
     def __init__(self):

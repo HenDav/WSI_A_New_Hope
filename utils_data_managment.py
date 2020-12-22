@@ -187,9 +187,15 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     #ROOT_PATH = 'All Data'
     #if DataSet == 'LUNG':
     #    ROOT_PATH = r'/home/rschley/All_Data/LUNG'#os.path.join('All Data', 'LUNG')
-    BASIC_OBJ_PWR = 20
+    if DataSet == 'RedSquares':
+        BASIC_OBJ_PWR = 10
+    else:
+        BASIC_OBJ_PWR = 20
 
     data_file = os.path.join(ROOT_DIR, 'slides_data.xlsx')
+
+    if DataSet == 'RedSquares':
+        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
 
     meta_data_DF = pd.read_excel(data_file)
     files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
@@ -199,12 +205,14 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     total_tiles =[]
     print('Starting Grid production...')
     print()
+
     for i, file in enumerate(tqdm(files)):
+        #print(file)
         filename = os.path.basename(file).split('.')[0]
         database = meta_data_DF.loc[file, 'id']
         if os.path.isfile(os.path.join(ROOT_DIR, database, file)): # make sure file exists
-            height = meta_data_DF.loc[file, 'Height']
-            width  = meta_data_DF.loc[file, 'Width']
+            height = int(meta_data_DF.loc[file, 'Height'])
+            width  = int(meta_data_DF.loc[file, 'Width'])
             if objective_power[i] == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
                 tile_nums.append(0)
@@ -212,6 +220,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                 continue
 
             converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
+            #print(height, width, converted_tile_size)
             basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
             total_tiles.append((len(basic_grid)))
 
@@ -460,7 +469,8 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
     slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))
-    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs
+    slide_files_jpg = glob.glob(os.path.join(data_path, '*.jpg'))
+    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_jpg
     mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
 
     error_list = []
@@ -483,12 +493,16 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
 
         if slide is not None:
             # Get a thunmbnail image to create the segmentation for:
-            try:
-                #objective_pwr = int(float(slide.properties['aperio.AppMag']))
-                objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
-            except KeyError:
-                print('Couldn\'t find Magnification - Segmentation Map was not Created')
-                continue
+            if file.split('/')[-1][-3:] != 'jpg':
+                try:
+                    #objective_pwr = int(float(slide.properties['aperio.AppMag']))
+                    objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
+                except KeyError:
+                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                    continue
+            else:
+                objective_pwr = 10
+
 
             height = slide.dimensions[1]
             width = slide.dimensions[0]
@@ -712,3 +726,26 @@ def TCGA_dirs_2_files():
             shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
 
     print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
+
+
+def update_dims():
+    print("Updating dims...")
+    DataSet = 'RedSquares'
+    ROOT_PATH = 'All Data'
+    #data_file = 'Data from gipdeep/slides_data_RedSquares.xlsx'
+    data_file = 'All Data/slides_data_RedSquares.xlsx'
+
+    meta_data_DF = pd.read_excel(data_file)
+    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
+    for file in files:
+        print(file)
+        try:
+            slide = openslide.open_slide(os.path.join(ROOT_PATH, DataSet, file))
+        except FileNotFoundError:
+            continue
+        index = meta_data_DF[meta_data_DF['file'] == file].index.tolist()[0]
+        meta_data_DF.at[index, 'Height'] = slide.dimensions[1]
+        meta_data_DF.at[index, 'Width'] = slide.dimensions[0]
+
+    meta_data_DF.to_excel(data_file)
+    print('Finished updating dims')

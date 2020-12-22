@@ -1,42 +1,80 @@
-import utils
-import datasets
+import utils0 as utils
+import PreActResNets
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets
+from nets import PreActResNet50, ResNet50_2, ResNet_50, ResNet50_GN, ResNet_18, ResNet_34
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
-from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
-import pandas as pd
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
+parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
-parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
-parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
-parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
-parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
-parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
-parser.add_argument('--model', default='resnet50', type=str, help='Net to use')  # RanS 15.12.20
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
+parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
+
+
 args = parser.parse_args()
 
-eps = 1e-7
+"""
+def simple_train(model: nn.Module, dloader_train: DataLoader, dloadet_test: DataLoader):
+
+    print('Start Training...')
+    for e in range(epoch):
+        print('Epoch {}:'.format(e))
+        correct_train, num_samples, train_loss = 0, 0, 0
+
+        model.train()
+        for idx, (data, target) in enumerate(tqdm(dloader_train)):
+            data, target = data.to(DEVICE), target.to(DEVICE)
+            model.to(DEVICE)
+            prob, label, weights = model(data)
+            correct_train += (label == target).data.cpu().int().item()
+            num_samples += 1
+
+            prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
+            loss = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
+            train_loss += loss.data.cpu().item()
+            # criterion = nn.CrossEntropyLoss()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        train_accuracy = 100 * float(correct_train) / num_samples
+        print('Finished Epoch: {}, Train Accuracy: {:.2f}% ({}/{}), Loss: {:.2f}'.format(e,
+                                                                                         train_accuracy,
+                                                                                         correct_train,
+                                                                                         num_samples,
+                                                                                         train_loss))
+        print('Checking post-epoch accuracy over training set...')
+        correct_post = 0
+        num_sample_post = 0
+        with torch.no_grad():
+            #model.eval()
+            for idx, (data_post, target_post) in enumerate(train_loader):
+                data_post, target_post = data_post.to(DEVICE), target_post.to(DEVICE)
+
+                prob_post, label_post, weights_post = model(data_post)
+                correct_post += (label_post == target_post).data.cpu().int().item()
+                num_sample_post += 1
+
+            accuracy_post_train = 100 * float(correct_post) / num_sample_post
+            print('Post train accuracy: {:.2f}% ({} / {})'.format(accuracy_post_train, correct_post, num_sample_post))
+"""
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -49,7 +87,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     if from_epoch == 0:
         all_writer.add_text('Experiment No.', str(experiment))
         all_writer.add_text('Train type', 'Regular')
-        all_writer.add_text('Model type', str(type(model)))
+        all_writer.add_text('Model type', model.model_name)
         all_writer.add_text('Data type', dloader_train.dataset.DataSet)
         all_writer.add_text('Train Folds', str(dloader_train.dataset.folds).strip('[]'))
         all_writer.add_text('Test Folds', str(dloader_test.dataset.folds).strip('[]'))
@@ -73,12 +111,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         ### true_pos_train, true_neg_train = 0, 0
         true_labels_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
-        slide_names = []
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list, f_names) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
-
             data, target = data.to(DEVICE), target.to(DEVICE)
             target = target.squeeze()
             model.to(DEVICE)
@@ -92,10 +128,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             train_loss += loss.item()
             _, predicted = outputs.max(1)
 
-            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
             true_labels_train = np.concatenate((true_labels_train, target.cpu().detach().numpy()))
-            slide_names.extend(slide_names_batch)
 
             total += target.size(0)
             total_pos_train += target.eq(1).sum().item()
@@ -142,13 +176,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         train_acc = 100 * correct_labeling / total
 
-        #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
-        balanced_acc_train = 100. * ((correct_pos + eps) / (total_pos_train + eps) + (correct_neg + eps) / (total_neg_train + eps)) / 2
+        balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
 
-        roc_auc_train = np.nan
-        if not all(true_labels_train==true_labels_train[0]): #more than one label
-            fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
-            roc_auc_train = auc(fpr_train, tpr_train)
+        fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+        roc_auc_train = auc(fpr_train, tpr_train)
 
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
         all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
@@ -166,15 +197,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
-        if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
-            # RanS 8.12.20, perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
-            slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
-                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
-
+        if e % 10 == 0:
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
             # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
@@ -229,8 +252,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
     '''
     all_writer.close()
-    if print_timing:
-        time_writer.close()
+    time_writer.close()
+
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
@@ -238,7 +261,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
     true_labels, scores = np.zeros(0), np.zeros(0)
-    slide_names = []
 
     test_loss, total = 0, 0
 
@@ -249,7 +271,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         model.train()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list, f_names) in enumerate(data_loader):
+        for idx, (data, targets, time_list) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
             model.to(DEVICE)
@@ -262,11 +284,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
-
-            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores = np.concatenate((scores, outputs[:, 1].cpu().detach().numpy()))
             true_labels = np.concatenate((true_labels, targets.cpu().detach().numpy()))
-            slide_names.extend(slide_names_batch)
 
             total += targets.size(0)
             num_correct += predicted.eq(targets).sum().item()
@@ -276,8 +295,11 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             true_neg += predicted[targets.eq(0)].eq(0).sum().item()
 
         acc = 100 * float(num_correct) / total
-        #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
-        balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
+        balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+
+        fpr, tpr, _ = roc_curve(true_labels, scores)
+        roc_auc = auc(fpr, tpr)
+
 
         # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
@@ -288,60 +310,15 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             else:
                 writer_string = 'Test (train mode)'
 
-        if not args.bootstrap:
-            roc_auc = np.nan
-            if not all(true_labels==true_labels[0]): #more than one label
-                fpr, tpr, _ = roc_curve(true_labels, scores)
-                roc_auc = auc(fpr, tpr)
-
-            #RanS 8.12.20, perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
-            slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
-                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-        else: #bootstrap, RanS 16.12.20
-
-            from sklearn.utils import resample
-            # load dataset
-            # configure bootstrap
-            n_iterations = 100
-
-            # run bootstrap
-            roc_auc_array = np.empty(n_iterations)
-            slide_roc_auc_array = np.empty(n_iterations)
-            roc_auc_array[:], slide_roc_auc_array[:] = np.nan, np.nan
-            for ii in range(n_iterations):
-                #slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
-                #fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
-                #patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
-
-                #patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
-                slide_names = np.array(slide_names)
-                slide_choice = resample(np.unique(np.array(slide_names)))
-                slide_resampled = np.concatenate([slide_names[slide_names==slide] for slide in slide_choice])
-                scores_resampled = np.concatenate([scores[slide_names == slide] for slide in slide_choice])
-                labels_resampled = np.concatenate([true_labels[slide_names == slide] for slide in slide_choice])
-                patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
-
-                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
-                if not all(labels_resampled == labels_resampled[0]): #more than one label
-                    roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
-
-                slide_mean_score_df = patch_df.groupby('slide').mean()
-                if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  # more than one label
-                    slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            roc_auc = np.nanmean(roc_auc_array)
-            roc_auc_slide = np.nanmean(slide_roc_auc_array)
-            roc_auc_std = np.nanstd(roc_auc_array)
-            roc_auc_slide_std = np.nanstd(slide_roc_auc_array)
-            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
-            writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
+        """
+        writer_test.add_scalar('Accuracy', acc, epoch)
+        writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
+        writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
+        """
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
-        writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
     model.train()
@@ -355,26 +332,28 @@ if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
     # Data type definition:
+    ### DATA_TYPE = 'WSI'
+    ### MODEL_TYPE = 'REG'
 
     # Tile size definition:
     TILE_SIZE =128
-    timing = False
+    # data_path = '/Users/wasserman/Developer/All data - outer scope'
 
-    if sys.platform == 'linux' or sys.platform == 'win32':
+    if sys.platform == 'linux':
         TILE_SIZE = 256
+        data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     #transformations=args.transformation,
-                                                     transform_type=args.transform_type,
+                                                     transformations=args.transformation,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
-        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-            TILES_PER_BAG, args.dx, args.dataset, args.target = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
+            TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -382,25 +361,26 @@ if __name__ == '__main__':
     #cpu_available = 1
 
     # Get data:
-    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                         tile_size=TILE_SIZE,
-                                         target_kind=args.target,
-                                         test_fold=args.test_fold,
-                                         train=True,
-                                         print_timing=args.time
-                                         )
+    train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                      tile_size=TILE_SIZE,
+                                      target_kind=args.look_for,
+                                      test_fold=args.test_fold,
+                                      train=True,
+                                      print_timing=args.time,
+                                      transform=args.transformation,
+                                      DX=args.dx)
 
-    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                        tile_size=TILE_SIZE,
-                                        target_kind=args.target,
-                                        test_fold=args.test_fold,
-                                        train=False,
-                                        print_timing=False
-                                        )
+    test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                     tile_size=TILE_SIZE,
+                                     target_kind=args.look_for,
+                                     test_fold=args.test_fold,
+                                     train=False,
+                                     print_timing=False,
+                                     transform=False,
+                                     DX=args.dx)
 
-
-    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    test_loader  = DataLoader(test_dset, batch_size=50, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -408,22 +388,18 @@ if __name__ == '__main__':
 
 
     # Load model
-    # RanS 14.12.20
-    if args.model == 'resnet50_3FC':
-        model = nets.resnet50_with_3FC()
-    elif args.model == 'preact_resnet50':
-        model = nets.PreActResNet50()
-    elif args.model == 'resnet50_gn':
-        model = nets.ResNet50_GN()
-    elif args.model == 'resnet18':
-        model = nets.ResNet_18()
-    elif args.model == 'resnet50':
-        model = nets.ResNet_50()
+    # model = PreActResNet50()
+    # model = ResNet50_GN()
+    # model = ResNet_18()
+    model = ResNet_34()
+    # model = ResNet_50()
+    # model = PreActResNets.preactresnet50_Omer()
 
-    else:
-        print('model not defined!')
+    '''model_params = sum(p.numel() for p in model.parameters())
+    print(model_params)'''
 
     utils.run_data(experiment=experiment, model=model.model_name)
+
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -441,8 +417,7 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    #optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
+    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
