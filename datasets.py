@@ -37,11 +37,29 @@ class WSI_MILdataset(Dataset):
                  DX : bool = False,
                  get_images: bool = False):
 
-        self.ROOT_PATH = 'All Data'
-        if DataSet == 'LUNG':
-            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+        # Define data root:
+        if sys.platform == 'linux':  # GIPdeep
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'/home/womer/project/All Data'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'/home/rschley/All_Data/LUNG'
+        elif sys.platform == 'win32':  # Ran local
+            if DataSet == 'HEROHE':
+                self.ROOT_PATH = r'C:\ran_data\HEROHE_examples'
+            elif DataSet == 'TCGA':
+                self.ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = r'C:\ran_data\Lung_examples'
+        else:  # Omer local
+            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+                self.ROOT_PATH = r'All Data'
+            elif DataSet == 'LUNG':
+                self.ROOT_PATH = 'All Data/LUNG'
 
-
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
 
         if DataSet == 'RedSquares' or target_kind == 'RedSquares':
             meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data_RedSquares.xlsx')
@@ -49,7 +67,6 @@ class WSI_MILdataset(Dataset):
             target_kind = 'RedSquares'
         else:
             meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
-
 
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
@@ -493,16 +510,24 @@ class WSI_REGdataset(Dataset):
                 self.ROOT_PATH = r'All Data'
             elif DataSet == 'LUNG':
                 self.ROOT_PATH = 'All Data/LUNG'
-                # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
 
         if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
             raise ValueError('target should be one of: PDL1, EGFR')
         elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
             raise ValueError('target should be one of: ER, PR, Her2')
 
-        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        if DataSet == 'RedSquares' or target_kind == 'RedSquares':
+            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data_RedSquares.xlsx')
+            DataSet = 'RedSquares'
+            target_kind = 'RedSquares'
+        else:
+            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
+        if DataSet == 'RedSquares':
+            self.BASIC_MAGNIFICATION = 10
+
         self.meta_data_DF = pd.read_excel(meta_data_file)
         if self.DataSet is not 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
