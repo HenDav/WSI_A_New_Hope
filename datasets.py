@@ -33,9 +33,11 @@ class WSI_MILdataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform : bool = False,
+                 #transform : bool = False,
+                 transform_type: str = 'flip',
                  DX : bool = False,
-                 get_images: bool = False):
+                 get_images: bool = False,
+                 train_type: str = 'MIL'):
 
         # Define data root:
         if sys.platform == 'linux':  # GIPdeep
@@ -51,10 +53,10 @@ class WSI_MILdataset(Dataset):
             elif DataSet == 'LUNG':
                 self.ROOT_PATH = r'C:\ran_data\Lung_examples'
         else:  # Omer local
-            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+            if DataSet == 'HEROHE' or DataSet == 'TCGA' or DataSet == 'RedSquares':
                 self.ROOT_PATH = r'All Data'
             elif DataSet == 'LUNG':
-                self.ROOT_PATH = 'All Data/LUNG'
+                self.ROOT_PATH = r'All Data/LUNG'
 
         if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
             raise ValueError('target should be one of: PDL1, EGFR')
@@ -69,9 +71,10 @@ class WSI_MILdataset(Dataset):
             meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
 
         self.DataSet = DataSet
-        self.BASIC_MAGNIFICATION = 20
         if DataSet == 'RedSquares':
             self.BASIC_MAGNIFICATION = 10
+        else:
+            self.BASIC_MAGNIFICATION = 20
 
         self.meta_data_DF = pd.read_excel(meta_data_file)
 
@@ -112,8 +115,10 @@ class WSI_MILdataset(Dataset):
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if self.train:
-            folds = list(range(1, 7))
+            folds = list(self.meta_data_DF['test fold idx'].unique())
             folds.remove(self.test_fold)
+            if 'test' in folds:
+                folds.remove('test')
         else:
             folds = [self.test_fold]
         self.folds = folds
@@ -149,19 +154,62 @@ class WSI_MILdataset(Dataset):
                 self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
-        '''
-        mean = {}
-        std = {}
+        final_transform = transforms.Compose([transforms.ToTensor(),
+                                              transforms.Normalize(
+                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+        # if self.transform and self.train:
+        if transform_type != 'none' and self.train:
+            # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
+            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+            # TODO: Consider transforms.RandomHorizontalFlip()
+            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
+            if transform_type == 'flip':
+                self.scale_factor = 0
+                transform1 = \
+                    transforms.Compose([transforms.RandomVerticalFlip(),
+                                        transforms.RandomHorizontalFlip()])
+            elif transform_type == 'wcfrs':  # weak color, flip, rotate, scale
+                self.scale_factor = 0.2
+                transform1 = \
+                    transforms.Compose([
+                        # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
+                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                               saturation=0.1, hue=(-0.1, 0.1)),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomHorizontalFlip(),
+                        MyRotation(angles=[0, 90, 180, 270]),
+                        transforms.RandomAffine(degrees=0,
+                                                scale=(1 - self.scale_factor, 1 + self.scale_factor)),
+                            # transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
+                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)
+                        # fix boundary when scaling<1
+                            ])
+            elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
+                        self.scale_factor = 0.2
+                        transform1 = \
+                            transforms.Compose([
+                                transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
+                                HEDColorJitter(sigma=0.05),
+                                transforms.RandomVerticalFlip(),
+                                transforms.RandomHorizontalFlip(),
+                                MyRotation(angles=[0, 90, 180, 270]),
+                                transforms.RandomAffine(degrees=0,
+                                                        scale=(1 - self.scale_factor, 1 + self.scale_factor)),
+                                # transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
+                                transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)
+                                # fix boundary when scaling<1
+                            ])
 
-        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
-        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
+            self.transform = transforms.Compose([ transform1,
+                                                  final_transform
+                                                 ])
+        else:
+            self.scale_factor = 0
+            self.transform = final_transform
 
-        mean['HEROHE'] = [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255]
-        std['HEROHE'] = [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255]
-
-        mean['Ron'] = [0.8998, 0.8253, 0.9357]
-        std['Ron'] = [0.1125, 0.1751, 0.0787]
-        '''
+        """
+        # Setting the transformation:
         if self.transform and self.train:
 
             # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
@@ -193,12 +241,13 @@ class WSI_MILdataset(Dataset):
             '''transforms.Normalize(mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
                                                      std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
 
+        """
 
 
 
-
-        print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
-              .format('Train' if self.train else 'Test',
+        print('Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+              .format(train_type,
+                      'Train' if self.train else 'Test',
                       self.DataSet,
                       self.target_kind,
                       self.__len__(),
@@ -1466,3 +1515,6 @@ class WSI_MIL_OFTest_dataset(Dataset):
             time_list = [0]
 
         return X, label, time_list, self.image_file_names[idx], images
+
+
+
