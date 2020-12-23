@@ -16,6 +16,9 @@ from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
 from HED_space import HED_color_jitter
 
+Image.MAX_IMAGE_PIXELS = None
+
+
 
 def chunks(list: List, length: int):
     new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
@@ -78,12 +81,8 @@ def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification
     """
     BASIC_OBJ_POWER = 20
     adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    ### basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
     # open grid list:
-    ### grid_file = os.path.join(data_path, 'Grids', file_name.split('.')[0] + '--tlsz' + str(tile_size) + '.data')
-
-    #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], 'Grids', file_name.split('/')[2][:-4] + '--tlsz' + str(tile_size) + '.data')
     with open(grid_file, 'rb') as filehandle:
         grid_list = pickle.load(filehandle)
 

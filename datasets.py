@@ -58,17 +58,17 @@ class WSI_MILdataset(Dataset):
             elif DataSet == 'LUNG':
                 self.ROOT_PATH = r'All Data/LUNG'
 
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-
         if DataSet == 'RedSquares' or target_kind == 'RedSquares':
             meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data_RedSquares.xlsx')
             DataSet = 'RedSquares'
             target_kind = 'RedSquares'
         else:
             meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+
+        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+            raise ValueError('target should be one of: PDL1, EGFR')
+        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+            raise ValueError('target should be one of: ER, PR, Her2')
 
         self.DataSet = DataSet
         if DataSet == 'RedSquares':
@@ -99,7 +99,7 @@ class WSI_MILdataset(Dataset):
         self.bag_size = bag_size
         self.train = train
         self.print_time = print_timing
-        self.transform = transform
+        #self.transform = transform
         self.DX = DX
         self.get_images = get_images
 
@@ -253,7 +253,7 @@ class WSI_MILdataset(Dataset):
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
-                      'Without' if transform is False else 'With',
+                      'Without' if transform_type == 'none' else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
 
@@ -263,14 +263,7 @@ class WSI_MILdataset(Dataset):
 
     def __getitem__(self, idx):
         start_getitem = time.time()
-        #data_path_extended = os.path.join(self.ROOT_PATH, self.image_path_names[idx])
-        # file_name = os.path.join(self.data_path, self.image_path_names[idx], self.image_file_names[idx])
-        # tiles = _choose_data(file_name, self.num_of_tiles_from_slide, self.magnification[idx], self.tile_size, print_timing=self.print_time)
-        #tiles, time_list = _choose_data_2(self.data_path, file_name, self.bag_size, self.magnification[idx], self.tile_size, print_timing=self.print_time)
-        '''
-        tiles, time_list = _choose_data_2(data_path_extended, self.image_file_names[idx], self.bag_size, self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
-        '''
+
         basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
