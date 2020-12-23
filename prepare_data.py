@@ -32,7 +32,7 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid(DataSet='RedSquares', ROOT_DIR='All Data', tile_sz=128, tissue_coverage=1)
+    #utils_data_managment.make_grid(DataSet='RedSquares', ROOT_DIR='All Data', tile_sz=128, tissue_coverage=1)
 
     print('Data Preparation sequence is Done !')
 

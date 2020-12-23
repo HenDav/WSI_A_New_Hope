@@ -29,10 +29,10 @@ parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches 
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20
+parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20, TODO
 parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
-parser.add_argument('--model', default='resnet50', type=str, help='Net to use')  # RanS 15.12.20
+parser.add_argument('--model', default='resnet50_gn', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 args = parser.parse_args()
 
@@ -364,7 +364,7 @@ if __name__ == '__main__':
         TILE_SIZE = 256
 
     # Saving/Loading run meta data to/from file:
-    if args.experiment is 0:
+    if args.experiment == 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
                                                      #transformations=args.transformation,
                                                      transform_type=args.transform_type,
@@ -387,7 +387,9 @@ if __name__ == '__main__':
                                          target_kind=args.target,
                                          test_fold=args.test_fold,
                                          train=True,
-                                         print_timing=args.time
+                                         print_timing=args.time,
+                                         transform_type=args.transform_type,
+                                         n_patches=args.n_patches_train
                                          )
 
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
@@ -395,7 +397,9 @@ if __name__ == '__main__':
                                         target_kind=args.target,
                                         test_fold=args.test_fold,
                                         train=False,
-                                        print_timing=False
+                                        print_timing=False,
+                                        transform_type='none',
+                                        n_patches=args.n_patches_test
                                         )
 
 
@@ -429,7 +433,7 @@ if __name__ == '__main__':
     from_epoch = args.from_epoch
 
     # In case we continue from an already trained model, than load the previous model and optimizer data:
-    if args.experiment is not 0:
+    if args.experiment != 0:
         print('Loading pre-saved model...')
         model_data_loaded = torch.load(os.path.join(args.output_dir,
                                                     'Model_CheckPoints',
@@ -447,7 +451,7 @@ if __name__ == '__main__':
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
 
-    if args.experiment is not 0:
+    if args.experiment != 0:
         optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])
         for state in optimizer.state.values():
             for k, v in state.items():

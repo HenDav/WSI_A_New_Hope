@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 #import torchvision.models as models
 from torchvision.models import resnet
-from nets import ResNet50_GN, ResNet34_GN
+from nets import ResNet50_GN, ResNet34_GN, ReceptorNet_feature_extractor
 
 
 class Flatten(nn.Module):
@@ -1044,3 +1044,63 @@ class ResNet50_GN_GatedAttention_MultiBag_1(nn.Module):
         Y_class_1D = Y_class[:, 0]
 
         return Y_prob  # , Y_class_1D, A
+
+
+#RanS 21.12.20, based on ReceptorNet from the review paper
+#https://www.nature.com/articles/s41467-020-19334-3
+
+class ReceptorNet(nn.Module):
+    def __init__(self):
+        super(ReceptorNet, self).__init__()
+        self.model_name = 'ReceptorNet'
+        print('Using model {}'.format(self.model_name))
+        print('As Feature Extractor, the model will be ', end='')
+
+        self.M = 512
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        self.infer = False
+        self.infer_part = 0
+
+        self.feat_ext_part_1 = ReceptorNet_feature_extractor()
+        self.att_V_1 = nn.Linear(self.M, self.L)
+        self.att_V_2 = nn.Tanh()
+        self.class_1 = nn.Linear(self.M * self.K, 1)
+        self.class_2 = nn.Sigmoid()
+        self.weig = nn.Linear(self.L, self.K)
+
+    def part1(self, x):
+        x = x.squeeze(0)
+        H = self.feat_ext_part_1(x)
+        A_V = self.att_V_2(self.att_V_1(H))
+        A = self.weig(A_V)
+        A = torch.transpose(A, 1, 0)  # KxN
+        return H, A
+
+    def part2(self, A, H):
+        A = F.softmax(A, dim=1)  # softmax over N
+        M = torch.mm(A, H)  # KxM
+        Y_prob = self.class_2(self.class_1(M))
+
+        Y_class = torch.ge(Y_prob, 0.5).float()
+        return Y_prob, Y_class, A
+
+
+    def forward(self, x, H=None, A=None):
+        if not self.infer:
+            H, A = self.part1(x)
+            Y_prob, Y_class, A = self.part2(A, H)
+            return Y_prob, Y_class, A
+
+        # In case we want an inference of a whole slide we need ALL the tiles from that slide:
+        else:
+            if self.infer_part>2 or self.infer_part<1:
+                raise Exception('Inference Mode should include feature extraction (part 1) or classification (part 2)')
+            elif self.infer_part == 1:
+                H, A = self.part1(x)
+                return H, A
+
+            elif self.infer_part == 2:
+                Y_prob, Y_class, A = self.part2(A, H)
+                return Y_prob, Y_class, A

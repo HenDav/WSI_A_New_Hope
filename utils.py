@@ -15,6 +15,7 @@ from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
 from HED_space import HED_color_jitter
+Image.MAX_IMAGE_PIXELS = None
 
 
 def chunks(list: List, length: int):
@@ -69,15 +70,16 @@ def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_si
     return image_tiles
 
 
-def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, basic_obj_power: int = 20):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
     :param how_many: how_many describes how many tiles to pick from the whole image
     :return:
     """
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    #BASIC_OBJ_POWER = 20
+    #adjusted_tile_size = tile_size * (magnification // basic_obj_power)
+    adjusted_tile_size = int(tile_size * (magnification / basic_obj_power)) #RanS 22.12.20
     ### basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
     # open grid list:
@@ -536,6 +538,17 @@ class MyRotation:
         return transforms.functional.rotate(x, angle)
 
 
+class MyCropTransform:
+    """crop the image at upper left."""
+
+    def __init__(self, tile_size):
+        self.tile_size = tile_size
+
+    def __call__(self, x):
+        #x = transforms.functional.crop(img=x, top=0, left=0, height=self.tile_size, width=self.tile_size)
+        x = transforms.functional.crop(img=x, top=x.size[0] - self.tile_size, left=x.size[1] - self.tile_size, height=self.tile_size, width=self.tile_size)
+        return x
+
 class HEDColorJitter:
     """Jitter colors in HED color space rather than RGB color space."""
     def __init__(self, sigma):
@@ -545,3 +558,100 @@ class HEDColorJitter:
         x2 = HED_color_jitter(x_arr, self.sigma)
         x2 = Image.fromarray(x2)
         return x2
+
+
+def define_transformations(transform_type, train, MEAN, STD, tile_size):
+
+    # Setting the transformation:
+    final_transform = transforms.Compose([transforms.ToTensor(),
+                                          transforms.Normalize(
+                                              mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                              std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+    # if self.transform and self.train:
+    if transform_type != 'none' and train:
+        # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
+        if transform_type == 'flip':
+            scale_factor = 0
+            transform1 = \
+                transforms.Compose([transforms.RandomVerticalFlip(),
+                                    transforms.RandomHorizontalFlip()])
+        elif transform_type == 'rvf': #rotate, vertical flip
+            scale_factor = 0
+            transform1 = \
+                transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
+                                     transforms.RandomVerticalFlip()])
+        elif transform_type == 'wcfrs':  # weak color, flip, rotate, scale
+            scale_factor = 0.2
+            transform1 = \
+                transforms.Compose([
+                    # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
+                    transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                           saturation=0.1, hue=(-0.1, 0.1)),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                    #transforms.functional.crop(top=0, left=0, height=tile_size, width=tile_size)
+                    #MyCropTransform(tile_size=tile_size) # fix boundary when scaling<1
+
+                ])
+        elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
+            scale_factor = 0.2
+            transform1 = \
+                transforms.Compose([
+                    transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
+                    HEDColorJitter(sigma=0.05),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.CenterCrop(tile_size),  # fix boundary when scaling<1
+                    #transforms.functional.crop(top=0, left=0, height=tile_size, width=tile_size)
+                    # fix boundary when scaling<1
+                ])
+
+        transform = transforms.Compose([transform1, final_transform])
+    else:
+        scale_factor = 0
+        transform = final_transform
+
+    return transform, scale_factor
+
+def define_data_root(DataSet):
+    # Define data root:
+    if sys.platform == 'linux': #GIPdeep
+        if (DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet == 'RedSquares'):
+            ROOT_PATH = r'/home/womer/project/All Data'
+        elif DataSet == 'LUNG':
+            ROOT_PATH = r'/home/rschley/All_Data/LUNG'
+        else:
+            print('Error - no ROOT_PATH defined')
+    elif sys.platform == 'win32': #Ran local
+        if DataSet == 'HEROHE':
+            ROOT_PATH = r'C:\ran_data\HEROHE_examples'
+        elif DataSet == 'TCGA':
+            ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+        elif DataSet == 'LUNG':
+            ROOT_PATH = r'C:\ran_data\Lung_examples'
+        elif DataSet == 'RedSquares':
+            ROOT_PATH = r'C:\ran_data\RedSquares'
+        else:
+            print('Error - no ROOT_PATH defined')
+    else: #Omer local
+        if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
+            ROOT_PATH = r'All Data'
+        elif DataSet == 'LUNG':
+            ROOT_PATH = 'All Data/LUNG'
+        else:
+            print('Error - no ROOT_PATH defined')
+            # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
+    return ROOT_PATH
+
+def assert_dataset_target(DataSet,target_kind):
+    if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
+        raise ValueError('target should be one of: PDL1, EGFR')
+    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+        raise ValueError('target should be one of: ER, PR, Her2')
+    elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
+        raise ValueError('target should be: RedSquares')

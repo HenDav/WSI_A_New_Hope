@@ -9,7 +9,8 @@ import sys
 import time
 from torch.utils.data import Dataset
 from typing import List
-from utils import MyRotation, Cutout, _get_tiles_2, _choose_data_3, _choose_data_2, chunks, HEDColorJitter
+from utils import MyRotation, Cutout, _get_tiles_2, _choose_data_3, _choose_data_2, chunks
+from utils import HEDColorJitter, define_transformations, define_data_root, assert_dataset_target
 import matplotlib.pyplot as plt
 
 
@@ -33,59 +34,32 @@ class WSI_MILdataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 #transform : bool = False,
                  transform_type: str = 'flip',
                  DX : bool = False,
                  get_images: bool = False,
                  train_type: str = 'MIL'):
 
         # Define data root:
-        if sys.platform == 'linux':  # GIPdeep
-            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
-                self.ROOT_PATH = r'/home/womer/project/All Data'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = r'/home/rschley/All_Data/LUNG'
-        elif sys.platform == 'win32':  # Ran local
-            if DataSet == 'HEROHE':
-                self.ROOT_PATH = r'C:\ran_data\HEROHE_examples'
-            elif DataSet == 'TCGA':
-                self.ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = r'C:\ran_data\Lung_examples'
-        else:  # Omer local
-            if DataSet == 'HEROHE' or DataSet == 'TCGA' or DataSet == 'RedSquares':
-                self.ROOT_PATH = r'All Data'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = r'All Data/LUNG'
-
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-
-        if DataSet == 'RedSquares' or target_kind == 'RedSquares':
-            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data_RedSquares.xlsx')
-            DataSet = 'RedSquares'
-            target_kind = 'RedSquares'
-        else:
-            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        self.ROOT_PATH = define_data_root(DataSet)
 
         self.DataSet = DataSet
         if DataSet == 'RedSquares':
             self.BASIC_MAGNIFICATION = 10
+            slides_data_file = 'slides_data_RedSquares.xlsx'
         else:
             self.BASIC_MAGNIFICATION = 20
+            slides_data_file = 'slides_data.xlsx'
 
+        assert_dataset_target(DataSet, target_kind)
+
+        meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
         self.meta_data_DF = pd.read_excel(meta_data_file)
 
-        if self.DataSet is not 'ALL':
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
+        # for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
@@ -99,7 +73,7 @@ class WSI_MILdataset(Dataset):
         self.bag_size = bag_size
         self.train = train
         self.print_time = print_timing
-        self.transform = transform
+        #self.transform = transform
         self.DX = DX
         self.get_images = get_images
 
@@ -130,7 +104,7 @@ class WSI_MILdataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -154,96 +128,7 @@ class WSI_MILdataset(Dataset):
                 self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
-        final_transform = transforms.Compose([transforms.ToTensor(),
-                                              transforms.Normalize(
-                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
-        # if self.transform and self.train:
-        if transform_type != 'none' and self.train:
-            # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
-            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-            # TODO: Consider transforms.RandomHorizontalFlip()
-            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-            if transform_type == 'flip':
-                self.scale_factor = 0
-                transform1 = \
-                    transforms.Compose([transforms.RandomVerticalFlip(),
-                                        transforms.RandomHorizontalFlip()])
-            elif transform_type == 'wcfrs':  # weak color, flip, rotate, scale
-                self.scale_factor = 0.2
-                transform1 = \
-                    transforms.Compose([
-                        # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
-                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
-                                               saturation=0.1, hue=(-0.1, 0.1)),
-                        transforms.RandomVerticalFlip(),
-                        transforms.RandomHorizontalFlip(),
-                        MyRotation(angles=[0, 90, 180, 270]),
-                        transforms.RandomAffine(degrees=0,
-                                                scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                            # transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
-                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)
-                        # fix boundary when scaling<1
-                            ])
-            elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
-                        self.scale_factor = 0.2
-                        transform1 = \
-                            transforms.Compose([
-                                transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
-                                HEDColorJitter(sigma=0.05),
-                                transforms.RandomVerticalFlip(),
-                                transforms.RandomHorizontalFlip(),
-                                MyRotation(angles=[0, 90, 180, 270]),
-                                transforms.RandomAffine(degrees=0,
-                                                        scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                                # transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
-                                transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)
-                                # fix boundary when scaling<1
-                            ])
-
-            self.transform = transforms.Compose([ transform1,
-                                                  final_transform
-                                                 ])
-        else:
-            self.scale_factor = 0
-            self.transform = final_transform
-
-        """
-        # Setting the transformation:
-        if self.transform and self.train:
-
-            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-            # TODO: Cutout(n_holes=1, length=100),
-            # TODO: transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5), saturation=(0.1), hue=(-0.1, 0.1)),
-            # TODO: transforms.RandomHorizontalFlip(),
-
-            self.transform = \
-                transforms.Compose([ MyRotation(angles=[0, 90, 180, 270]),
-                                     transforms.RandomVerticalFlip(),
-                                     transforms.ToTensor(),
-                                     #Cutout(n_holes=1, length=100),
-                                     transforms.Normalize(
-                                         mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                         std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                     ])
-            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-            '''transforms.Normalize(
-                mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
-                std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
-        else:
-            self.transform = transforms.Compose([transforms.ToTensor(),
-                                                 transforms.Normalize(
-                                                     mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                     std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                                 ])
-            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-            '''transforms.Normalize(mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
-                                                     std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
-
-        """
-
-
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
 
         print('Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format(train_type,
@@ -253,7 +138,7 @@ class WSI_MILdataset(Dataset):
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
-                      'Without' if transform is False else 'With',
+                      'Without' if transform_type=='none' else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
 
@@ -277,7 +162,10 @@ class WSI_MILdataset(Dataset):
 
         tiles, time_list = _choose_data_2(grid_file, image_file, self.bag_size,
                                           self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
+                                          # self.tile_size,
+                                          int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+                                          print_timing=self.print_time,
+                                          basic_obj_power = self.BASIC_MAGNIFICATION)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -304,15 +192,12 @@ class WSI_MILdataset(Dataset):
         start_aug = time.time()
         for i in range(self.bag_size):
             X[i] = transform(tiles[i])
-            '''
-            img = get_concat(tiles[i], trans(X[i]))
-            img.show()
-            time.sleep(3)
-            '''
 
         if self.get_images:
             images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
-            trans = transforms.ToTensor()
+            #trans = transforms.ToTensor()
+            #trans = transforms.Compose([MyCropTransform(tile_size=self.tile_size), transforms.ToTensor()]) #RanS 21.12.20
+            trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
             for i in range(self.bag_size):
                 images[i] = trans(tiles[i])
         else:
@@ -324,6 +209,65 @@ class WSI_MILdataset(Dataset):
             time_list = (time_list[0], time_list[1], aug_time, total_time)
         else:
             time_list = [0]
+
+        temp = False
+        if temp:
+            from mpl_toolkits.axes_grid1 import ImageGrid
+            fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
+            fig1.set_size_inches(32, 18)
+            fig2.set_size_inches(32, 18)
+            fig3.set_size_inches(32, 18)
+            fig4.set_size_inches(32, 18)
+            fig5.set_size_inches(32, 18)
+            grid1 = ImageGrid(fig1, 111, nrows_ncols=(2, 5), axes_pad=0)
+            grid2 = ImageGrid(fig2, 111, nrows_ncols=(2, 5), axes_pad=0)
+            grid3 = ImageGrid(fig3, 111, nrows_ncols=(2, 5), axes_pad=0)
+            grid4 = ImageGrid(fig4, 111, nrows_ncols=(2, 5), axes_pad=0)
+            grid5 = ImageGrid(fig5, 111, nrows_ncols=(2, 5), axes_pad=0)
+
+            for ii in range(10):
+                img1 = np.squeeze(images[ii,:,:,:])
+                grid1[ii].imshow(np.transpose(img1,axes=(1,2,0)))
+
+                img2 = np.squeeze(X[ii, :, :, :])
+                grid2[ii].imshow(np.transpose(img2, axes=(1, 2, 0)))
+
+                trans_no_norm = \
+                    transforms.Compose([
+                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1,
+                                               hue=(-0.1, 0.1)),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomHorizontalFlip(),
+                        MyRotation(angles=[0, 90, 180, 270]),
+                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
+                        transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
+                        transforms.ToTensor()
+                    ])
+
+                img3 = trans_no_norm(tiles[ii])
+                grid3[ii].imshow(np.transpose(img3, axes=(1, 2, 0)))
+
+                trans0 = transforms.ToTensor()
+                img4 = trans0(tiles[ii])
+                grid4[ii].imshow(np.transpose(img4, axes=(1, 2, 0)))
+
+                color_trans = transforms.Compose([
+                    transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                           saturation=0.1, hue=(-0.1, 0.1)),
+                    transforms.ToTensor()])
+                img5 = color_trans(tiles[ii])
+                grid5[ii].imshow(np.transpose(img5, axes=(1, 2, 0)))
+
+
+            fig1.suptitle('original patches', fontsize=14)
+            fig2.suptitle('final patches', fontsize=14)
+            fig3.suptitle('all trans before norm', fontsize=14)
+            fig4.suptitle('original patches, before crop', fontsize=14)
+            fig5.suptitle('color transform only', fontsize=14)
+
+            plt.show()
+            ####################
+
 
         return X, label, time_list, self.image_file_names[idx], images
 
@@ -347,7 +291,7 @@ class Infer_WSI_MILdataset(Dataset):
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
-        if self.DataSet is not 'ALL':
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
@@ -390,7 +334,7 @@ class Infer_WSI_MILdataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -541,44 +485,21 @@ class WSI_REGdataset(Dataset):
                  n_patches: int = 50,
                  transform_type: str = 'flip'):
 
-        # Define data root:
-        if sys.platform == 'linux': #GIPdeep
-            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
-                self.ROOT_PATH = r'/home/womer/project/All Data'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = r'/home/rschley/All_Data/LUNG'
-        elif sys.platform == 'win32': #Ran local
-            if DataSet == 'HEROHE':
-                self.ROOT_PATH = r'C:\ran_data\HEROHE_examples'
-            elif DataSet == 'TCGA':
-                self.ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = r'C:\ran_data\Lung_examples'
-        else: #Omer local
-            if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
-                self.ROOT_PATH = r'All Data'
-            elif DataSet == 'LUNG':
-                self.ROOT_PATH = 'All Data/LUNG'
-
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-
-        if DataSet == 'RedSquares' or target_kind == 'RedSquares':
-            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data_RedSquares.xlsx')
-            DataSet = 'RedSquares'
-            target_kind = 'RedSquares'
-        else:
-            meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        self.ROOT_PATH = define_data_root(DataSet)
+        self.DataSet = DataSet
+        assert_dataset_target(DataSet, target_kind)
 
         self.DataSet = DataSet
-        self.BASIC_MAGNIFICATION = 20
         if DataSet == 'RedSquares':
             self.BASIC_MAGNIFICATION = 10
+            slides_data_file = 'slides_data_RedSquares.xlsx'
+        else:
+            self.BASIC_MAGNIFICATION = 20
+            slides_data_file = 'slides_data.xlsx'
 
+        meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
         self.meta_data_DF = pd.read_excel(meta_data_file)
-        if self.DataSet is not 'ALL':
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
@@ -646,56 +567,7 @@ class WSI_REGdataset(Dataset):
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
 
-        # Setting the transformation:
-        final_transform = transforms.Compose([transforms.ToTensor(),
-                                              transforms.Normalize(
-                                                mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
-        #if self.transform and self.train:
-        if transform_type != 'none' and self.train:
-            # TODO: Consider using - torchvision.transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0)
-            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-            # TODO: Consider transforms.RandomHorizontalFlip()
-            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-            if transform_type == 'flip':
-                self.scale_factor = 0
-                transform1 = \
-                    transforms.Compose([ transforms.RandomVerticalFlip(),
-                                         transforms.RandomHorizontalFlip()])
-            elif transform_type == 'wcfrs': #weak color, flip, rotate, scale
-                self.scale_factor = 0.2
-                transform1 = \
-                    transforms.Compose([
-                        # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
-                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
-                                               saturation=0.1, hue=(-0.1, 0.1)),
-                        transforms.RandomVerticalFlip(),
-                        transforms.RandomHorizontalFlip(),
-                        MyRotation(angles=[0, 90, 180, 270]),
-                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                        #transforms.CenterCrop(self.tile_size),  #fix boundary when scaling<1
-                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)  # fix boundary when scaling<1
-                    ])
-            elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
-                self.scale_factor = 0.2
-                transform1 = \
-                    transforms.Compose([
-                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
-                        HEDColorJitter(sigma=0.05),
-                        transforms.RandomVerticalFlip(),
-                        transforms.RandomHorizontalFlip(),
-                        MyRotation(angles=[0, 90, 180, 270]),
-                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                        #transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
-                        transforms.functional.crop(top=0, left=0, height=self.tile_size, width=self.tile_size)  # fix boundary when scaling<1
-                    ])
-
-
-            self.transform = transforms.Compose([transform1,
-                                                 final_transform])
-        else:
-            self.scale_factor = 0
-            self.transform = final_transform
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
 
         self.factor = n_patches
         self.real_length = int(self.__len__() / self.factor)
@@ -729,7 +601,8 @@ class WSI_REGdataset(Dataset):
                                           self.magnification[idx],
                                           #self.tile_size,
                                           int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
-                                          print_timing=self.print_time)
+                                          print_timing=self.print_time,
+                                          basic_obj_power = self.BASIC_MAGNIFICATION)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -821,7 +694,7 @@ class WSI_MIL2_dataset(Dataset):
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
-        if self.DataSet is not 'ALL':
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
@@ -881,7 +754,7 @@ class WSI_MIL2_dataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -1052,27 +925,28 @@ class WSI_MIL3_dataset(Dataset):
                  test_fold: int = 1,
                  train: bool = True,
                  print_timing: bool = False,
-                 transform : bool = False,
+                 #transform : bool = False,
+                 transform_type: str = 'flip',
                  DX : bool = False):
 
-        self.ROOT_PATH = 'All Data'
-        if DataSet == 'LUNG':
-            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
-
-        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
+        self.ROOT_PATH = define_data_root(DataSet)
         self.DataSet = DataSet
-        self.BASIC_MAGNIFICATION = 20
-        self.meta_data_DF = pd.read_excel(meta_data_file)
-        if self.DataSet is not 'ALL':
+        assert_dataset_target(DataSet, target_kind)
+
+        if DataSet == 'RedSquares':
+            self.BASIC_MAGNIFICATION = 10
+            slides_data_file = 'slides_data_RedSquares.xlsx'
+        else:
+            self.BASIC_MAGNIFICATION = 20
+            slides_data_file = 'slides_data.xlsx'
+
+        meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
+
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if self.DataSet == 'HEROHE':
-            target_kind = 'Her2'
+        # for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
@@ -1084,7 +958,7 @@ class WSI_MIL3_dataset(Dataset):
         self.bag_size = bag_size
         self.train = train
         self.print_time = print_timing
-        self.transform = transform
+        #self.transform = transform
         self.DX = DX
 
         # In test mode we want all tiles to be from the same slide.
@@ -1121,7 +995,7 @@ class WSI_MIL3_dataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -1153,53 +1027,7 @@ class WSI_MIL3_dataset(Dataset):
 
 
         # Setting the transformation:
-        '''
-        mean = {}
-        std = {}
-
-        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
-        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
-
-        mean['HEROHE'] = [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255]
-        std['HEROHE'] = [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255]
-
-        mean['Ron'] = [0.8998, 0.8253, 0.9357]
-        std['Ron'] = [0.1125, 0.1751, 0.0787]
-        '''
-        if self.transform and self.train:
-
-            # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
-            # TODO: transforms.RandomRotation([self.rotate_by, self.rotate_by]),
-            # TODO: Cutout(n_holes=1, length=100),
-            # TODO: transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5), saturation=(0.1), hue=(-0.1, 0.1)),
-            # TODO: transforms.RandomHorizontalFlip(),
-
-            self.transform = \
-                transforms.Compose([ transforms.RandomHorizontalFlip(),
-                                     transforms.RandomVerticalFlip(),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize(
-                                         mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                         std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                     ])
-            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-            '''transforms.Normalize(
-                                         mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
-                                         std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
-        else:
-            self.transform = transforms.Compose([transforms.ToTensor(),
-                                                 transforms.Normalize(
-                                                     mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                     std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                                 ])
-            '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-            '''transforms.Normalize(
-                                                     mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
-                                                     std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
-
-
-
-
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
 
         print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',
@@ -1208,7 +1036,7 @@ class WSI_MIL3_dataset(Dataset):
                       self.__len__(),
                       self.tile_size,
                       self.bag_size,
-                      'Without' if transform is False else 'With',
+                      'Without' if transform_type=='none' else 'With',
                       self.test_fold,
                       'ON' if self.DX else 'OFF'))
         print('{} Tiles in a bag are gathered EVENLY from {} slides'
@@ -1226,7 +1054,9 @@ class WSI_MIL3_dataset(Dataset):
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
         tiles, time_list = _choose_data_3(grid_file, image_file, self.TPS,
                                           self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
+                                          # self.tile_size,
+                                          int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+                                          print_timing=self.print_time)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -1273,7 +1103,9 @@ class WSI_MIL3_dataset(Dataset):
         else:
             time_list = [0]
 
-        trans = transforms.ToTensor()
+        # trans = transforms.ToTensor()
+        #trans = transforms.Compose([MyCropTransform(tile_size=self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
+        trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
         return X, label, time_list, self.image_file_names[idx], trans(tiles[0])
 
 
@@ -1302,7 +1134,7 @@ class WSI_MIL_OFTest_dataset(Dataset):
         self.DataSet = DataSet
         self.BASIC_MAGNIFICATION = 20
         self.meta_data_DF = pd.read_excel(meta_data_file)
-        if self.DataSet is not 'ALL':
+        if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
@@ -1363,7 +1195,7 @@ class WSI_MIL_OFTest_dataset(Dataset):
         all_image_path_names = list(self.meta_data_DF['id'])
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
-        if self.DataSet is not 'TCGA':
+        if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -1466,7 +1298,8 @@ class WSI_MIL_OFTest_dataset(Dataset):
 
         tiles, time_list = _choose_data_2(grid_file, image_file, self.bag_size,
                                           self.magnification[idx],
-                                          self.tile_size, print_timing=self.print_time)
+                                          self.tile_size, print_timing=self.print_time,
+                                          basic_obj_power = self.BASIC_MAGNIFICATION)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 

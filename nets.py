@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torchvision.models import resnet
 
 '''
 class Flatten(nn.Module):
@@ -373,6 +374,40 @@ class resnet50_with_3FC(nn.Module):
         self.model_name = 'resnet50_with_3FC'
         pretrained_model = models.resnet50(pretrained=pretrained)
         self.model = net_with_3FC(pretrained_model=pretrained_model, reinit_last_layer=False)
+
+    def forward(self, x):
+        x = self.model(x)
+        return x
+
+
+#RanS 21.12.20
+class net_with_2FC(nn.Module):
+    def __init__(self, pretrained_model):
+        super(net_with_2FC, self).__init__()
+        self.model_name = 'net_with_2FC'
+        self.pretrained = pretrained_model
+        num_ftrs = self.pretrained.fc.in_features
+        self.pretrained.fc = nn.Identity()
+        self.dropout = nn.Dropout(p=0.5)
+        self.fc1 = nn.Linear(num_ftrs, 512)
+        self.fc2 = nn.Linear(512, 512)
+        nn.init.kaiming_normal_(self.fc1.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+
+    def forward(self, x):
+        x = self.pretrained(x)
+        x = F.relu(self.fc1(self.dropout(x)))
+        x = self.fc2(x)
+        return x
+
+
+#RanS 21.12.20
+class ReceptorNet_feature_extractor(nn.Module):
+    def __init__(self, pretrained=True):
+        super(ReceptorNet_feature_extractor, self).__init__()
+        self.model_name = 'resnet50_with_2FC'
+        pretrained_model = models.resnet50(pretrained=pretrained)
+        self.model = net_with_2FC(pretrained_model=pretrained_model)
 
     def forward(self, x):
         x = self.model(x)

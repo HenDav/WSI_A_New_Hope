@@ -522,6 +522,16 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                 print('Exception for file {}'.format(file))
                 continue
 
+            #ignore black background regions at jpg images by turning them white
+            if DataSet == 'RedSquares':
+                thumb_arr = np.array(thumb)
+                thumb_arr_equal1 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 1])
+                thumb_arr_equal2 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 2])
+                thumb_arr[thumb_arr_equal1&thumb_arr_equal2, :] = 255
+                thumb = Image.fromarray(thumb_arr)
+                #plt.imshow(thumb)
+
+
             thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
             slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
