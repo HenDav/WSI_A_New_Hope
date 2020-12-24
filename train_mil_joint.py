@@ -285,7 +285,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
     num_correct = 0
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
-    targets_test, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
+    targets_test, scores, preds = np.zeros(len(data_loader)), np.zeros(len(data_loader)), np.zeros(len(data_loader))
 
     if eval_mode:
         model.eval()
@@ -317,10 +317,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
 
             num_correct += label.eq(target).cpu().detach().int().item()
             scores[idx] = prob.cpu().detach().item()
-
-        acc = 100 * float(num_correct) / len(data_loader)
-        #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
-        balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
+            preds[idx] = label.cpu().detach().item()
 
         if data_loader.dataset.train:
             writer_string = 'Train_2'
@@ -333,6 +330,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         ###########################################################################
 
         if not args.bootstrap:
+            acc = 100 * float(num_correct) / len(data_loader)
+            bacc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
             roc_auc = np.nan
             if not all(targets_test==targets_test[0]): #more than one label
                 fpr, tpr, _ = roc_curve(targets_test, scores)
@@ -340,21 +339,36 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         else: #bootstrap, RanS 16.12.20
             n_iterations = 100
             # run bootstrap
-            roc_auc_array = np.empty(n_iterations)
-            roc_auc_array[:] = np.nan
+            roc_auc_array, acc_array, bacc_array = np.empty(n_iterations), np.empty(n_iterations), np.empty(n_iterations)
+            roc_auc_array[:], acc_array[:], bacc_array[:]  = np.nan, np.nan, np.nan
+
             for ii in range(n_iterations):
                 #resample bags, each bag is a sample
-                scores_resampled, labels_resampled = resample(scores, targets_test)
-                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
-                if not all(labels_resampled == labels_resampled[0]):  # more than one label
-                    roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+                scores_resampled, preds_resampled, targets_resampled = resample(scores, preds, targets_test)
+                fpr, tpr, _ = roc_curve(targets_resampled, scores_resampled)
+
+                num_correct_i = np.sum(preds_resampled==targets_resampled)
+                true_pos_i = np.sum(targets_resampled+preds_resampled==2)
+                total_pos_i = np.sum(targets_resampled==0)
+                true_neg_i = np.sum(targets_resampled+preds_resampled==0)
+                total_neg_i = np.sum(targets_resampled==1)
+                acc_array[ii] = 100 * float(num_correct_i) / len(data_loader)
+                bacc_array[ii] = 100. * ((true_pos_i + eps) / (total_pos_i + eps) + (true_neg_i + eps) / (total_neg_i + eps)) / 2
+                if not all(targets_resampled == targets_resampled[0]):  # more than one label
+                    roc_auc_array[ii] = roc_auc_score(targets_resampled, scores_resampled)
 
             roc_auc = np.nanmean(roc_auc_array)
-            roc_auc_std = np.nanstd(roc_auc_array)
-            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
+            roc_auc_err = np.nanstd(roc_auc_array)
+            acc = np.nanmean(acc_array)
+            acc_err = np.nanmean(acc_array)
+            bacc = np.nanmean(bacc_array)
+            bacc_err = np.nanmean(bacc_array)
+            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_err, epoch)
+            writer_all.add_scalar(writer_string + '/Accuracy error', acc_err, epoch)
+            writer_all.add_scalar(writer_string + '/Balanced Accuracy error', bacc_err, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
-        writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
+        writer_all.add_scalar(writer_string + '/Balanced Accuracy', bacc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
         print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
@@ -365,11 +379,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         if isinstance(module, nn.BatchNorm2d):
             module.track_running_stats = False
     '''
-    return acc, balanced_acc
-
-
-
-##################################################################################################
+    return acc, bacc
 
 
 if __name__ == '__main__':
