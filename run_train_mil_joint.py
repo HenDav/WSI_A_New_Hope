@@ -19,5 +19,6 @@ subprocess.run(['python', 'train_mil_joint.py',
                 '--transform_type', 'cbnfrsc',
                 #'--transform_type', 'hedcfrs',
                 '--model', 'receptornet',
-                '-im'
+                '-im',
+                '--bootstrap'
                 ])

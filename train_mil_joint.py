@@ -11,10 +11,11 @@ import time
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score
 import numpy as np
 import sys
 import pandas as pd
+from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -31,7 +32,7 @@ parser.add_argument('-time', dest='time', action='store_true', help='save train 
 parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares') # RanS 7.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20, TODO
-parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
+parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20 TODO
@@ -321,11 +322,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
         balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
 
-        fpr, tpr, _ = roc_curve(targets_test, scores)
-        roc_auc = auc(fpr, tpr)
-
-
-        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
             writer_string = 'Train_2'
         else:
@@ -333,6 +329,29 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
                 writer_string = 'Test (eval mode)'
             else:
                 writer_string = 'Test (train mode)'
+
+        ###########################################################################
+
+        if not args.bootstrap:
+            roc_auc = np.nan
+            if not all(targets_test==targets_test[0]): #more than one label
+                fpr, tpr, _ = roc_curve(targets_test, scores)
+                roc_auc = auc(fpr, tpr)
+        else: #bootstrap, RanS 16.12.20
+            n_iterations = 100
+            # run bootstrap
+            roc_auc_array = np.empty(n_iterations)
+            roc_auc_array[:] = np.nan
+            for ii in range(n_iterations):
+                #resample bags, each bag is a sample
+                scores_resampled, labels_resampled = resample(scores, targets_test)
+                fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
+                if not all(labels_resampled == labels_resampled[0]):  # more than one label
+                    roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
+
+            roc_auc = np.nanmean(roc_auc_array)
+            roc_auc_std = np.nanstd(roc_auc_array)
+            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
