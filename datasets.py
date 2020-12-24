@@ -9,8 +9,9 @@ import sys
 import time
 from torch.utils.data import Dataset
 from typing import List
-from utils import MyRotation, Cutout, _get_tiles_2, _choose_data_3, _choose_data_2, chunks
+from utils import MyRotation, _get_tiles_2, _choose_data_3, _choose_data_2, chunks
 from utils import HEDColorJitter, define_transformations, define_data_root, assert_dataset_target
+from utils import show_patches_and_transformations
 import matplotlib.pyplot as plt
 
 
@@ -210,63 +211,9 @@ class WSI_MILdataset(Dataset):
         else:
             time_list = [0]
 
-        temp = False
-        if temp:
-            from mpl_toolkits.axes_grid1 import ImageGrid
-            fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
-            fig1.set_size_inches(32, 18)
-            fig2.set_size_inches(32, 18)
-            fig3.set_size_inches(32, 18)
-            fig4.set_size_inches(32, 18)
-            fig5.set_size_inches(32, 18)
-            grid1 = ImageGrid(fig1, 111, nrows_ncols=(2, 5), axes_pad=0)
-            grid2 = ImageGrid(fig2, 111, nrows_ncols=(2, 5), axes_pad=0)
-            grid3 = ImageGrid(fig3, 111, nrows_ncols=(2, 5), axes_pad=0)
-            grid4 = ImageGrid(fig4, 111, nrows_ncols=(2, 5), axes_pad=0)
-            grid5 = ImageGrid(fig5, 111, nrows_ncols=(2, 5), axes_pad=0)
-
-            for ii in range(10):
-                img1 = np.squeeze(images[ii,:,:,:])
-                grid1[ii].imshow(np.transpose(img1,axes=(1,2,0)))
-
-                img2 = np.squeeze(X[ii, :, :, :])
-                grid2[ii].imshow(np.transpose(img2, axes=(1, 2, 0)))
-
-                trans_no_norm = \
-                    transforms.Compose([
-                        transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1,
-                                               hue=(-0.1, 0.1)),
-                        transforms.RandomVerticalFlip(),
-                        transforms.RandomHorizontalFlip(),
-                        MyRotation(angles=[0, 90, 180, 270]),
-                        transforms.RandomAffine(degrees=0, scale=(1 - self.scale_factor, 1 + self.scale_factor)),
-                        transforms.CenterCrop(self.tile_size),  # fix boundary when scaling<1
-                        transforms.ToTensor()
-                    ])
-
-                img3 = trans_no_norm(tiles[ii])
-                grid3[ii].imshow(np.transpose(img3, axes=(1, 2, 0)))
-
-                trans0 = transforms.ToTensor()
-                img4 = trans0(tiles[ii])
-                grid4[ii].imshow(np.transpose(img4, axes=(1, 2, 0)))
-
-                color_trans = transforms.Compose([
-                    transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
-                                           saturation=0.1, hue=(-0.1, 0.1)),
-                    transforms.ToTensor()])
-                img5 = color_trans(tiles[ii])
-                grid5[ii].imshow(np.transpose(img5, axes=(1, 2, 0)))
-
-
-            fig1.suptitle('original patches', fontsize=14)
-            fig2.suptitle('final patches', fontsize=14)
-            fig3.suptitle('all trans before norm', fontsize=14)
-            fig4.suptitle('original patches, before crop', fontsize=14)
-            fig5.suptitle('color transform only', fontsize=14)
-
-            plt.show()
-            ####################
+        debug_patches_and_transformations = False
+        if debug_patches_and_transformations:
+            show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
 
         return X, label, time_list, self.image_file_names[idx], images

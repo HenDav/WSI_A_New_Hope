@@ -16,7 +16,7 @@ subprocess.run(['python', 'train_mil_joint.py',
                 '--epochs', str(2),
                 '--dataset', 'RedSquares',
                 '--target', 'RedSquares',
-                '--transform_type', 'wcfrs',
+                '--transform_type', 'cbnfrsc',
                 #'--transform_type', 'hedcfrs',
                 '--model', 'receptornet',
                 '-im'

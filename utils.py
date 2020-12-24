@@ -15,6 +15,9 @@ from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
 from HED_space import HED_color_jitter
+from skimage.util import random_noise
+from mpl_toolkits.axes_grid1 import ImageGrid
+import matplotlib.pyplot as plt
 Image.MAX_IMAGE_PIXELS = None
 
 
@@ -549,6 +552,29 @@ class MyCropTransform:
         x = transforms.functional.crop(img=x, top=x.size[0] - self.tile_size, left=x.size[1] - self.tile_size, height=self.tile_size, width=self.tile_size)
         return x
 
+
+class MyGaussianNoiseTransform:
+    """add gaussian noise."""
+
+    def __init__(self, sigma):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        #x += torch.normal(mean=np.zeros_like(x), std=self.sigma)
+        stdev = self.sigma[0]+(self.sigma[1]-self.sigma[0])*np.random.rand()
+        # convert PIL Image to ndarray
+        x_arr = np.asarray(x)
+
+        # random_noise() method will convert image in [0, 255] to [0, 1.0],
+        # inherently it use np.random.normal() to create normal distribution
+        # and adds the generated noised back to image
+        noise_img = random_noise(x_arr, mode='gaussian', var=stdev ** 2)
+        noise_img = (255 * noise_img).astype(np.uint8)
+
+        x = Image.fromarray(noise_img)
+        return x
+
+
 class HEDColorJitter:
     """Jitter colors in HED color space rather than RGB color space."""
     def __init__(self, sigma):
@@ -567,30 +593,32 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size):
                                           transforms.Normalize(
                                               mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
                                               std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+    scale_factor = 0
     # if self.transform and self.train:
     if transform_type != 'none' and train:
         # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
         if transform_type == 'flip':
-            scale_factor = 0
             transform1 = \
                 transforms.Compose([transforms.RandomVerticalFlip(),
                                     transforms.RandomHorizontalFlip()])
         elif transform_type == 'rvf': #rotate, vertical flip
-            scale_factor = 0
             transform1 = \
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
                                      transforms.RandomVerticalFlip()])
-        elif transform_type == 'wcfrs':  # weak color, flip, rotate, scale
+        elif transform_type == 'cbnfrsc':  # color, blur, noise, flip, rotate, scale, cutout
             scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
                     transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
                                            saturation=0.1, hue=(-0.1, 0.1)),
+                    transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
+                    MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
                     transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    #Cutout(n_holes=1, length=100), #RanS 24.12.20
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                     #transforms.functional.crop(top=0, left=0, height=tile_size, width=tile_size)
                     #MyCropTransform(tile_size=tile_size) # fix boundary when scaling<1
@@ -613,8 +641,10 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size):
 
         transform = transforms.Compose([transform1, final_transform])
     else:
-        scale_factor = 0
         transform = final_transform
+
+    if transform_type == 'cbnfrsc':
+        transform.transforms.append(Cutout(n_holes=1, length=100)) #RanS 24.12.20
 
     return transform, scale_factor
 
@@ -655,3 +685,73 @@ def assert_dataset_target(DataSet,target_kind):
         raise ValueError('target should be one of: ER, PR, Her2')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
+
+def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
+    fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
+    fig1.set_size_inches(32, 18)
+    fig2.set_size_inches(32, 18)
+    fig3.set_size_inches(32, 18)
+    fig4.set_size_inches(32, 18)
+    fig5.set_size_inches(32, 18)
+    grid1 = ImageGrid(fig1, 111, nrows_ncols=(2, 5), axes_pad=0)
+    grid2 = ImageGrid(fig2, 111, nrows_ncols=(2, 5), axes_pad=0)
+    grid3 = ImageGrid(fig3, 111, nrows_ncols=(2, 5), axes_pad=0)
+    grid4 = ImageGrid(fig4, 111, nrows_ncols=(2, 5), axes_pad=0)
+    grid5 = ImageGrid(fig5, 111, nrows_ncols=(2, 5), axes_pad=0)
+
+    for ii in range(10):
+        img1 = np.squeeze(images[ii, :, :, :])
+        grid1[ii].imshow(np.transpose(img1, axes=(1, 2, 0)))
+
+        img2 = np.squeeze(X[ii, :, :, :])
+        grid2[ii].imshow(np.transpose(img2, axes=(1, 2, 0)))
+
+        trans_no_norm = \
+            transforms.Compose([
+                transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1,
+                                       hue=(-0.1, 0.1)),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomHorizontalFlip(),
+                MyRotation(angles=[0, 90, 180, 270]),
+                transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                transforms.CenterCrop(tile_size),  # fix boundary when scaling<1
+                transforms.ToTensor()
+            ])
+
+        img3 = trans_no_norm(tiles[ii])
+        grid3[ii].imshow(np.transpose(img3, axes=(1, 2, 0)))
+
+        trans0 = transforms.ToTensor()
+        img4 = trans0(tiles[ii])
+        grid4[ii].imshow(np.transpose(img4, axes=(1, 2, 0)))
+
+        color_trans = transforms.Compose([
+            transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                   saturation=0.1, hue=(-0.1, 0.1)),
+            transforms.ToTensor()])
+
+        blur_trans = transforms.Compose([
+            transforms.GaussianBlur(5, sigma=0.1),  # RanS 23.12.20
+            transforms.ToTensor()])
+
+        noise_trans = transforms.Compose([
+            MyGaussianNoiseTransform(sigma=(0.05, 0.05)),  # RanS 23.12.20
+            transforms.ToTensor()])
+
+        cutout_trans = transforms.Compose([
+            transforms.ToTensor(),
+            Cutout(n_holes=1, length=100)])  # RanS 24.12.20]
+
+        # img5 = color_trans(tiles[ii])
+        # img5 = blur_trans(tiles[ii])
+        # img5 = noise_trans(tiles[ii])
+        img5 = cutout_trans(tiles[ii])
+        grid5[ii].imshow(np.transpose(img5, axes=(1, 2, 0)))
+
+    fig1.suptitle('original patches', fontsize=14)
+    fig2.suptitle('final patches', fontsize=14)
+    fig3.suptitle('all trans before norm', fontsize=14)
+    fig4.suptitle('original patches, before crop', fontsize=14)
+    fig5.suptitle('color transform only', fontsize=14)
+
+    plt.show()
