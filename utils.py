@@ -586,7 +586,7 @@ class HEDColorJitter:
         return x2
 
 
-def define_transformations(transform_type, train, MEAN, STD, tile_size):
+def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=0.1):
 
     # Setting the transformation:
     final_transform = transforms.Compose([transforms.ToTensor(),
@@ -605,7 +605,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size):
             transform1 = \
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
                                      transforms.RandomVerticalFlip()])
-        elif transform_type == 'cbnfrsc':  # color, blur, noise, flip, rotate, scale, cutout
+        elif transform_type == 'cbnfrsc' or 'cbnfrs':  # color, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
@@ -618,11 +618,59 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size):
                     transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
-                    #Cutout(n_holes=1, length=100), #RanS 24.12.20
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
-                    #transforms.functional.crop(top=0, left=0, height=tile_size, width=tile_size)
-                    #MyCropTransform(tile_size=tile_size) # fix boundary when scaling<1
-
+                ])
+        elif transform_type == 'pcbnfrsc' or 'pcbnfrs':  # parameterized color, blur, noise, flip, rotate, scale, +-cutout
+        #elif transform_type == 'c_0_05_bnfrsc' or 'c_0_05_bnfrs':  # color 0.1, blur, noise, flip, rotate, scale, +-cutout
+            scale_factor = 0.2
+            #c_param = 0.05
+            transform1 = \
+                transforms.Compose([
+                    # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
+                    transforms.ColorJitter(brightness=(1-c_param*1, 1+c_param*1), contrast=(1-c_param*2, 1+c_param*2),  # RanS 2.12.20
+                                           saturation=c_param, hue=(-c_param, c_param)),
+                    transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
+                    MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                ])
+        elif transform_type == 'cbnfr':  # color, blur, noise, flip, rotate
+            scale_factor = 0
+            transform1 = \
+                transforms.Compose([
+                    transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
+                                           saturation=0.1, hue=(-0.1, 0.1)),
+                    transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
+                    MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                ])
+        elif transform_type == 'bnfrsc' or 'bnfrs':  # blur, noise, flip, rotate, scale, +-cutout
+            scale_factor = 0.2
+            transform1 = \
+                transforms.Compose([
+                    transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
+                    MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                ])
+        elif transform_type == 'frs':  # flip, rotate, scale
+            scale_factor = 0.2
+            transform1 = \
+                transforms.Compose([
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
             scale_factor = 0.2
@@ -643,10 +691,11 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size):
     else:
         transform = final_transform
 
-    if transform_type == 'cbnfrsc':
+    if transform_type in ['cbnfrsc', 'bnfrsc', 'c_0_05_bnfrsc', 'pcbnfrsc']:
         transform.transforms.append(Cutout(n_holes=1, length=100)) #RanS 24.12.20
 
     return transform, scale_factor
+
 
 def define_data_root(DataSet):
     # Define data root:

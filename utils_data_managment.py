@@ -330,7 +330,7 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
     if DataSet == 'LUNG':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
     elif DataSet == 'CARMEL':
-        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Scanned_SlideID'].astype(str) #RanS 16.12.20
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str) #RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)

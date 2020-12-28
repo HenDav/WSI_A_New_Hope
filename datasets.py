@@ -38,7 +38,8 @@ class WSI_MILdataset(Dataset):
                  transform_type: str = 'flip',
                  DX : bool = False,
                  get_images: bool = False,
-                 train_type: str = 'MIL'):
+                 train_type: str = 'MIL',
+                 c_param: float = 0.1):
 
         # Define data root:
         self.ROOT_PATH = define_data_root(DataSet)
@@ -77,6 +78,7 @@ class WSI_MILdataset(Dataset):
         #self.transform = transform
         self.DX = DX
         self.get_images = get_images
+        self.c_param = c_param #RanS 28.12.20
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -129,7 +131,7 @@ class WSI_MILdataset(Dataset):
                 self.magnification.append(all_magnifications[index])
 
         # Setting the transformation:
-        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
 
         print('Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format(train_type,
@@ -430,7 +432,8 @@ class WSI_REGdataset(Dataset):
                  print_timing: bool = False,
                  DX: bool = False,
                  n_patches: int = 50,
-                 transform_type: str = 'flip'):
+                 transform_type: str = 'flip',
+                 c_param: float = 0.1):
 
         self.ROOT_PATH = define_data_root(DataSet)
         self.DataSet = DataSet
@@ -463,6 +466,7 @@ class WSI_REGdataset(Dataset):
         self.train = train
         self.print_time = print_timing
         self.DX = DX
+        self.c_param = c_param
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -514,7 +518,7 @@ class WSI_REGdataset(Dataset):
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
 
-        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
 
         self.factor = n_patches
         self.real_length = int(self.__len__() / self.factor)
@@ -874,7 +878,8 @@ class WSI_MIL3_dataset(Dataset):
                  print_timing: bool = False,
                  #transform : bool = False,
                  transform_type: str = 'flip',
-                 DX : bool = False):
+                 DX : bool = False,
+                 c_param: float = 0.1):
 
         self.ROOT_PATH = define_data_root(DataSet)
         self.DataSet = DataSet
@@ -907,6 +912,7 @@ class WSI_MIL3_dataset(Dataset):
         self.print_time = print_timing
         #self.transform = transform
         self.DX = DX
+        self.c_param = c_param
 
         # In test mode we want all tiles to be from the same slide.
         # in train mode all tiles will be taken evenly from slides with same label
@@ -974,7 +980,7 @@ class WSI_MIL3_dataset(Dataset):
 
 
         # Setting the transformation:
-        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size)
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
 
         print('Initiation of WSI(MIL) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
               .format('Train' if self.train else 'Test',

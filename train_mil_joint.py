@@ -35,8 +35,9 @@ parser.add_argument('--balanced_sampling', action='store_true', help='balanced_s
 parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20 TODO
-parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #RanS 16.12.20 TODO
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #RanS 16.12.20
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
 args = parser.parse_args()
 eps = 1e-7
 
@@ -360,9 +361,9 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
             roc_auc = np.nanmean(roc_auc_array)
             roc_auc_err = np.nanstd(roc_auc_array)
             acc = np.nanmean(acc_array)
-            acc_err = np.nanmean(acc_array)
+            acc_err = np.nanstd(acc_array)
             bacc = np.nanmean(bacc_array)
-            bacc_err = np.nanmean(bacc_array)
+            bacc_err = np.nanstd(bacc_array)
             writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_err, epoch)
             writer_all.add_scalar(writer_string + '/Accuracy error', acc_err, epoch)
             writer_all.add_scalar(writer_string + '/Balanced Accuracy error', bacc_err, epoch)
@@ -431,7 +432,8 @@ if __name__ == '__main__':
                                           #transform=args.transformation,
                                           transform_type=args.transform_type,
                                           DX=args.dx,
-                                          get_images=args.images)
+                                          get_images=args.images,
+                                          c_param=args.c_param)
 
         test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                          tile_size=TILE_SIZE,
@@ -455,7 +457,8 @@ if __name__ == '__main__':
                                             print_timing=args.time,
                                             #transform=args.transformation,
                                             transform_type=args.transform_type,
-                                            DX=args.dx)
+                                            DX=args.dx,
+                                            c_param=args.c_param)
 
         test_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
                                            tile_size=TILE_SIZE,
