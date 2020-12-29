@@ -1157,18 +1157,7 @@ class WSI_MILdataset(Dataset):
         # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
-        '''
-        # Updating RandomRotation angle in the data transformations only for train set:
-        if self.train:
-            rotate_by = sample([0, 90, 180, 270], 1)[0]
-            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
-                                             self.transform
-                                             ])
-        else:
-            transform = self.transform
-        '''
         transform = self.transform
-
 
         magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         if magnification_relation != 1:
@@ -1759,18 +1748,7 @@ class WSI_REGdataset(Dataset):
         # The following section is written for tiles in PIL format
         X = torch.zeros([1, 3, self.tile_size, self.tile_size])
 
-        '''
-        # Updating RandomRotation angle in the data transformations only for train set:
-        if self.train:
-            rotate_by = sample([0, 90, 180, 270], 1)[0]
-            transform = transforms.Compose([ transforms.RandomRotation([rotate_by, rotate_by]),
-                                             self.transform
-                                             ])
-        else:
-            transform = self.transform
-        '''
         transform = self.transform
-
 
         magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         if magnification_relation != 1:

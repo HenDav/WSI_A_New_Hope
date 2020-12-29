@@ -249,14 +249,48 @@ class ResNext_50(nn.Module):
         out = self.net(x)
         return out
 
-def ResNet_50():
-    print('Using model ResNet_50')
-    model = models.resnet50(pretrained=False)
-    model.fc.out_features = 2
-    model.model_name = 'ResNet_50()'
-    return model
+
+class ResNet18(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = 'ResNet18'
+        print('Using model {}'.format(self.model_name))
+        self.basic_resnet = resnet.ResNet(resnet.BasicBlock, [2, 2, 2, 2], num_classes=2)
+
+    def forward(self, x):
+        x = x.squeeze()
+        x = self.basic_resnet(x)
+        return x
 
 
+class ResNet34(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = 'ResNet34'
+        print('Using model {}'.format(self.model_name))
+        self.basic_resnet = resnet.ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=2)
+
+    def forward(self, x):
+        x = x.squeeze()
+        x = self.basic_resnet(x)
+        return x
+
+
+class ResNet50(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = 'ResNet50'
+        print('Using model {}'.format(self.model_name))
+        self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=2)
+
+    def forward(self, x):
+        x = x.squeeze()
+        x = self.basic_resnet(x)
+        return x
+
+
+
+'''
 def ResNet_18():
     print('Using model ResNet_18')
     model = models.resnet18(pretrained=False)
@@ -264,12 +298,22 @@ def ResNet_18():
     model.model_name = 'ResNet_18()'
     return model
 
+
 def ResNet_34():
     print('Using model ResNet_34')
     model = models.resnet34(pretrained=False)
     model.fc.out_features = 2
     model.model_name = 'ResNet_34()'
     return model
+
+
+def ResNet_50():
+    print('Using model ResNet_50')
+    model = models.resnet50(pretrained=False)
+    model.fc.out_features = 2
+    model.model_name = 'ResNet_50()'
+    return model
+'''
 
 class ResNet34_GN(nn.Module):
     def __init__(self):

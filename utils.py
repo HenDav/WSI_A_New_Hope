@@ -14,7 +14,7 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-from HED_space import HED_color_jitter
+#from HED_space import HED_color_jitter
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -34,45 +34,7 @@ def make_dir(dirname):
             raise
 
 
-def _choose_data(file_name: str, how_many: int, magnification: int = 20, tile_size: int = 256, resize: bool = False, print_timing: bool = False):
-    """
-    This function choose and returns data to be held by DataSet
-    :param file_name:
-    :param how_many: how_many describes how many tiles to pick from the whole image
-    :return:
-    """
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
-        grid_list = pickle.load(filehandle)
-
-    # Choose locations from the grid:
-    loc_num = len(grid_list)
-
-    idxs = sample(range(loc_num), how_many)
-    locs = [grid_list[idx] for idx in idxs]
-
-    #  _save_tile_list_to_file(file_name, idxs)
-
-    # print('File: {}, Tiles: {}'.format(file_name, idxs))
-
-    if resize:
-        resize_to = tile_size
-    else:
-        resize_to = adjusted_tile_size
-
-
-    image_tiles = _get_tiles(file_name, locs, adjusted_tile_size, resize_to=resize_to, print_timing=print_timing)
-
-    return image_tiles
-
-
-def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -92,13 +54,12 @@ def _choose_data_2(grid_file: str, image_file: str, how_many: int, magnification
     idxs = sample(range(loc_num), how_many)
     locs = [grid_list[idx] for idx in idxs]
 
-    ### image_file = os.path.join(data_path, file_name)
-    image_tiles, time_list = _get_tiles_2(image_file, locs, adjusted_tile_size, print_timing=print_timing)
+    image_tiles, time_list = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing)
 
     return image_tiles, time_list
 
 
-def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
+def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
     """
     This function returns an array of tiles
     :param file_name:
@@ -141,15 +102,12 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
         plt.show()
 
-    # TODO: Checking Pil vs. np array. Delete one of them...
-    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
     tiles_PIL = []
 
     start_gettiles = time.time()
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
         tiles_PIL.append(image)
 
     end_gettiles = time.time()
@@ -157,110 +115,10 @@ def _get_tiles_2(file_name: str, locations: List[Tuple], tile_sz: int, print_tim
 
     if print_timing:
         time_list = [end_openslide - start_openslide, (end_gettiles - start_gettiles) / tiles_num]
-        # print('WSI: Time to Openslide is: {:.2f} s, Time to Prepare {} tiles: {:.2f} s'.format(end_openslide - start_openslide,
-        #                                                                   tiles_num,
-        #                                                                   end_tiles - start_tiles))
     else:
         time_list = [0]
 
     return tiles_PIL, time_list
-
-
-def _choose_data_3(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
-    """
-    This function choose and returns data to be held by DataSet
-    :param file_name:
-    :param how_many: how_many describes how many tiles to pick from the whole image
-    :return:
-    """
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    ### basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    ### grid_file = os.path.join(data_path, 'Grids', file_name.split('.')[0] + '--tlsz' + str(tile_size) + '.data')
-
-    #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], 'Grids', file_name.split('/')[2][:-4] + '--tlsz' + str(tile_size) + '.data')
-    with open(grid_file, 'rb') as filehandle:
-        grid_list = pickle.load(filehandle)
-
-    # Choose locations from the grid:
-    loc_num = len(grid_list)
-
-    idxs = sample(range(loc_num), how_many)
-    locs = [grid_list[idx] for idx in idxs]
-
-    ### image_file = os.path.join(data_path, file_name)
-    image_tiles, time_list = _get_tiles_3(image_file, locs, adjusted_tile_size, print_timing=print_timing)
-
-    return image_tiles, time_list
-
-
-def _get_tiles_3(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-
-    # open the .svs file:
-    start_openslide = time.time()
-    img = openslide.open_slide(file_name)
-    end_openslide = time.time()
-
-    tiles_num = len(locations)
-    # TODO: Checking Pil vs. np array. Delete one of them...
-    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
-    tiles_PIL = []
-
-    start_gettiles = time.time()
-    for idx, loc in enumerate(locations):
-        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
-        tiles_PIL.append(image.resize((256, 256)))
-
-    end_gettiles = time.time()
-
-
-    if print_timing:
-        time_list = [end_openslide - start_openslide, (end_gettiles - start_gettiles) / tiles_num]
-        # print('WSI: Time to Openslide is: {:.2f} s, Time to Prepare {} tiles: {:.2f} s'.format(end_openslide - start_openslide,
-        #                                                                   tiles_num,
-        #                                                                   end_tiles - start_tiles))
-    else:
-        time_list = [0]
-
-    return tiles_PIL, time_list
-
-
-def _get_tile(file_name: str, locations: Tuple, tile_sz: int, print_timing: bool = False):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-
-    # open the .svs file:
-    start_openslide = time.time()
-    img = openslide.open_slide(file_name)
-    end_openslide = time.time()
-
-    start_gettiles = time.time()
-    image = img.read_region((locations[1], locations[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-    end_gettiles = time.time()
-
-
-    if print_timing:
-        time_list = [end_openslide - start_openslide, end_gettiles - start_gettiles]
-    else:
-        time_list = [0]
-
-    return image, time_list
 
 
 def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
@@ -281,42 +139,6 @@ def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256
         grid_list = pickle.load(filehandle)
 
         return grid_list
-
-
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, resize_to: int, print_timing: bool = False):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-    # open the .svs file:
-    start_openslide = time.time()
-    img = openslide.open_slide(file_name)
-    end_openslide = time.time()
-
-    tiles_num = len(locations)
-    # TODO: Checking Pil vs. np array. Delete one of them...
-    #tiles = np.zeros((tiles_num, 3, tile_sz, tile_sz), dtype=int)  # this line is needed when working with nd arrays
-    tiles_PIL = []
-
-    start_tiles = time.time()
-    for idx, loc in enumerate(locations):
-        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-        #tiles[idx, :, :, :] = np.array(image).transpose(2, 0, 1)  # this line is needed when working with nd arrays
-        # TODO : try to remove this if !!!!!!!!
-        if tile_sz != resize_to:
-            image = image.resize((resize_to, resize_to), resample=Image.BILINEAR)
-
-        tiles_PIL.append(image)
-        end_tiles = time.time()
-    if print_timing:
-        print('WSI: Time to Openslide is: {:.2f} s, Time to Prepare {} tiles: {:.2f} s'.format(end_openslide - start_openslide,
-                                                                           tiles_num,
-                                                                           end_tiles - start_tiles))
-    return tiles_PIL
 
 
 def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:

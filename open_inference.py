@@ -17,11 +17,14 @@ ax1.set_prop_cycle(custom_cycler)
 
 
 inference_files = {}
-
+"""
 inference_files['train_50'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[1]-Tiles_50.data'
 inference_files['test_50'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[2]-Tiles_50.data'
 inference_files['test_500'] = 'Data from gipdeep/runs/141/Inference/Model_Epoch_3555-Folds_[2]-Tiles_500.data'
-
+"""
+inference_files['train_500'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[1]-Tiles_500.data'
+inference_files['test_500'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_500.data'
+inference_files['test_1000'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_1000.data'
 
 
 

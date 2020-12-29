@@ -1,4 +1,4 @@
-import utils
+import utils#0 as utils
 import datasets
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -20,13 +20,14 @@ import torchvision.transforms as transforms
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
-parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
+# parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
+parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='keyword for transform type')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
-parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-nb', '--num_bags', type=int, default=2, help='Number of bags in each minibatch')
@@ -424,15 +425,17 @@ if __name__ == '__main__':
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transformations=args.transformation,
+                                                     transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=TILES_PER_BAG,
                                                      num_bags=num_bags,
                                                      DX=args.dx,
                                                      DataSet=args.dataset,
-                                                     Receptor=args.look_for)
+                                                     Receptor=args.target,
+                                                     MultiSlide=True)
     else:
-        args.output_dir, args.test_fold, args.transformation,TILE_SIZE, TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
+        TILES_PER_BAG, args.dx, args.dataset, args.target, is_MultiSlide = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -440,37 +443,45 @@ if __name__ == '__main__':
 
     # Get data:
     train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                      tile_size=TILE_SIZE,
-                                      bag_size=TILES_PER_BAG,
-                                      target_kind=args.look_for,
-                                      test_fold=args.test_fold,
-                                      train=True,
-                                      print_timing=args.time,
-                                      transform=args.transformation,
-                                      DX=args.dx,
-                                      get_images=args.images)
+                                         tile_size=TILE_SIZE,
+                                         bag_size=TILES_PER_BAG,
+                                         target_kind=args.target,
+                                         test_fold=args.test_fold,
+                                         train=True,
+                                         print_timing=args.time,
+                                         transform_type=args.transform_type,
+                                         DX=args.dx,
+                                         get_images=args.images)
 
     test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                     tile_size=TILE_SIZE,
-                                     bag_size=TILES_PER_BAG,
-                                     target_kind=args.look_for,
-                                     test_fold=args.test_fold,
-                                     train=False,
-                                     print_timing=False,
-                                     transform=False,
-                                     DX=args.dx,
-                                     get_images=args.images)
+                                        tile_size=TILE_SIZE,
+                                        bag_size=TILES_PER_BAG,
+                                        target_kind=args.target,
+                                        test_fold=args.test_fold,
+                                        train=False,
+                                        print_timing=False,
+                                        transform_type='none',
+                                        DX=args.dx,
+                                        get_images=args.images)
 
     train_loader = DataLoader(train_dset, batch_size=num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    #model = ResNet34_GN_GatedAttention()
     model = ResNet50_GN_GatedAttention_MultiBag_2(tiles=TILES_PER_BAG)
+
+    '''
+    model_basic = ResNet34_GN_GatedAttention()
+    model_params = sum(p.numel() for p in model.parameters())
+    model_basic_params = sum(p.numel() for p in model_basic.parameters())
+    print('basic: {}. Multi: {}'.format(model_basic_params, model_params))
+    '''
+
+
 
     '''
     counter = 0
