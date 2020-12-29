@@ -19,7 +19,7 @@ from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
 Image.MAX_IMAGE_PIXELS = None
-
+from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 
 def chunks(list: List, length: int):
     new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
@@ -605,7 +605,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
             transform1 = \
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
                                      transforms.RandomVerticalFlip()])
-        elif transform_type == 'cbnfrsc' or 'cbnfrs':  # color, blur, noise, flip, rotate, scale, +-cutout
+        elif transform_type in ['cbnfrsc', 'cbnfrs']:  # color, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
@@ -620,15 +620,16 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
-        elif transform_type == 'pcbnfrsc' or 'pcbnfrs':  # parameterized color, blur, noise, flip, rotate, scale, +-cutout
+        elif transform_type in ['pcbnfrsc', 'pcbnfrs']:  # parameterized color, blur, noise, flip, rotate, scale, +-cutout
         #elif transform_type == 'c_0_05_bnfrsc' or 'c_0_05_bnfrs':  # color 0.1, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             #c_param = 0.05
             transform1 = \
                 transforms.Compose([
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
-                    transforms.ColorJitter(brightness=(1-c_param*1, 1+c_param*1), contrast=(1-c_param*2, 1+c_param*2),  # RanS 2.12.20
-                                           saturation=c_param, hue=(-c_param, c_param)),
+                    #transforms.ColorJitter(brightness=(1-c_param*1, 1+c_param*1), contrast=(1-c_param*2, 1+c_param*2),  # RanS 2.12.20
+                    #                       saturation=c_param, hue=(-c_param, c_param)),
+                    transforms.ColorJitter(brightness=c_param, contrast=c_param * 2, saturation=c_param, hue=c_param),
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
@@ -650,7 +651,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
-        elif transform_type == 'bnfrsc' or 'bnfrs':  # blur, noise, flip, rotate, scale, +-cutout
+        elif transform_type in ['bnfrsc', 'bnfrs']:  # blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
@@ -804,3 +805,11 @@ def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig5.suptitle('color transform only', fontsize=14)
 
     plt.show()
+
+
+def get_model(model_name):
+    if model_name == 'resnet50_gn':
+        model = ResNet50_GN_GatedAttention()
+    elif model_name == 'receptornet':
+        model = ReceptorNet()
+    return model

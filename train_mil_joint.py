@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -38,6 +37,7 @@ parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_g
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #RanS 16.12.20
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
+
 args = parser.parse_args()
 eps = 1e-7
 
@@ -173,13 +173,15 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
 
-        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
+        #print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
+        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train AUC: {:.2f} , Time: {:.0f} m'
               .format(e,
                       train_loss,
                       previous_epoch_loss - train_loss,
-                      train_acc,
-                      int(correct_labeling),
-                      len(train_loader),
+                      #train_acc,
+                      roc_auc_train,
+                      #int(correct_labeling),
+                      #len(train_loader),
                       time_epoch))
 
         previous_epoch_loss = train_loss
@@ -372,7 +374,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', bacc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
+        #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, len(data_loader)))
+        print('{}: AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc))
 
     model.train()
     '''
@@ -480,25 +483,8 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
+    model = utils.get_model(args.model)
 
-    print()
-    if args.model == 'resnet50_gn':
-        model = ResNet50_GN_GatedAttention()
-    elif args.model == 'receptornet':
-        model = ReceptorNet()
-    print()
-
-    '''
-    counter = 0
-    for module in model.modules():
-        if isinstance(module, nn.BatchNorm2d):
-            setattr(model, module, nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine))
-            #module = nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine)
-            counter += 1
-            #module.momentum = 0.01
-            # module.track_running_stats = False
-    print('Updated {} model variables'.format(counter))
-    '''
     utils.run_data(experiment=experiment, model=model.model_name)
 
     ### model = nn.DataParallel(model)  # TODO: Remove this line after the first runs  # Omer 5/11/20

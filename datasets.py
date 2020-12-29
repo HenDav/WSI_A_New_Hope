@@ -232,24 +232,26 @@ class Infer_WSI_MILdataset(Dataset):
                  DX: bool = False,
                  num_tiles: int = 500):
 
-        self.ROOT_PATH = 'All Data'
-        if DataSet == 'LUNG':
-            self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
+        # Define data root:
+        self.ROOT_PATH = define_data_root(DataSet)
 
-        meta_data_file = os.path.join(self.ROOT_PATH, 'slides_data.xlsx')
         self.DataSet = DataSet
-        self.BASIC_MAGNIFICATION = 20
+        if DataSet == 'RedSquares':
+            self.BASIC_MAGNIFICATION = 10
+            slides_data_file = 'slides_data_RedSquares.xlsx'
+        else:
+            self.BASIC_MAGNIFICATION = 20
+            slides_data_file = 'slides_data.xlsx'
+
+        assert_dataset_target(DataSet, target_kind)
+
+        meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
+
         self.meta_data_DF = pd.read_excel(meta_data_file)
         if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-            raise ValueError('target should be one of: PDL1, EGFR')
-        elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
-            raise ValueError('target should be one of: ER, PR, Her2')
-        if self.DataSet == 'HEROHE':
-            target_kind = 'Her2'
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
@@ -301,7 +303,6 @@ class Infer_WSI_MILdataset(Dataset):
         self.image_full_filenames = []
         self.slide_grids = []
 
-
         for _, slide_num in enumerate(valid_slide_indices):
             if (self.DX and all_is_DX_cut[slide_num]) or not self.DX:
                 if num_tiles <= all_tissue_tiles[slide_num]:
@@ -326,33 +327,12 @@ class Infer_WSI_MILdataset(Dataset):
 
                 with open(grid_file, 'rb') as filehandle:
                     grid_list = pickle.load(filehandle)
-                chosen_locations = [ grid_list[loc] for loc in which_patches ]
+                chosen_locations = [grid_list[loc] for loc in which_patches]
                 chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
                 self.slide_grids.extend(chosen_locations_chunks)
-                ### self.slide_multiple_filenames.extend([full_image_filename] * self.num_patches[-1])
 
         # Setting the transformation:
-        '''
-        mean = {}
-        std = {}
-
-        mean['TCGA'] = [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255]
-        std['TCGA'] = [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255]
-
-        mean['HEROHE'] = [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255]
-        std['HEROHE'] = [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255]
-
-        mean['Ron'] = [0.8998, 0.8253, 0.9357]
-        std['Ron'] = [0.1125, 0.1751, 0.0787]
-        '''
-        self.transform = transforms.Compose([transforms.ToTensor(),
-                                             transforms.Normalize(
-                                                 mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                 std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
-                                             ])
-        '''transforms.Normalize((0.8998, 0.8253, 0.9357), (0.1125, 0.1751, 0.0787))'''
-        '''transforms.Normalize(mean=(MEAN[self.DataSet][0], MEAN[self.DataSet][1], MEAN[self.DataSet][2]),
-                                                                  std=(STD[self.DataSet][0], STD[self.DataSet][1], STD[self.DataSet][2]))'''
+        self.transform, self.scale_factor = define_transformations('none', False, MEAN, STD, self.tile_size)
 
         print("Normalization Values are:")
         print(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2], STD['Ron'][0], STD['Ron'][1], STD['Ron'][2])
