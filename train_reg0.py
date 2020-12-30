@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import PreActResNet50, ResNet50_2, ResNet_50, ResNet50_GN, ResNet_18, ResNet_34
+from nets import PreActResNet50, ResNet50_2, ResNet50_GN, ResNet18, ResNet34, ResNet50
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -14,17 +14,19 @@ import os
 from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
+import datasets
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
+parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='keyword for transform type')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 
 
 args = parser.parse_args()
@@ -101,19 +103,17 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     best_train_loss = 1e5
     previous_epoch_loss = 1e5
 
-    # The following 3 lines initialize variables to compute AUC for train dataset.
-    best_model = None
-
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
-        ### true_pos_train, true_neg_train = 0, 0
-        true_labels_train, scores_train = np.zeros(0), np.zeros(0)
+        true_targets_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
+
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list, image_file, basic_tiles) in enumerate(tqdm(dloader_train)):
+        #for batch_idx, (data, target, time_list) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
             data, target = data.to(DEVICE), target.to(DEVICE)
             target = target.squeeze()
@@ -129,7 +129,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             _, predicted = outputs.max(1)
 
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
-            true_labels_train = np.concatenate((true_labels_train, target.cpu().detach().numpy()))
+            true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
 
             total += target.size(0)
             total_pos_train += target.eq(1).sum().item()
@@ -137,20 +137,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             correct_labeling += predicted.eq(target).sum().item()
             correct_pos += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
-
-
-            '''
-            if target == 1:
-                total_pos_train += 1
-                true_labels_train[batch_idx] = 1
-                if label == 1:
-                    true_pos_train += 1
-            elif target == 0:
-                total_neg_train += 1
-                true_labels_train[batch_idx] = 0
-                if label == 0:
-                    true_neg_train += 1
-            '''
 
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
@@ -176,9 +162,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         train_acc = 100 * correct_labeling / total
 
-        balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
+        balanced_acc_train = 100 * (correct_pos / (total_pos_train + 1e-7) + correct_neg / (total_neg_train + 1e-7)) / 2
 
-        fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+        fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
         roc_auc_train = auc(fpr_train, tpr_train)
 
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
@@ -198,8 +184,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         previous_epoch_loss = train_loss
 
         if e % 10 == 0:
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
         else:
@@ -226,101 +211,62 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     'tiles_per_bag': 1},
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
-        '''
-        if train_loss < best_train_loss:
-            best_train_loss = train_loss
-            best_train_acc = train_acc
-            best_epoch = e
-            best_model = model
-
-    
-    # If epochs ended - Save best model:
-    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-    try:
-        best_model_state_dict = best_model.module.state_dict()
-    except AttributeError:
-        best_model_state_dict = best_model.state_dict()
-    
-    torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model_state_dict,
-                'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc,
-                'tile_size': TILE_SIZE,
-                'tiles_per_bag': 1},
-               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
-    '''
     all_writer.close()
-    time_writer.close()
+    if print_timing:
+        time_writer.close()
 
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
-    num_correct = 0
-    total_pos, total_neg = 0, 0
-    true_pos, true_neg = 0, 0
-    true_labels, scores = np.zeros(0), np.zeros(0)
+#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
 
-    test_loss, total = 0, 0
+    total_test, correct_pos_test, correct_neg_test = 0, 0, 0
+    total_pos_test, total_neg_test = 0, 0
+    true_labels_test, scores_test = np.zeros(0), np.zeros(0)
+    correct_labeling_test, loss_test = 0, 0
 
-    # TODO: eval mode changes the mode of dropout and batchnorm layers. Activate this line only after the model is fully learned
-    if eval_mode:
-        model.eval()
-    else:
-        model.train()
+    model.eval()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list) in enumerate(data_loader):
-            data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
+        #for idx, (data, targets, time_list) in enumerate(data_loader):
+        for idx, (data, target, time_list, image_file, basic_tiles) in enumerate(data_loader):
 
+            data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
             out = model(data)
 
             outputs = torch.nn.functional.softmax(out, dim=1)
-            targets = targets.squeeze()
-            loss = criterion(outputs, targets)
+            target = target.squeeze()
+            loss = criterion(outputs, target)
 
-            test_loss += loss.item()
+            loss_test += loss.item()
             _, predicted = outputs.max(1)
-            scores = np.concatenate((scores, outputs[:, 1].cpu().detach().numpy()))
-            true_labels = np.concatenate((true_labels, targets.cpu().detach().numpy()))
+            scores_test = np.concatenate((scores_test, outputs[:, 1].cpu().detach().numpy()))
+            true_labels_test = np.concatenate((true_labels_test, target.cpu().detach().numpy()))
 
-            total += targets.size(0)
-            num_correct += predicted.eq(targets).sum().item()
-            total_pos += targets.eq(1).sum().item()
-            total_neg += targets.eq(0).sum().item()
-            true_pos += predicted[targets.eq(1)].eq(1).sum().item()
-            true_neg += predicted[targets.eq(0)].eq(0).sum().item()
+            total_test += target.size(0)
+            correct_labeling_test += predicted.eq(target).sum().item()
+            total_pos_test += target.eq(1).sum().item()
+            total_neg_test += target.eq(0).sum().item()
+            correct_pos_test += predicted[target.eq(1)].eq(1).sum().item()
+            correct_neg_test += predicted[target.eq(0)].eq(0).sum().item()
 
-        acc = 100 * float(num_correct) / total
-        balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+        acc = 100 * float(correct_labeling_test) / total_test
+        balanced_acc = 100 * (correct_pos_test / (total_pos_test + 1e-7) + correct_neg_test / (total_neg_test + 1e-7)) / 2
 
-        fpr, tpr, _ = roc_curve(true_labels, scores)
+        fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
         roc_auc = auc(fpr, tpr)
 
 
-        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
-        if data_loader.dataset.train:
-            writer_string = 'Train_2'
-        else:
-            if eval_mode:
-                writer_string = 'Test (eval mode)'
-            else:
-                writer_string = 'Test (train mode)'
+        # TODO: instead of using the train paramete
 
-        """
-        writer_test.add_scalar('Accuracy', acc, epoch)
-        writer_test.add_scalar('Balanced Accuracy', balanced_acc, epoch)
-        writer_test.add_scalar('Roc-Auc', roc_auc, epoch)
-        """
-
+        writer_string = 'Test (eval mode)'
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
+        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode', acc, correct_labeling_test, total_test))
     model.train()
     return acc, balanced_acc
 
@@ -350,10 +296,11 @@ if __name__ == '__main__':
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
-                                                     DataSet=args.dataset)
+                                                     DataSet=args.dataset,
+                                                     Receptor=args.target)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
-            TILES_PER_BAG, args.dx, args.dataset, args.look_for = utils.run_data(experiment=args.experiment)
+            TILES_PER_BAG, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -361,23 +308,42 @@ if __name__ == '__main__':
     #cpu_available = 1
 
     # Get data:
-    train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
-                                      tile_size=TILE_SIZE,
-                                      target_kind=args.look_for,
-                                      test_fold=args.test_fold,
-                                      train=True,
-                                      print_timing=args.time,
-                                      transform=args.transformation,
-                                      DX=args.dx)
+    if False:
+        train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                          tile_size=TILE_SIZE,
+                                          target_kind=args.target,
+                                          test_fold=args.test_fold,
+                                          train=True,
+                                          print_timing=args.time,
+                                          transform=args.transformation,
+                                          DX=args.dx)
 
-    test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
-                                     tile_size=TILE_SIZE,
-                                     target_kind=args.look_for,
-                                     test_fold=args.test_fold,
-                                     train=False,
-                                     print_timing=False,
-                                     transform=False,
-                                     DX=args.dx)
+        test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                         tile_size=TILE_SIZE,
+                                         target_kind=args.target,
+                                         test_fold=args.test_fold,
+                                         train=False,
+                                         print_timing=False,
+                                         transform=False,
+                                         DX=args.dx)
+    else:
+        train_dset = datasets.WSI_REG2_dataset(DataSet=args.dataset,
+                                               tile_size=TILE_SIZE,
+                                               target_kind=args.target,
+                                               test_fold=args.test_fold,
+                                               train=True,
+                                               print_timing=args.time,
+                                               transform_type=args.transform_type
+                                               )
+        test_dset = datasets.WSI_REG2_dataset(DataSet=args.dataset,
+                                              tile_size=TILE_SIZE,
+                                              target_kind=args.target,
+                                              test_fold=args.test_fold,
+                                              train=False,
+                                              print_timing=args.time,
+                                              transform_type='none'
+                                              )
+
 
     train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader  = DataLoader(test_dset, batch_size=50, shuffle=False, num_workers=cpu_available, pin_memory=True)
@@ -386,14 +352,15 @@ if __name__ == '__main__':
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
-
     # Load model
     # model = PreActResNet50()
     # model = ResNet50_GN()
     # model = ResNet_18()
-    model = ResNet_34()
-    # model = ResNet_50()
+    # model = ResNet_34()
+    # model = ResNet50()
     # model = PreActResNets.preactresnet50_Omer()
+    # model = PreActResNets.preactresnet50()
+    model = PreActResNets.PreActResNet50_Ron()
 
     '''model_params = sum(p.numel() for p in model.parameters())
     print(model_params)'''
@@ -430,5 +397,4 @@ if __name__ == '__main__':
                     state[k] = v.to(DEVICE)
 
     criterion = nn.CrossEntropyLoss()
-    # simple_train(model, train_loader, test_loader)
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

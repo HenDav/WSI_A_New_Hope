@@ -913,8 +913,13 @@ class ResNet50_GN_GatedAttention_MultiBag_2(nn.Module):
         self.L = 128
         self.K = 1  # in the paper referred a 1.
 
+        self.feat_net_2 = nn.Conv2d(in_channels=3, out_channels=1, kernel_size=9, stride=4, padding=0)
+        self.linear_2 = nn.Linear(in_features=900, out_features=500)
+
+        '''
         self.feat_ext_part1 = ResNet50_GN().con_layers
         self.linear_1 = nn.Linear(in_features=1000, out_features=self.M)
+        '''
         self.att_V_1 = nn.Linear(self.M, self.L)
         self.att_V_2 = nn.Tanh()
         self.att_U_1 = nn.Linear(self.M, self.L)
@@ -929,9 +934,15 @@ class ResNet50_GN_GatedAttention_MultiBag_2(nn.Module):
         bag_size, tiles_amount, _, tiles_size, _ = x.shape
 
         x = torch.reshape(x, (bag_size * tiles_amount, 3, tiles_size, tiles_size))
+        print('Before conv:', x.shape)
+        x = self.feat_net_2(x)
+        print('after conv:', x.shape)
+        x = torch.flatten(x, 1)
+        print('after flatten:', x.shape)
+        H = self.linear_2(x)
+        print('after linear:', x.shape)
 
-
-        H = self.linear_1(self.feat_ext_part1(x))  # After this, H will contain all tiles for all bags as feature vectors
+        #H = self.linear_1(self.feat_ext_part1(x))  # After this, H will contain all tiles for all bags as feature vectors
 
         A_V = self.att_V_2(self.att_V_1(H))
 

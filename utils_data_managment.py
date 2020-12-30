@@ -184,13 +184,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     :return:
     """
 
-    #ROOT_PATH = 'All Data'
-    #if DataSet == 'LUNG':
-    #    ROOT_PATH = r'/home/rschley/All_Data/LUNG'#os.path.join('All Data', 'LUNG')
-    if DataSet == 'RedSquares':
-        BASIC_OBJ_PWR = 10
-    else:
-        BASIC_OBJ_PWR = 20
+    BASIC_OBJ_PWR = 20
 
     data_file = os.path.join(ROOT_DIR, 'slides_data.xlsx')
 
@@ -501,7 +495,7 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                     print('Couldn\'t find Magnification - Segmentation Map was not Created')
                     continue
             else:
-                objective_pwr = 10
+                objective_pwr = 20
 
 
             height = slide.dimensions[1]
@@ -522,15 +516,13 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                 print('Exception for file {}'.format(file))
                 continue
 
-            #ignore black background regions at jpg images by turning them white
+            # ignore black background regions at jpg images by turning them white
             if DataSet == 'RedSquares':
                 thumb_arr = np.array(thumb)
                 thumb_arr_equal1 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 1])
                 thumb_arr_equal2 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 2])
-                thumb_arr[thumb_arr_equal1&thumb_arr_equal2, :] = 255
+                thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
                 thumb = Image.fromarray(thumb_arr)
-                #plt.imshow(thumb)
-
 
             thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
             slide.close()
