@@ -46,11 +46,11 @@ class WSI_Master_Dataset(Dataset):
         self.ROOT_PATH = define_data_root(DataSet)
 
         self.DataSet = DataSet
+        self.BASIC_MAGNIFICATION = 20
         if DataSet == 'RedSquares':
-            self.BASIC_MAGNIFICATION = 10
+        #    self.BASIC_MAGNIFICATION = 10
             slides_data_file = 'slides_data_RedSquares.xlsx'
         else:
-            self.BASIC_MAGNIFICATION = 20
             slides_data_file = 'slides_data.xlsx'
 
         assert_dataset_target(DataSet, target_kind)
@@ -175,7 +175,8 @@ class WSI_Master_Dataset(Dataset):
         # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
-        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
         if magnification_relation != 1:
             transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform ])
         else:
@@ -1453,7 +1454,9 @@ class Infer_Dataset(WSI_Master_Dataset):
         else:
             self.tiles_to_go -= self.tiles_per_iter
 
-        adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
+        #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
+        magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
+        adjusted_tile_size = int(self.tile_size * magnification_relation) #RanS 30.12.20
         tiles, time_list = _get_tiles(self.current_file,
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
@@ -1461,7 +1464,7 @@ class Infer_Dataset(WSI_Master_Dataset):
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 
-        magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
+        #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         if magnification_relation != 1:
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
