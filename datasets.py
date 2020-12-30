@@ -64,7 +64,7 @@ class WSI_MILdataset(Dataset):
         # for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
@@ -254,7 +254,7 @@ class Infer_WSI_MILdataset(Dataset):
 
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         self.tiles_per_iter = tiles_per_iter
@@ -436,7 +436,7 @@ class WSI_REGdataset(Dataset):
         #for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         self.tile_size = tile_size
@@ -637,7 +637,7 @@ class WSI_MIL2_dataset(Dataset):
             target_kind = 'Her2'
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
@@ -881,7 +881,7 @@ class WSI_MIL3_dataset(Dataset):
         # for lung, take only origin:lung and only diagnosis:adenocarcinoma
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         self.tile_size = tile_size
@@ -1079,7 +1079,7 @@ class WSI_MIL_OFTest_dataset(Dataset):
             target_kind = 'Her2'
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
+            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
