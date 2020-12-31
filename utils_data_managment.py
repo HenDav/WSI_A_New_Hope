@@ -204,7 +204,18 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
         #print(file)
         filename = os.path.basename(file).split('.')[0]
         database = meta_data_DF.loc[file, 'id']
-        if os.path.isfile(os.path.join(ROOT_DIR, database, file)): # make sure file exists
+
+        # Save the grid to file:
+        if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
+            os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
+        grid_file = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
+
+        segmap_file = os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
+
+        #RanS 31.12.20 - do not overwrite files
+        #if os.path.isfile(grid_file):
+        #    pickle.load(grid_file)
+        if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
             height = int(meta_data_DF.loc[file, 'Height'])
             width  = int(meta_data_DF.loc[file, 'Width'])
             if objective_power[i] == 'Missing Data':
@@ -220,22 +231,23 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
             #legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
-            legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png'),
+            legit_grid = _legit_grid(segmap_file,
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width),
                                      coverage = tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
-            # Save the grid to file:
-            if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
-                os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
 
             #file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
-            file_name = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
-            with open(file_name, 'wb') as filehandle:
+            #grid_file = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
+            with open(grid_file, 'wb') as filehandle:
                 # store the data as binary data stream
                 pickle.dump(legit_grid, filehandle)
+        else:
+            print('Grid was not computed for file {}'.format(file))
+            tile_nums.append(0)
+            total_tiles.append(-1)
 
     # Adding the number of tiles to the excel file:
     #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
@@ -251,7 +263,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     print('Finished Grid production phase !')
 
 
-def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: int = 0.5) -> List[Tuple]:
+def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: float = 0.5) -> List[Tuple]:
     """
     This function gets a .svs file name, a basic grid and tile size and returns a list of legitimate grid locations.
     :param image_file_name: .svs file name
@@ -282,7 +294,8 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
         # collect the data from the segMap:
         tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
         tile_pixels = small_tile[0] * small_tile[1]
-        tissue_coverage = tile.sum() / tile_pixels
+        #tissue_coverage = tile.sum() / tile_pixels
+        tissue_coverage = tile.sum() / tile_pixels / 255 #RanS 31.12.20 - segmap is uint8
         if tissue_coverage < coverage:
             idx_to_remove.append(idx)
 
@@ -643,17 +656,17 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
     size = 10 * magnification
     #size = 5*magnification #RanS 9.12.20
     kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
-    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
+    seg_map_filt = cv.filter2D(seg_map, -1, kernel_smooth)
 
     th_val = 5
-    seg_map[seg_map > th_val] = 255
-    seg_map[seg_map <= th_val] = 0
+    seg_map_filt[seg_map_filt > th_val] = 255
+    seg_map_filt[seg_map_filt <= th_val] = 0
 
     # find small contours and delete them from segmentation map
     #size_thresh = 30000 #10000
     #size_thresh = 10000 #RanS 9.12.20, lung cancer biopsies can be very small
     size_thresh = 5000  # RanS 9.12.20, lung cancer biopsies can be very small
-    contours, _ = cv.findContours(seg_map, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv.findContours(seg_map_filt, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
     # cv.imshow("Contours", drawContours)
     # cv.waitKey()
@@ -664,14 +677,46 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
             small_contours.append(contour)'''
     #RanS 9.12.20, kill small contours only if much smaller than largest contour
     contour_area = np.zeros(len(contours))
+
+    #RanS 30.12.20 contour color
+    contour_color = np.zeros([len(contours), 3])
+    rgb_image = np.array(image)
+
     for ii in range(len(contours)):
         contour_area[ii] = cv.contourArea(contours[ii])
+
+        #RanS 30.12.20, get contour mean color
+        mask = np.zeros(seg_map.shape, np.uint8)
+        cv.drawContours(mask, [contours[ii]], -1, 255, thickness=cv.FILLED)
+        contour_color[ii, :] = cv.mean(rgb_image, mask=mask)[:3]
+    contour_std = np.std(contour_color, axis=1)
+
+    #temp RanS 30.12.20 - plot each contour with its mean color, std...
+    temp_plot = False
+    if temp_plot:
+        im1 = np.zeros(seg_map.shape)
+        rgb_image2 = rgb_image.copy()
+        for ii in range(len(contours)):
+            rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color[ii, :], thickness=cv.FILLED)
+            im1 = cv.drawContours(im1, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
+        plt.imshow(rgb_image2)
+        plt.imshow(im1)
+        plt.colorbar()
+
     max_contour = np.max(contour_area)
     #small_contours_bool = (contour_area<size_thresh) & (contour_area < max_contour*0.2)
     small_contours_bool = (contour_area < size_thresh) & (contour_area < max_contour * 0.02)
     small_contours = [contours[ii] for ii in range(len(contours)) if small_contours_bool[ii]==True]
 
-    seg_map = cv.drawContours(seg_map, small_contours, -1, (0, 0, 255), -1) #delete the small contours
+    seg_map_filt = cv.drawContours(seg_map_filt, small_contours, -1, (0, 0, 255), thickness=cv.FILLED) #delete the small contours
+
+    #RanS 30.12.20, delete gray contours
+    gray_contours_bool = contour_std < 5
+    gray_contours = [contours[ii] for ii in range(len(contours)) if gray_contours_bool[ii] == True]
+    seg_map_filt = cv.drawContours(seg_map_filt, gray_contours, -1, (0, 0, 255), thickness=cv.FILLED)  # delete the small contours
+
+    #RanS 30.12.20, multiply seg_map with seg_map_filt
+    seg_map *= (seg_map_filt > 0)
 
     seg_map_PIL = Image.fromarray(seg_map)
 

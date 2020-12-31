@@ -233,28 +233,30 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             ### acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
+
+
+            # Save model to file:
+            #RanS 31.12.20 - save every eval_rate epochs
+            if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
+                os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+
+            try:
+                model_state_dict = model.module.state_dict()
+            except AttributeError:
+                model_state_dict = model.state_dict()
+
+            torch.save({'epoch': e,
+                        'model_state_dict': model_state_dict,
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': loss.data[0],
+                        'acc_test': acc_test,
+                        'bacc_test': bacc_test,
+                        'tile_size': TILE_SIZE,
+                        'tiles_per_bag': TILES_PER_BAG},
+                       os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
+
         else:
             acc_test, bacc_test = None, None
-
-
-        # Save model to file:
-        if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-            os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-        try:
-            model_state_dict = model.module.state_dict()
-        except AttributeError:
-            model_state_dict = model.state_dict()
-
-        torch.save({'epoch': e,
-                    'model_state_dict': model_state_dict,
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.data[0],
-                    'acc_test': acc_test,
-                    'bacc_test': bacc_test,
-                    'tile_size': TILE_SIZE,
-                    'tiles_per_bag': TILES_PER_BAG},
-                   os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
         if e == 0:
             pd.DataFrame(data_list).to_excel('validate_data.xlsx')

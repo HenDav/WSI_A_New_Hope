@@ -167,8 +167,7 @@ class WSI_Master_Dataset(Dataset):
                                           self.magnification[idx],
                                           # self.tile_size,
                                           int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
-                                          print_timing=self.print_time,
-                                          basic_obj_power = self.BASIC_MAGNIFICATION)
+                                          print_timing=self.print_time)
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
