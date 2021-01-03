@@ -38,11 +38,8 @@ parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to e
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #RanS 16.12.20
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
 parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
-
 args = parser.parse_args()
 eps = 1e-7
-
-args = parser.parse_args()
 
 
 def norm_img(img):

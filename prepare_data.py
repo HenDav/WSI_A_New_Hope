@@ -32,8 +32,8 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_segmentations(DataSet='HEROHE')
-    utils_data_managment.make_grid(DataSet='HEROHE', tissue_coverage=0.5)
+    #utils_data_managment.make_segmentations(DataSet='HEROHE')
+    #utils_data_managment.make_grid(DataSet='HEROHE', tissue_coverage=0.5)
 
     print('Data Preparation sequence is Done !')
 
