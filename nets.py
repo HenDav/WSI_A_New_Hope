@@ -276,11 +276,12 @@ class ResNet34(nn.Module):
 
 
 class ResNet50(nn.Module):
-    def __init__(self):
+    def __init__(self,
+                 num_classes: int = 2):
         super().__init__()
         self.model_name = 'ResNet50'
         print('Using model {}'.format(self.model_name))
-        self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=2)
+        self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
 
     def forward(self, x):
         x = x.squeeze()

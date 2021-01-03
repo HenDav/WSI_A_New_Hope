@@ -526,12 +526,11 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
 def define_data_root(DataSet):
     # Define data root:
     if sys.platform == 'linux': #GIPdeep
-        if (DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet == 'RedSquares'):
-            ROOT_PATH = r'/home/womer/project/All Data'
-        elif DataSet == 'LUNG':
+        if DataSet == 'LUNG':
             ROOT_PATH = r'/home/rschley/All_Data/LUNG'
         else:
-            print('Error - no ROOT_PATH defined')
+            ROOT_PATH = r'/home/womer/project/All Data'
+
     elif sys.platform == 'win32': #Ran local
         if DataSet == 'HEROHE':
             ROOT_PATH = r'C:\ran_data\HEROHE_examples'
@@ -544,12 +543,11 @@ def define_data_root(DataSet):
         else:
             print('Error - no ROOT_PATH defined')
     else: #Omer local
-        if (DataSet == 'HEROHE') or (DataSet == 'TCGA'):
-            ROOT_PATH = r'All Data'
-        elif DataSet == 'LUNG':
+        if DataSet == 'LUNG':
             ROOT_PATH = 'All Data/LUNG'
         else:
-            print('Error - no ROOT_PATH defined')
+            ROOT_PATH = r'All Data'
+
             # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
     return ROOT_PATH
 

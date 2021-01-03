@@ -122,6 +122,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.zero_grad()
             outputs = model(data)
             loss = criterion(outputs, target)
+            print(loss)
             loss.backward()
             optimizer.step()
 
@@ -327,22 +328,22 @@ if __name__ == '__main__':
                                          transform=False,
                                          DX=args.dx)
     else:
-        train_dset = datasets.WSI_REG2_dataset(DataSet=args.dataset,
-                                               tile_size=TILE_SIZE,
-                                               target_kind=args.target,
-                                               test_fold=args.test_fold,
-                                               train=True,
-                                               print_timing=args.time,
-                                               transform_type=args.transform_type
-                                               )
-        test_dset = datasets.WSI_REG2_dataset(DataSet=args.dataset,
-                                              tile_size=TILE_SIZE,
-                                              target_kind=args.target,
-                                              test_fold=args.test_fold,
-                                              train=False,
-                                              print_timing=args.time,
-                                              transform_type='none'
-                                              )
+        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                             tile_size=TILE_SIZE,
+                                             target_kind=args.target,
+                                             test_fold=args.test_fold,
+                                             train=True,
+                                             print_timing=args.time,
+                                             transform_type=args.transform_type
+                                             )
+        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                            tile_size=TILE_SIZE,
+                                            target_kind=args.target,
+                                            test_fold=args.test_fold,
+                                            train=False,
+                                            print_timing=args.time,
+                                            transform_type='none'
+                                            )
 
 
     train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)

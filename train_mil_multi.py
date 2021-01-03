@@ -1,11 +1,11 @@
-import utils#0 as utils
+import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention_MultiBag_2, ResNet50_GN_GatedAttention_MultiBag_1
+from nets_mil import ResNet50_GatedAttention_MultiBag, ResNet50_GN_GatedAttention_MultiBag_2
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -15,7 +15,6 @@ from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
 import pandas as pd
-import torchvision.transforms as transforms
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -30,8 +29,8 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSe
 parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-nb', '--num_bags', type=int, default=2, help='Number of bags in each minibatch')
-parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=5, help='Tiles Per Bag')
+parser.add_argument('-nb', '--num_bags', type=int, default=4, help='Number of bags in each minibatch')
+parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=1, help='Tiles Per Bag')
 
 args = parser.parse_args()
 
@@ -95,7 +94,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     """
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
-    image_writer = SummaryWriter(os.path.join(writer_folder, 'image'))
+    if args.images:
+        image_writer = SummaryWriter(os.path.join(writer_folder, 'image'))
+    if print_timing:
+        time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     if from_epoch == 0:
         all_writer.add_text('Experiment No.', str(experiment))
@@ -107,16 +109,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_text('Transformations', str(dloader_train.dataset.transform))
         all_writer.add_text('Receptor Type', str(dloader_train.dataset.target_kind))
 
-
-    if print_timing:
-        time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
-
     print()
     print('Training will be conducted with {} bags per MiniBatch'.format(num_bags))
     print('Start Training...')
     best_train_loss = 1e5
     previous_epoch_loss = 1e5
-    best_model = None
 
     '''    
     # The following part saves the random slides on file for further debugging
@@ -124,7 +121,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         random_slides = pd.read_excel('random_slides.xlsx')
     else:
         random_slides = pd.DataFrame()
-    ###############################################
     '''
 
     for e in range(from_epoch, epoch + from_epoch):
@@ -172,22 +168,34 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.zero_grad()
             model.to(DEVICE)
 
-            scores = model(data)
+            scores, pred, weights = model(data)
+            print('Weights shape: {}. Weights: {}'.format(weights.shape, weights))
 
-            loss = criterion(scores, target)
+            scores = torch.clamp(scores, min=1e-5, max=1. - 1e-5)
+            target_diag = torch.diag(target)
+            '''neg_log_likelihood = -1. * (target * torch.log(scores) + (1. - target) * torch.log(1. - scores))  # negative log bernoulli'''
+            neg_log_likelihood = -1. * (
+                    torch.log(scores) * target_diag + torch.log(1. - scores) * torch.diag(1. - target))
+
+            loss = neg_log_likelihood.sum()
+
+            #loss = criterion(scores, target)
             #print(scores.shape, loss.detach().cpu().item())
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
-            _, predicted = scores.max(1)
-            scores_train = np.concatenate((scores_train, scores[:, 1].cpu().detach().numpy()))
+            predicted = pred  #_, predicted = scores.max(1)
+            #scores_train = np.concatenate((scores_train, scores[:, 1].cpu().detach().numpy()))
+
+            scores_train = np.concatenate((scores_train, scores.cpu().detach().numpy().reshape(-1)))
             targets_train = np.concatenate((targets_train, target.cpu().detach().numpy()))
 
             total_train += target.size(0)
             total_pos_train += target.eq(1).sum().item()
             total_neg_train += target.eq(0).sum().item()
             correct_labeling += predicted.eq(target).sum().item()
+
             correct_pos_train += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg_train += predicted[target.eq(0)].eq(0).sum().item()
 
@@ -265,26 +273,27 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         previous_epoch_loss = train_loss
 
+        '''
         if train_loss < best_train_loss:
             best_train_loss = train_loss
             best_train_acc = train_acc
             best_epoch = e
             best_model = model
+        '''
 
         if e % 5 == 0:
-            if e % 20 == 0 and args.images:
-                image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
-                                       global_step=e, dataformats='NCHW')
-                image_writer.add_images('Train Images/After Transforms', data.squeeze().detach().cpu().numpy(),
-                                       global_step=e, dataformats='NCHW')
-                image_writer.add_images('Train Images/After Transforms (De-Normalized)',
-                                       norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
-                                       dataformats='NCHW')
-
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, image_writer, DEVICE, e)
-
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
+
+            if e % 20 == 0 and args.images:
+                image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
+                                        global_step=e, dataformats='NCHW')
+                image_writer.add_images('Train Images/After Transforms', data.squeeze().detach().cpu().numpy(),
+                                        global_step=e, dataformats='NCHW')
+                image_writer.add_images('Train Images/After Transforms (De-Normalized)',
+                                        norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
+                                        dataformats='NCHW')
         else:
             acc_test, bacc_test = None, None
 
@@ -316,72 +325,53 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     all_writer.close()
     if print_timing:
         time_writer.close()
-    '''
-    # If epochs ended - Save best model:
-    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+    if args.images:
+        image_writer.close()
 
-    try:
-        best_model_state_dict = best_model.module.state_dict()
-    except AttributeError:
-        best_model_state_dict = best_model.state_dict()
-
-    torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model_state_dict,
-                'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc,
-                'tile_size': TILE_SIZE,
-                'tiles_per_bag': TILES_PER_BAG},
-               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
-
-    '''
-
-
-
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int):
-
-
-
-    test_loss, total = 0, 0
-
-    num_correct = 0
-    total_pos, total_neg = 0, 0
-    true_pos, true_neg = 0, 0
-    targets_test, scores_test = np.zeros(0), np.zeros(0)  #  targets_test, scores = np.zeros(len(data_loader)), np.zeros(len(data_loader))
+#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
+    test_loss, total_test = 0, 0
+    correct_labeling_test = 0
+    total_pos_test, total_neg_test = 0, 0
+    correct_pos_test, correct_neg_test = 0, 0
+    targets_test, scores_test = np.zeros(0), np.zeros(0)
 
     model.eval()
 
     with torch.no_grad():
-        for idx, (data, target, time_list, _, basic_tiles) in enumerate(data_loader):
-            if epoch % 20 == 0 and args.images:
-                image_writer.add_images('Test Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
-                                     global_step=epoch, dataformats='NCHW')
-                image_writer.add_images('Test Images/After Transforms', data.squeeze().detach().cpu().numpy(),
-                                     global_step=epoch, dataformats='NCHW')
-                image_writer.add_images('Test Images/After Transforms (De-Normalized)',
-                                     norm_img(data.squeeze().detach().cpu().numpy()), global_step=epoch, dataformats='NCHW')
-
+        for idx, (data, target, time_list, image_file_name, basic_tiles) in enumerate(data_loader):
             target = target.squeeze(1)
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
-            scores = model(data)
-            loss = criterion(scores, target)
+            scores, pred, weights = model(data)
+
+            scores = torch.clamp(scores, min=1e-5, max=1. - 1e-5)
+            target_diag = torch.diag(target)
+            '''neg_log_likelihood = -1. * (
+                        target * torch.log(scores) + (1. - target) * torch.log(1. - scores))  # negative log bernoulli'''
+            neg_log_likelihood = -1. * (
+                    torch.log(scores) * target_diag + torch.log(1. - scores) * torch.diag(1. - target))
+
+            loss = neg_log_likelihood.sum()  # criterion(scores, target)
+            #####
 
             test_loss += loss.item()
-            _, predicted = scores.max(1)
-            scores_test = np.concatenate((scores_test, scores[:, 1].cpu().detach().numpy()))
+            predicted = pred  # _, predicted = scores.max(1)
+
+            scores_test = np.concatenate((scores_test, scores.cpu().detach().numpy().reshape(-1)))
+            #scores_test = np.concatenate((scores_test, scores[:, 1].cpu().detach().numpy()))
             targets_test = np.concatenate((targets_test, target.cpu().detach().numpy()))
 
-            total += target.size(0)
-            num_correct += predicted.eq(target).sum().item()
-            total_pos += target.eq(1).sum().item()
-            total_neg += target.eq(0).sum().item()
-            true_pos += predicted[target.eq(1)].eq(1).sum().item()
-            true_neg += predicted[target.eq(0)].eq(0).sum().item()
+            total_test += target.size(0)
+            correct_labeling_test += predicted.eq(target).sum().item()
+            total_pos_test += target.eq(1).sum().item()
+            total_neg_test += target.eq(0).sum().item()
+            correct_pos_test += predicted[target.eq(1)].eq(1).sum().item()
+            correct_neg_test += predicted[target.eq(0)].eq(0).sum().item()
 
-        acc = 100 * float(num_correct) / total
-        balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
+        acc = 100 * float(correct_labeling_test) / total_test
+        balanced_acc = 100 * (correct_pos_test / (total_pos_test + 1e-7) + correct_neg_test / (total_neg_test + 1e-7)) / 2
 
         fpr, tpr, _ = roc_curve(targets_test, scores_test)
         roc_auc = auc(fpr, tpr)
@@ -391,7 +381,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
 
-        print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, num_correct, len(data_loader.dataset)))
+        print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, correct_labeling_test, len(data_loader.dataset)))
 
     model.train()
     '''
@@ -413,7 +403,7 @@ if __name__ == '__main__':
     DATA_TYPE = 'WSI'
 
     # Tile size definition:
-    TILE_SIZE =128
+    TILE_SIZE = 256
     TILES_PER_BAG = args.tiles_per_bag
     num_bags = args.num_bags
 
@@ -464,16 +454,21 @@ if __name__ == '__main__':
                                         DX=args.dx,
                                         get_images=args.images)
 
-    train_loader = DataLoader(train_dset, batch_size=num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
+
+    train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    if args.tiles_per_bag == 1:
+        test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    else:
+        test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    model = ResNet50_GN_GatedAttention_MultiBag_2(tiles=TILES_PER_BAG)
-
+    model = ResNet50_GatedAttention_MultiBag(num_bags=args.num_bags,
+                                             tiles=args.tiles_per_bag)
+    #model = ResNet50_GN_GatedAttention_MultiBag_2()
     '''
     model_basic = ResNet34_GN_GatedAttention()
     model_params = sum(p.numel() for p in model.parameters())
@@ -495,8 +490,6 @@ if __name__ == '__main__':
     print('Updated {} model variables'.format(counter))
     '''
     utils.run_data(experiment=experiment, model=model.model_name)
-
-    ### model = nn.DataParallel(model)  # TODO: Remove this line after the first runs  # Omer 5/11/20
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -526,6 +519,6 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
-    criterion = nn.CrossEntropyLoss()
+    #criterion = nn.CrossEntropyLoss()
     # simple_train(model, train_loader, test_loader)
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
