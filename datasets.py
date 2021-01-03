@@ -116,7 +116,7 @@ class WSI_Master_Dataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         if train_type == 'Infer':
             self.valid_slide_indices = valid_slide_indices
@@ -282,7 +282,7 @@ class Infer_WSI_MILdataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []
@@ -472,7 +472,7 @@ class WSI_REGdataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []
@@ -684,7 +684,7 @@ class WSI_MIL2_dataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []
@@ -929,7 +929,7 @@ class WSI_MIL3_dataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []
@@ -1128,7 +1128,7 @@ class WSI_MIL_OFTest_dataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         self.image_file_names = []
         self.image_path_names = []

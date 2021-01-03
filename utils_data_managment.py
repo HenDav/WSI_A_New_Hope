@@ -70,9 +70,9 @@ def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how
             continue
 
         slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Objective Power'][i], tile_size, resize=True)
+        # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Manipulated Objective Power'][i], tile_size, resize=True)
         tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
-        _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Objective Power'][i], tile_size)
+        _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Manipulated Objective Power'][i], tile_size)
 
 
         """
@@ -193,7 +193,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
     meta_data_DF = pd.read_excel(data_file)
     files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
-    objective_power = list(meta_data_DF['Objective Power'])
+    objective_power = list(meta_data_DF['Manipulated Objective Power'])
     meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
     total_tiles =[]
@@ -403,10 +403,10 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
         except:
             id_dict['Height'] = 'Missing Data'
         try:
-            #id_dict['Objective Power'] = int(float(img.properties['aperio.AppMag']))
-            id_dict['Objective Power'] = int(float(img.properties[mag_dict[data_format]]))
+            #id_dict['Manipulated Objective Power'] = int(float(img.properties['aperio.AppMag']))
+            id_dict['Manipulated Objective Power'] = int(float(img.properties[mag_dict[data_format]]))
         except:
-            id_dict['Objective Power'] = 'Missing Data'
+            id_dict['Manipulated Objective Power'] = 'Missing Data'
         try:
             #id_dict['Scan Date'] = img.properties['aperio.Date']
             id_dict['Scan Date'] = img.properties[date_dict[data_format]]

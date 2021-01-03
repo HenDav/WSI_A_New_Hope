@@ -27,7 +27,7 @@ parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue t
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='RedSquares', help='DataSet to use')
-parser.add_argument('-lf', '--look_for', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-lf', '--look_for', type=str, default='RedSquares', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 
