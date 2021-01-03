@@ -1,17 +1,18 @@
 import subprocess
 
-'''subprocess.run(['python', 'train_mil_joint.py',
+subprocess.run(['python', 'train_mil_joint.py',
                 '--test_fold', str(1),
                 '--epochs', str(2),
                 '--dataset', 'LUNG',
                 '--target', 'PDL1',
-                '--transform_type', 'wcfrs',
+                #'--transform_type', 'wcfrs',
+                '--transform_type', 'bnfrs',
                 #'--transform_type', 'hedcfrs',
                 '--model', 'receptornet',
                 '-im'
-                ])'''
+                ])
 
-subprocess.run(['python', 'train_mil_joint.py',
+'''subprocess.run(['python', 'train_mil_joint.py',
                 '--test_fold', str(2),
                 '--epochs', str(2),
                 '--dataset', 'RedSquares',
@@ -23,7 +24,7 @@ subprocess.run(['python', 'train_mil_joint.py',
                 '-im',
                 '--bootstrap',
                 '--c_param','0.01'
-                ])
+                ])'''
 
 #inference mil
 '''subprocess.run(['python', 'inference_mil.py',

@@ -111,7 +111,12 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
     start_gettiles = time.time()
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-        image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+        try:
+            image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+        except:
+            print('failed to read slide ' + file_name + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
+            print('taking blank patch instead')
+            image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
         tiles_PIL.append(image)
 
     end_gettiles = time.time()
