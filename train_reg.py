@@ -242,7 +242,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
     test_loss, total = 0, 0
 
-    # TODO: eval mode changes the mode of dropout and batchnorm layers. Activate this line only after the model is fully learned
     if eval_mode:
         model.eval()
     else:
@@ -279,7 +278,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
         balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
 
-        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
             writer_string = 'Train_2'
         else:

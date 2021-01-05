@@ -33,6 +33,7 @@ class WSI_Master_Dataset(Dataset):
                  bag_size: int = 50,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
+                 infer_folds: List = [None],
                  train: bool = True,
                  print_timing: bool = False,
                  transform_type: str = 'flip',
@@ -69,7 +70,6 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF.reset_index(inplace=True)
 
         # self.meta_data_DF.set_index('id')
-        ### self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
@@ -92,7 +92,7 @@ class WSI_Master_Dataset(Dataset):
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
-        if self.train_type != 'Infer':
+        if self.train_type == 'REG' or train_type == 'MIL':
             if self.train:
                 folds = list(self.meta_data_DF['test fold idx'].unique())
                 folds.remove(self.test_fold)
@@ -100,7 +100,10 @@ class WSI_Master_Dataset(Dataset):
                     folds.remove('test')
             else:
                 folds = [self.test_fold]
-        #TODO RanS 30.12.20 - "else"???
+        elif self.train_type == 'Infer':
+            folds = infer_folds
+        else:
+            raise ValueError('train_type is not defined')
 
         self.folds = folds
 
@@ -116,12 +119,13 @@ class WSI_Master_Dataset(Dataset):
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
-        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
+        #all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
+        all_magnifications = list(self.meta_data_DF['Objective Power'])
 
         if train_type == 'Infer':
             self.valid_slide_indices = valid_slide_indices
             self.all_magnifications = all_magnifications
-            self.all_is_DX_cut = all_is_DX_cut
+            self.all_is_DX_cut = all_is_DX_cut if self.DX else [True] * len(self.all_magnifications)
             self.all_tissue_tiles = all_tissue_tiles
             self.all_image_file_names = all_image_file_names
 
@@ -145,10 +149,9 @@ class WSI_Master_Dataset(Dataset):
         self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
 
         if train_type == 'REG':
-            #self.factor = 10 if self.train else 50
             self.factor = n_patches
             self.real_length = int(self.__len__() / self.factor)
-        else:
+        elif train_type == 'MIL':
             self.factor = 1
             self.real_length = self.__len__()
 
@@ -160,14 +163,16 @@ class WSI_Master_Dataset(Dataset):
         start_getitem = time.time()
         idx = idx % self.real_length
         basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
-        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids_Old', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
 
         tiles, time_list = _choose_data(grid_file, image_file, self.bag_size,
-                                          self.magnification[idx],
-                                          # self.tile_size,
-                                          int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
-                                          print_timing=self.print_time)
+                                        self.magnification[idx],
+                                        # self.tile_size,
+                                        int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+                                        print_timing=self.print_time)
+
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
@@ -184,11 +189,6 @@ class WSI_Master_Dataset(Dataset):
         start_aug = time.time()
         for i in range(self.bag_size):
             X[i] = transform(tiles[i])
-            '''
-            img = get_concat(tiles[i], trans(X[i]))
-            img.show()
-            time.sleep(3)
-            '''
 
         if self.get_images:
             images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
@@ -1338,7 +1338,7 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              bag_size=1,
                                              target_kind=target_kind,
                                              test_fold=test_fold,
-                                             train= train,
+                                             train=train,
                                              print_timing=print_timing,
                                              transform_type=transform_type,
                                              DX=DX,
@@ -1382,6 +1382,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                                             bag_size=None,
                                             target_kind=target_kind,
                                             test_fold=1,
+                                            infer_folds=folds,
                                             train=True,
                                             print_timing=False,
                                             transform_type='none',

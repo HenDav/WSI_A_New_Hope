@@ -499,7 +499,7 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             print('Cannot open slide at location: {}'.format(file))
 
         if slide is not None:
-            # Get a thunmbnail image to create the segmentation for:
+            # Get a thumbnail image to create the segmentation for:
             if file.split('/')[-1][-3:] != 'jpg':
                 try:
                     #objective_pwr = int(float(slide.properties['aperio.AppMag']))
@@ -510,13 +510,12 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             else:
                 objective_pwr = 20
 
-
             height = slide.dimensions[1]
             width = slide.dimensions[0]
             try:
                 try:
                     thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-                except:  #RanS 2.12.20, out of memory on my laptop
+                except:   # RanS 2.12.20, out of memory on my laptop
                     thumb = slide.get_thumbnail((width / (8*objective_pwr / magnification), height / (8*objective_pwr / magnification)))
             except openslide.lowlevel.OpenSlideError as err:
                 error_dict = {}

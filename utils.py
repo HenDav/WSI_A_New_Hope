@@ -544,7 +544,6 @@ def define_data_root(DataSet):
         else:
             ROOT_PATH = r'All Data'
 
-            # TODO omer, fix file slide_data.xlsx to contain data from slide_data_LUNG.xlsx
     return ROOT_PATH
 
 def assert_dataset_target(DataSet,target_kind):
