@@ -28,16 +28,16 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSe
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares')
-parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty')
-parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20, TODO
-parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)')
-parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
-parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet')
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')
-parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
-parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)')
+parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares')  # RanS 7.12.20
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
+parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
+parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)')  # RanS 7.12.20
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
+parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')  # RanS 16.12.20
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')  # RanS 16.12.20
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
+parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
 parser.add_argument('--tta', action='store_true', help='use test-time augmentation') #RanS 4.1.21
 args = parser.parse_args()
 eps = 1e-7
@@ -443,61 +443,74 @@ if __name__ == '__main__':
 
     if not args.multi_slides:
         train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                          tile_size=TILE_SIZE,
-                                          bag_size=TILES_PER_BAG,
-                                          target_kind=args.target,
-                                          test_fold=args.test_fold,
-                                          train=True,
-                                          print_timing=args.time,
-                                          #transform=args.transformation,
-                                          transform_type=args.transform_type,
-                                          DX=args.dx,
-                                          get_images=args.images,
-                                          c_param=args.c_param)
+                                             tile_size=TILE_SIZE,
+                                             bag_size=TILES_PER_BAG,
+                                             target_kind=args.target,
+                                             test_fold=args.test_fold,
+                                             train=True,
+                                             print_timing=args.time,
+                                             #transform=args.transformation,
+                                             transform_type=args.transform_type,
+                                             DX=args.dx,
+                                             get_images=args.images,
+                                             c_param=args.c_param)
 
         test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                         tile_size=TILE_SIZE,
-                                         #bag_size=TILES_PER_BAG,
-                                         bag_size=args.bag_size_test, #RanS 29.12.20
-                                         target_kind=args.target,
-                                         test_fold=args.test_fold,
-                                         train=False,
-                                         print_timing=False,
-                                         #transform=False,
-                                         #transform_type='none',
-                                         transform_type=test_transform,
-                                         DX=args.dx,
-                                         get_images=args.images,
-                                         tta=args.tta)
+                                            tile_size=TILE_SIZE,
+                                            #bag_size=TILES_PER_BAG,
+                                            bag_size=args.bag_size_test, #RanS 29.12.20
+                                            target_kind=args.target,
+                                            test_fold=args.test_fold,
+                                            train=False,
+                                            print_timing=False,
+                                            #transform=False,
+                                            #transform_type='none',
+                                            transform_type=test_transform,
+                                            DX=args.dx,
+                                            get_images=args.images,
+                                            tta=args.tta)
     else:
         train_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            bag_size=TILES_PER_BAG,
-                                            target_kind=args.target,
-                                            TPS=10,
-                                            test_fold=args.test_fold,
-                                            train=True,
-                                            print_timing=args.time,
-                                            #transform=args.transformation,
-                                            transform_type=args.transform_type,
-                                            DX=args.dx,
-                                            c_param=args.c_param)
+                                               tile_size=TILE_SIZE,
+                                               bag_size=TILES_PER_BAG,
+                                               target_kind=args.target,
+                                               TPS=10,
+                                               test_fold=args.test_fold,
+                                               train=True,
+                                               print_timing=args.time,
+                                               #transform=args.transformation,
+                                               transform_type=args.transform_type,
+                                               DX=args.dx,
+                                               c_param=args.c_param)
 
         test_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
-                                           tile_size=TILE_SIZE,
-                                           #bag_size=TILES_PER_BAG,
-                                           bag_size=args.bag_size_test, #RanS 29.12.20
-                                           target_kind=args.target,
-                                           TPS=10,
-                                           test_fold=args.test_fold,
-                                           train=False,
-                                           print_timing=False,
-                                           #transform=False,
-                                           #transform_type='none',
-                                           transform_type=test_transform,
-                                           DX=args.dx)
+                                              tile_size=TILE_SIZE,
+                                              #bag_size=TILES_PER_BAG,
+                                              bag_size=args.bag_size_test, #RanS 29.12.20
+                                              target_kind=args.target,
+                                              TPS=10,
+                                              test_fold=args.test_fold,
+                                              train=False,
+                                              print_timing=False,
+                                              #transform=False,
+                                              #transform_type='none',
+                                              transform_type=test_transform,
+                                              DX=args.dx)
 
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    if args.balanced_sampling:
+        num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
+        num_samples = (num_neg + num_pos) * train_dset.factor
+        targets_numpy = np.array(train_dset.target)
+        pos_targets, neg_targets = targets_numpy == 'Positive', targets_numpy == 'Negative'
+        weights = np.zeros(num_samples)
+        weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
+
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
+                                                                 replacement=False)
+    else:
+        sampler = None
+
+    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
