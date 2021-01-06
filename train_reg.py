@@ -15,6 +15,7 @@ from sklearn.metrics import roc_curve, auc, roc_auc_score
 import numpy as np
 import sys
 import pandas as pd
+from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -34,9 +35,11 @@ parser.add_argument('--transform_type', default='flip', type=str, help='none / f
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #TODO
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') #TODO
 args = parser.parse_args()
-
 eps = 1e-7
+
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -76,7 +79,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         slide_names = []
         print('Epoch {}:'.format(e))
         model.train()
-        for batch_idx, (data, target, time_list, f_names) in enumerate(tqdm(dloader_train)):
+        for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
 
             data, target = data.to(DEVICE), target.to(DEVICE)
@@ -155,18 +158,21 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
 
-        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
+        #print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
+        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train AUC per patch: {:.2f} , Time: {:.0f} m'
               .format(e,
                       train_loss,
                       previous_epoch_loss - train_loss,
-                      train_acc,
-                      int(correct_labeling),
-                      total,
+                      # train_acc,
+                      roc_auc_train,
+                      # int(correct_labeling),
+                      # len(train_loader),
                       time_epoch))
 
         previous_epoch_loss = train_loss
 
-        if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
+        if e % args.eval_rate == 0:
+            #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # RanS 8.12.20, perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
@@ -174,34 +180,31 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
-
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
             # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
+
+            # Save model to file:
+            if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
+                os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+
+            try:
+                model_state_dict = model.module.state_dict()
+            except AttributeError:
+                model_state_dict = model.state_dict()
+
+            torch.save({'epoch': e,
+                        'model_state_dict': model_state_dict,
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': loss.item(),
+                        'acc_test': acc_test,
+                        'bacc_test': bacc_test,
+                        'tile_size': TILE_SIZE,
+                        'tiles_per_bag': 1},
+                       os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
         else:
             acc_test, bacc_test = None, None
-
-
-
-        # Save model to file:
-        if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-            os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-        try:
-            model_state_dict = model.module.state_dict()
-        except AttributeError:
-            model_state_dict = model.state_dict()
-
-        torch.save({'epoch': e,
-                    'model_state_dict': model_state_dict,
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.item(),
-                    'acc_test': acc_test,
-                    'bacc_test': bacc_test,
-                    'tile_size': TILE_SIZE,
-                    'tiles_per_bag': 1},
-                   os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
         '''
         if train_loss < best_train_loss:
@@ -249,7 +252,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         model.train()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list, f_names) in enumerate(data_loader):
+        for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
             model.to(DEVICE)
@@ -301,8 +304,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
         else: #bootstrap, RanS 16.12.20
-
-            from sklearn.utils import resample
             # load dataset
             # configure bootstrap
             n_iterations = 100
@@ -343,7 +344,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
         writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
-        print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
+        #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
+        print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
     model.train()
     return acc, balanced_acc
 
@@ -389,7 +391,8 @@ if __name__ == '__main__':
                                          train=True,
                                          print_timing=args.time,
                                          transform_type=args.transform_type,
-                                         n_patches=args.n_patches_train
+                                         n_patches=args.n_patches_train,
+                                         c_param=args.c_param
                                          )
 
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
@@ -401,7 +404,6 @@ if __name__ == '__main__':
                                         transform_type='none',
                                         n_patches=args.n_patches_test
                                         )
-
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import nets
-#from nets import ResNet50_GN, ResNet34_GN, ReceptorNet_feature_extractor
+from nets import ResNet50_GN, ResNet34_GN, ReceptorNet_feature_extractor
 
 
 class Flatten(nn.Module):

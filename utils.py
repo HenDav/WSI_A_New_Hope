@@ -55,7 +55,14 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
     # Choose locations from the grid:
     loc_num = len(grid_list)
 
-    idxs = sample(range(loc_num), how_many)
+    #temp try RanS 4.1.21
+    try:
+        idxs = sample(range(loc_num), how_many)
+    except:
+        print('image_file:', image_file)
+        print('how_many:', str(how_many))
+        print('loc_num:', str(loc_num))
+
     locs = [grid_list[idx] for idx in idxs]
 
     image_tiles, time_list = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing)

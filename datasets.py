@@ -40,7 +40,8 @@ class WSI_Master_Dataset(Dataset):
                  get_images: bool = False,
                  train_type: str = 'MASTER',
                  c_param: float = 0.1,
-                 n_patches: int = 50):
+                 n_patches: int = 50,
+                 tta = False):
 
         # Define data root:
         self.ROOT_PATH = define_data_root(DataSet)
@@ -57,6 +58,7 @@ class WSI_Master_Dataset(Dataset):
 
         meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
         self.meta_data_DF = pd.read_excel(meta_data_file)
+        self.tile_size = tile_size
 
         if self.DataSet != 'ALL':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
@@ -66,13 +68,17 @@ class WSI_Master_Dataset(Dataset):
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
-            #RanS 2.1.20, this slide is buggy, avoid it
-            #self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'PDL1 status'] = 'Missing Data'
+            #RanS 2.1.21, this slide is buggy, avoid it
+            self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'PDL1 status'] = 'Missing Data'
             self.meta_data_DF.reset_index(inplace=True)
+
+        # RanS 4.1.21, avoid slides with too few legit tiles
+        #small_slides_ind = self.meta_data_DF[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'] < n_patches].index
+        #self.meta_data_DF = self.meta_data_DF.drop(small_slides_ind)
 
         # self.meta_data_DF.set_index('id')
         ### self.data_path = os.path.join(self.ROOT_PATH, self.DataSet)
-        self.tile_size = tile_size
+
         self.target_kind = target_kind
         self.test_fold = test_fold
         self.bag_size = bag_size
@@ -91,7 +97,13 @@ class WSI_Master_Dataset(Dataset):
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
-        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
+        if train_type == 'REG':
+            n_minimal_patches = n_patches
+        else:
+            n_minimal_patches = bag_size
+        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'] < n_minimal_patches])
+        #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
+        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid))
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if self.train_type != 'Infer':
@@ -104,10 +116,14 @@ class WSI_Master_Dataset(Dataset):
                 folds = [self.test_fold]
         #TODO RanS 30.12.20 - "else"???
 
-        self.folds = folds
+            # RanS 5.1.21
+            self.folds = folds
+            correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+            valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
-        correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
-        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+        #self.folds = folds
+        #correct_folds = self.meta_data_DF['test fold idx'][valid_slide_indices].isin(folds)
+        #valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
         all_image_file_names = list(self.meta_data_DF['file'])
         all_image_path_names = list(self.meta_data_DF['id'])
@@ -149,6 +165,9 @@ class WSI_Master_Dataset(Dataset):
         if train_type == 'REG':
             #self.factor = 10 if self.train else 50
             self.factor = n_patches
+            self.real_length = int(self.__len__() / self.factor)
+        elif train == False and tta:
+            self.factor = 4
             self.real_length = int(self.__len__() / self.factor)
         else:
             self.factor = 1
@@ -1292,7 +1311,8 @@ class WSI_MILdataset(WSI_Master_Dataset):
                  transform_type: str = 'flip',
                  DX : bool = False,
                  get_images: bool = False,
-                 c_param: float = 0.1
+                 c_param: float = 0.1,
+                 tta=False
                  ):
         super(WSI_MILdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -1305,7 +1325,8 @@ class WSI_MILdataset(WSI_Master_Dataset):
                                              DX=DX,
                                              get_images=get_images,
                                              train_type='MIL',
-                                             c_param=c_param)
+                                             c_param=c_param,
+                                             tta=tta)
 
         print(
             'Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'

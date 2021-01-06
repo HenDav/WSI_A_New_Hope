@@ -22,7 +22,7 @@ in_dir = args.in_dir
 out_dir = args.out_dir
 rewrite_figs = True
 
-def slide_2_image(slide_file, ind, mag):
+def slide_2_image(slide_file, ind, mag, n_legit_tiles):
     fn = os.path.basename(slide_file)[:-5]
     seg_file = os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.png')
     segmap_file = os.path.join(in_dir, 'SegData', 'SegMaps', fn + '_SegMap.png')
@@ -54,8 +54,8 @@ def slide_2_image(slide_file, ind, mag):
     #patch_size = 1024
     patch_size = 256
 
-    #image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
-    #tiles, time_list = _choose_data_2(grid_file, slide_file, 8, 20, patch_size, basic_obj_power = 20)
+    n_patches = np.minimum(n_patches, n_legit_tiles)
+
     plot_seg_map = False
     if plot_seg_map:
         tiles, time_list, locs = _choose_data(grid_file, slide_file, n_patches, mag, patch_size)
@@ -101,7 +101,13 @@ for _, file in enumerate(tqdm(slide_files_mrxs)):
     if not os.path.isfile(out_path) or rewrite_figs:
         #try:
         mag = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Manipulated Objective Power']
-        slide_2_image(file, ind, mag)
+        try:
+            n_legit_tiles = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Legitimate tiles - 256 compatible @ X20'].values[0]
+        except:
+            print('fn:', fn)
+            n_legit_tiles = -1
+        #print('n_legit_tiles:', str(n_legit_tiles))
+        slide_2_image(file, ind, mag, n_legit_tiles)
         #except:
         #    print('failed on slide ', fn)
     ind += 1

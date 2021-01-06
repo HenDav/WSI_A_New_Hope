@@ -28,16 +28,17 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSe
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares') # RanS 7.12.20
-parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
+parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares')
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty')
 parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20, TODO
-parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)') # RanS 7.12.20
-parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
-parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #RanS 16.12.20
-parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
-parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
+parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)')
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
+parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet')
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)')
+parser.add_argument('--tta', action='store_true', help='use test-time augmentation') #RanS 4.1.21
 args = parser.parse_args()
 eps = 1e-7
 
@@ -231,7 +232,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
 
-
             # Save model to file:
             #RanS 31.12.20 - save every eval_rate epochs
             if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
@@ -262,26 +262,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     all_writer.close()
     if print_timing:
         time_writer.close()
-    '''
-    # If epochs ended - Save best model:
-    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-    try:
-        best_model_state_dict = best_model.module.state_dict()
-    except AttributeError:
-        best_model_state_dict = best_model.state_dict()
-
-    torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model_state_dict,
-                'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc,
-                'tile_size': TILE_SIZE,
-                'tiles_per_bag': TILES_PER_BAG},
-               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
-
-    '''
-
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int, eval_mode: bool = False):
@@ -289,6 +269,12 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
     total_pos, total_neg = 0, 0
     true_pos, true_neg = 0, 0
     targets_test, scores, preds = np.zeros(len(data_loader)), np.zeros(len(data_loader)), np.zeros(len(data_loader))
+
+    '''if args.tta:
+        # defined 2 * 2 * 3 * 3 = 36 augmentations !
+        transforms = tta.Compose([tta.HorizontalFlip(),
+                                  tta.Rotate90(angles=[0, 180])])
+        tta_model = tta.ClassificationTTAWrapper(model, transforms)'''
 
     if eval_mode:
         model.eval()
@@ -307,6 +293,25 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
+            '''if args.tta:
+                labels = []
+                masks = []
+                for transformer in transforms:  # custom transforms or e.g. tta.aliases.d4_transform()
+                    # augment image
+                    augmented_data = transformer.augment_image(data)
+                    # pass to model
+                    model_output = model(augmented_data)
+                    # reverse augmentation for mask and label
+                    deaug_mask = transformer.deaugment_mask(model_output['mask'])
+                    deaug_label = transformer.deaugment_label(model_output['label'])
+                    # save results
+                    labels.append(deaug_mask)
+                    masks.append(deaug_label)
+                # reduce results as you want, e.g mean/max/min
+                label = np.mean(labels)
+                mask = np.mean(masks)
+            else:
+                prob, label, _ = model(data)'''
             prob, label, _ = model(data)
 
             targets_test[idx] = target.cpu().detach().item()
@@ -321,6 +326,13 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
             num_correct += label.eq(target).cpu().detach().int().item()
             scores[idx] = prob.cpu().detach().item()
             preds[idx] = label.cpu().detach().item()
+
+        if args.tta:
+            scores = np.mean(scores.reshape([test_dset.real_length, -1]), axis=1)
+            preds = np.round(scores)
+            targets_test = targets_test[:test_dset.real_length]
+            true_pos = np.sum(targets_test+preds == 2)
+            true_neg = np.sum(targets_test + preds == 0)
 
         if data_loader.dataset.train:
             writer_string = 'Train_2'
@@ -424,6 +436,11 @@ if __name__ == '__main__':
     cpu_available = utils.get_cpu()
 
     # Get data:
+    if args.tta:
+        test_transform = 'frs'
+    else:
+        test_transform = 'none'
+
     if not args.multi_slides:
         train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                           tile_size=TILE_SIZE,
@@ -447,9 +464,11 @@ if __name__ == '__main__':
                                          train=False,
                                          print_timing=False,
                                          #transform=False,
-                                         transform_type='none',
+                                         #transform_type='none',
+                                         transform_type=test_transform,
                                          DX=args.dx,
-                                         get_images=args.images)
+                                         get_images=args.images,
+                                         tta=args.tta)
     else:
         train_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
                                             tile_size=TILE_SIZE,
@@ -474,7 +493,8 @@ if __name__ == '__main__':
                                            train=False,
                                            print_timing=False,
                                            #transform=False,
-                                           transform_type='none',
+                                           #transform_type='none',
+                                           transform_type=test_transform,
                                            DX=args.dx)
 
     train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True)

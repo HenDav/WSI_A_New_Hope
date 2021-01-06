@@ -52,11 +52,10 @@ model_data_loaded = torch.load(os.path.join(data_path, 'Model_CheckPoints',
 model.load_state_dict(model_data_loaded['model_state_dict'])
 
 
-inf_dset = datasets.Infer_WSI_MILdataset(DataSet=args.dataset,
+#inf_dset = datasets.Infer_WSI_MILdataset(DataSet=args.dataset,
+inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
                                       folds=args.folds,
-                                      print_timing=True,
-                                      DX=False,
                                       num_tiles=args.num_tiles,
                                       target_kind=args.target)
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
