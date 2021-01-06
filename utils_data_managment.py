@@ -218,13 +218,17 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
         if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
             height = int(meta_data_DF.loc[file, 'Height'])
             width  = int(meta_data_DF.loc[file, 'Width'])
-            if objective_power[i] == 'Missing Data':
+
+            # RanS 6.1.21 - i index is wrong
+            #if objective_power[i] == 'Missing Data':
+            obj_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
+            if obj_power == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
                 tile_nums.append(0)
                 total_tiles.append(-1)
                 continue
 
-            converted_tile_size = int(tile_sz * (int(objective_power[i]) / BASIC_OBJ_PWR))
+            converted_tile_size = int(tile_sz * (int(obj_power) / BASIC_OBJ_PWR))
             #print(height, width, converted_tile_size)
             basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
             total_tiles.append((len(basic_grid)))
