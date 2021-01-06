@@ -824,9 +824,6 @@ class ResNet50_GatedAttention_MultiBag(nn.Module):
                  num_bags: int = 2,
                  tiles: int = 50):
         super(ResNet50_GatedAttention_MultiBag, self).__init__()
-        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag'
-        print('Using model {}'.format(self.model_name))
-        print('As Feature Extractor, the model will be ', end='')
 
         self.num_bags = num_bags
         self.tiles = tiles
@@ -846,6 +843,9 @@ class ResNet50_GatedAttention_MultiBag(nn.Module):
         self.class_2 = nn.Sigmoid()
         #self.class_10 = nn.Linear(self.M * self.K, 2)
         self.weig = nn.Linear(self.L, self.K)
+
+        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag + ' + self.feat_ext_part1.model_name
+        print('Using model {}'.format(self.model_name))
 
 
     def forward(self, x):
@@ -903,6 +903,91 @@ class ResNet50_GatedAttention_MultiBag(nn.Module):
         Y_class_1D = Y_class[:, 0]
 
         return Y_prob, Y_class_1D, A_after_sftmx
+
+
+class ResNet50_GatedAttention_MultiBag_Other_Loss(nn.Module):
+    def __init__(self,
+                 num_bags: int = 2,
+                 tiles: int = 50):
+        super(ResNet50_GatedAttention_MultiBag_Other_Loss, self).__init__()
+
+        self.num_bags = num_bags
+        self.tiles = tiles
+        self.M = 2
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        #self.feat_ext_part1 = nets.ResNet50_GN().con_layers
+        self.feat_ext_part1 = nets.ResNet50(num_classes=self.M)
+
+        #self.linear_1 = nn.Linear(in_features=1000, out_features=self.M)
+        self.att_V_1 = nn.Linear(self.M, self.L)
+        self.att_V_2 = nn.Tanh()
+        self.att_U_1 = nn.Linear(self.M, self.L)
+        self.att_U_2 = nn.Sigmoid()
+        self.class_1 = nn.Linear(self.M * self.K, 2)
+        self.class_2 = nn.Sigmoid()
+        self.weig = nn.Linear(self.L, self.K)
+
+        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag_Other_Loss + ' + self.feat_ext_part1.model_name
+        print('Using model {}'.format(self.model_name))
+
+
+    def forward(self, x):
+        #print('Before: ', x.shape, end=' ')
+        num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+
+        x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+        #print('After: ', x.shape)
+
+        #H = self.linear_1(self.feat_ext_part1(x))  # After this, H will contain all tiles for all bags as feature vectors
+        H = self.feat_ext_part1(x)
+        A_V = self.att_V_2(self.att_V_1(H))
+        A_U = self.att_U_2(self.att_U_1(H))
+        A = self.weig(A_V * A_U)
+        A = torch.transpose(A, 1, 0)  # KxN
+
+        if torch.cuda.is_available():
+            M = torch.zeros(0).cuda()
+            A_after_sftmx = torch.zeros(0).cuda()
+        else:
+            M = torch.zeros(0)
+            A_after_sftmx = torch.zeros(0)
+
+        # The following if statement is needed in cases where the accuracy checking is done in a 1 bag per minibatch mode
+        if num_of_bags == 1 and not self.training:
+            A = F.softmax(A, dim=1)
+            M = torch.mm(A, H)
+            scores = M  #self.class_2(self.class_1(M))  #self.class_10(M)
+
+            #Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
+            #Y_class_1D = Y_class[:, 0]
+
+            return scores  #Y_prob, Y_class_1D, A
+
+
+        for i in range(num_of_bags):
+            first_tile_idx = i * self.tiles
+            a = A[:, first_tile_idx : first_tile_idx + self.tiles]
+            a = F.softmax(a, dim=1)
+
+            h = H[first_tile_idx : first_tile_idx + self.tiles, :]
+            m = torch.mm(a, h)
+
+            M = torch.cat((M, m))
+            A_after_sftmx = torch.cat((A_after_sftmx, a))
+
+        # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
+        # probability that the input belong to class 1/TRUE (and not 0/FALSE)
+        '''Y_prob = self.class_2(self.class_1(M))
+        Y_class = torch.ge(Y_prob, 0.5).float()'''
+
+        scores = M  #self.class_2(self.class_1(M))  # self.class_10(M)
+
+        #Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
+        #Y_class_1D = Y_class[:, 0]
+
+        return scores  #Y_prob, Y_class_1D, A_after_sftmx
 
 
 class ResNet50_GN_GatedAttention_MultiBag_2(nn.Module):

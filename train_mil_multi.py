@@ -29,7 +29,7 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSe
 parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-nb', '--num_bags', type=int, default=4, help='Number of bags in each minibatch')
+parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of bags in each minibatch')
 parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=1, help='Tiles Per Bag')
 
 args = parser.parse_args()
@@ -168,8 +168,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.zero_grad()
             model.to(DEVICE)
 
-            scores, pred, weights = model(data)
-            print('Weights shape: {}. Weights: {}'.format(weights.shape, weights))
+            scores, pred, _ = model(data)
+            #print('Weights shape: {}. Weights: {}'.format(weights.shape, weights))
 
             scores = torch.clamp(scores, min=1e-5, max=1. - 1e-5)
             target_diag = torch.diag(target)
@@ -468,7 +468,7 @@ if __name__ == '__main__':
     # Load model
     model = ResNet50_GatedAttention_MultiBag(num_bags=args.num_bags,
                                              tiles=args.tiles_per_bag)
-    #model = ResNet50_GN_GatedAttention_MultiBag_2()
+
     '''
     model_basic = ResNet34_GN_GatedAttention()
     model_params = sum(p.numel() for p in model.parameters())

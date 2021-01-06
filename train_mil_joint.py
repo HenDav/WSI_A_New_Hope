@@ -509,8 +509,6 @@ if __name__ == '__main__':
 
     utils.run_data(experiment=experiment, model=model.model_name)
 
-    ### model = nn.DataParallel(model)  # TODO: Remove this line after the first runs  # Omer 5/11/20
-
     epoch = args.epochs
     from_epoch = args.from_epoch
 

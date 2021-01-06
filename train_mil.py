@@ -363,8 +363,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
         fpr, tpr, _ = roc_curve(targets_test, scores)
         roc_auc = auc(fpr, tpr)
 
-
-        # TODO: instead of using the train parameter it is possible to simply check data_loader.dataset.train attribute
         if data_loader.dataset.train:
             writer_string = 'Train_2'
         else:
@@ -496,8 +494,6 @@ if __name__ == '__main__':
     print('Updated {} model variables'.format(counter))
     '''
     utils.run_data(experiment=experiment, model=model.model_name)
-
-    ### model = nn.DataParallel(model)  # TODO: Remove this line after the first runs  # Omer 5/11/20
 
     epoch = args.epochs
     from_epoch = args.from_epoch

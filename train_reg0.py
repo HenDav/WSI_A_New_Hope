@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import PreActResNet50, ResNet50_2, ResNet50_GN, ResNet18, ResNet34, ResNet50
+import nets
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -259,9 +259,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
         roc_auc = auc(fpr, tpr)
 
-
-        # TODO: instead of using the train paramete
-
         writer_string = 'Test (eval mode)'
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
@@ -354,14 +351,15 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    # model = PreActResNet50()
-    # model = ResNet50_GN()
-    # model = ResNet_18()
-    # model = ResNet_34()
-    # model = ResNet50()
+    # model = nets.PreActResNet50()
+    # model = nets.ResNet50_GN()
+    # model = nets.ResNet_18()
+    # model = nets.ResNet_34()
+    # model = nets.ResNet50()
     # model = PreActResNets.preactresnet50_Omer()
     # model = PreActResNets.preactresnet50()
     model = PreActResNets.PreActResNet50_Ron()
+
 
     '''model_params = sum(p.numel() for p in model.parameters())
     print(model_params)'''
