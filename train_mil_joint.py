@@ -485,7 +485,8 @@ if __name__ == '__main__':
         weights = np.zeros(num_samples)
         weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
 
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples, replacement=True)
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
+                                                                 replacement=False)
     else:
         sampler = None
 

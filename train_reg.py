@@ -29,7 +29,7 @@ parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches 
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('--balanced_sampling', action='store_true', help='balanced_sampling') # RanS 7.12.20, TODO
+parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
 parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='net to use') # RanS 15.12.20
@@ -400,9 +400,23 @@ if __name__ == '__main__':
                                         n_patches=args.n_patches_test
                                         )
 
+    if args.balanced_sampling:
+        num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
+        num_samples = (num_neg + num_pos) * train_dset.factor
+        targets_numpy = np.array(train_dset.target)
+        pos_targets, neg_targets = targets_numpy == 'Positive', targets_numpy == 'Negative'
+        weights = np.zeros(num_samples)
+        weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
 
-    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=cpu_available, pin_memory=True)
-    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
+                                                                 replacement=False)
+    else:
+        sampler = None
+
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True,
+                              num_workers=cpu_available, pin_memory=True, sampler=sampler)
+    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
+                              num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
