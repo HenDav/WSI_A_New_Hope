@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks
 from utils import HEDColorJitter, define_transformations, define_data_root, assert_dataset_target
-from utils import show_patches_and_transformations
+from utils import show_patches_and_transformations, get_breast_dir_dict
 import matplotlib.pyplot as plt
 
 
@@ -60,21 +60,22 @@ class WSI_Master_Dataset(Dataset):
         meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
         self.meta_data_DF = pd.read_excel(meta_data_file)
 
-        if self.DataSet != 'ALL':
+        if self.DataSet == 'Breast':
+            dir_dict = get_breast_dir_dict()
+        #if self.DataSet != 'ALL':
+        else:
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
-        # for lung, take only origin:lung and only diagnosis:adenocarcinoma
+
+        # for lung, take only origin:lung
         if self.DataSet == 'LUNG':
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
             #RanS 2.1.21, this slide is buggy, avoid it
             self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'PDL1 status'] = 'Missing Data'
+            self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'EGFR status'] = 'Missing Data'
             self.meta_data_DF.reset_index(inplace=True)
-
-        # RanS 4.1.21, avoid slides with too few legit tiles
-        #small_slides_ind = self.meta_data_DF[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'] < n_patches].index
-        #self.meta_data_DF = self.meta_data_DF.drop(small_slides_ind)
 
         # self.meta_data_DF.set_index('id')
         self.tile_size = tile_size
@@ -124,7 +125,12 @@ class WSI_Master_Dataset(Dataset):
         valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
         all_image_file_names = list(self.meta_data_DF['file'])
-        all_image_path_names = list(self.meta_data_DF['id'])
+
+        if DataSet == 'Breast':
+            all_image_path_names = [os.path.join(dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
+        else:
+            all_image_path_names = list(self.meta_data_DF['id'])
+
         all_in_fold = list(self.meta_data_DF['test fold idx'])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
         if self.DataSet != 'TCGA':

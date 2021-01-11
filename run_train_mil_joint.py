@@ -28,7 +28,7 @@ import subprocess
                 ])'''
 
 #inference mil
-subprocess.run(['python', 'inference_mil.py',
+'''subprocess.run(['python', 'inference_mil.py',
                 #'--model_path',r'C:\Pathnet_results\MIL_general\exp19',
                 #'--from_epoch', '157',
                 #'--folds', '1',
@@ -41,4 +41,17 @@ subprocess.run(['python', 'inference_mil.py',
                 '--bootstrap',
                 '--num_tiles', '100',
                 '-ev'
+                ])'''
+
+subprocess.run(['python', 'train_mil_joint.py',
+                '--test_fold', str(1),
+                '--epochs', str(2),
+                '--dataset', 'LUNG',
+                '--target', 'PDL1',
+                #'--transform_type', 'wcfrs',
+                '--transform_type', 'bnfrs',
+                #'--transform_type', 'hedcfrs',
+                '--model', 'receptornet_preact_resnet50',
+                '--saved_model_path', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\model_data_Epoch_124.pt',
+                '--bootstrap'
                 ])

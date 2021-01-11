@@ -279,18 +279,20 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         return location, experiment
 
     elif experiment is not None and epoch is not None:
+        print(epoch)
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
         run_DF.at[index, 'Last Epoch'] = epoch
         run_DF.to_excel(run_file_name)
+
     elif experiment is not None and model is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
         run_DF.at[index, 'Model'] = model
         run_DF.to_excel(run_file_name)
+
     elif experiment is not None and transformation_string is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
         run_DF.at[index, 'Transformation String'] = transformation_string
         run_DF.to_excel(run_file_name)
-
 
     # In case we want to continue from a previous training session
     else:
@@ -535,6 +537,9 @@ def define_data_root(DataSet):
     if sys.platform == 'linux': #GIPdeep
         if DataSet == 'LUNG':
             ROOT_PATH = r'/home/rschley/All_Data/LUNG'
+        elif DataSet[:6] == 'CARMEL':
+            N = DataSet[6:]
+            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
         else:
             ROOT_PATH = r'/home/womer/project/All Data'
 
@@ -547,6 +552,8 @@ def define_data_root(DataSet):
             ROOT_PATH = r'C:\ran_data\Lung_examples'
         elif DataSet == 'RedSquares':
             ROOT_PATH = r'C:\ran_data\RedSquares'
+        elif DataSet == 'Breast':
+            ROOT_PATH = r'C:\ran_data\breast_dataset'
         else:
             print('Error - no ROOT_PATH defined')
     else: #Omer local
@@ -557,10 +564,30 @@ def define_data_root(DataSet):
 
     return ROOT_PATH
 
+#RanS 10.1.21
+def get_breast_dir_dict():
+    dir_dict = {}
+    if sys.platform == 'linux':  # GIPdeep
+        #dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG'
+        for ii in np.arange(1, 4):
+            dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
+        dir_dict['HEROHE'] = r'/home/womer/project/All Data'
+        dir_dict['TCGA'] = r'/home/womer/project/All Data'
+
+    elif sys.platform == 'win32': #Ran local
+        dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
+        dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+
+    else: #Omer local
+        dir_dict['TCGA'] = r'All Data'
+        dir_dict['HEROHE'] = r'All Data'
+    return dir_dict
+
+
 def assert_dataset_target(DataSet,target_kind):
     if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
         raise ValueError('target should be one of: PDL1, EGFR')
-    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA')) and target_kind not in ['ER', 'PR', 'Her2']:
+    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet[:6] == 'CARMEL')) and target_kind not in ['ER', 'PR', 'Her2']:
         raise ValueError('target should be one of: ER, PR, Her2')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
@@ -636,9 +663,11 @@ def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     plt.show()
 
 
-def get_model(model_name):
+def get_model(model_name, saved_model_path='none'):
     if model_name == 'resnet50_gn':
         model = ResNet50_GN_GatedAttention()
     elif model_name == 'receptornet':
-        model = ReceptorNet()
+        model = ReceptorNet('resnet50_2FC', saved_model_path)
+    elif model_name == 'receptornet_preact_resnet50':
+        model = ReceptorNet('preact_resnet50', saved_model_path)
     return model

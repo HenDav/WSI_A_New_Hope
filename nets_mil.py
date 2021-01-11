@@ -1194,9 +1194,10 @@ class ResNet50_GN_GatedAttention_MultiBag_1(nn.Module):
 #https://www.nature.com/articles/s41467-020-19334-3
 
 class ReceptorNet(nn.Module):
-    def __init__(self):
+    #def __init__(self):
+    def __init__(self, feature_extractor, saved_model_path='none'): #RanS 6.1.21
         super(ReceptorNet, self).__init__()
-        self.model_name = 'ReceptorNet'
+        self.model_name = 'ReceptorNet_' + feature_extractor
         print('Using model {}'.format(self.model_name))
         print('As Feature Extractor, the model will be ', end='')
 
@@ -1207,7 +1208,22 @@ class ReceptorNet(nn.Module):
         self.infer = False
         self.infer_part = 0
 
-        self.feat_ext_part_1 = ReceptorNet_feature_extractor()
+        if feature_extractor == 'resnet50_2FC':
+            self.feat_ext_part_1 = ReceptorNet_feature_extractor()
+        elif feature_extractor == 'preact_resnet50':
+            self.M = 500
+            self.feat_ext_part_1 = PreActResNet50()
+
+        if saved_model_path != 'none':
+            model_data_loaded = torch.load(saved_model_path, map_location='cpu')
+            saved_model = nets.PreActResNet50()
+            saved_model.load_state_dict(model_data_loaded['model_state_dict'])
+            saved_model.linear = nn.Linear(saved_model.linear.in_features, self.M)
+            nn.init.kaiming_normal_(saved_model.linear.weight, mode='fan_in', nonlinearity='relu')
+            self.feat_ext_part_1 = saved_model
+
+            print('loaded saved model from: ' + saved_model_path)
+
         self.att_V_1 = nn.Linear(self.M, self.L)
         self.att_V_2 = nn.Tanh()
         self.class_1 = nn.Linear(self.M * self.K, 1)

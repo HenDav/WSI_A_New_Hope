@@ -39,6 +39,8 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
 parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
 parser.add_argument('--tta', action='store_true', help='use test-time augmentation') #RanS 4.1.21
+parser.add_argument('--saved_model_path', default='none', type=str, help='path for saved model for MIL feature extractor')  # RanS 6.1.21
+
 args = parser.parse_args()
 eps = 1e-7
 
@@ -363,10 +365,12 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
                 fpr, tpr, _ = roc_curve(targets_resampled, scores_resampled)
 
                 num_correct_i = np.sum(preds_resampled==targets_resampled)
-                true_pos_i = np.sum(targets_resampled+preds_resampled==2)
-                total_pos_i = np.sum(targets_resampled==0)
-                true_neg_i = np.sum(targets_resampled+preds_resampled==0)
-                total_neg_i = np.sum(targets_resampled==1)
+                true_pos_i = np.sum(targets_resampled + preds_resampled == 2)
+                #total_pos_i = np.sum(targets_resampled == 0)
+                total_pos_i = np.sum(targets_resampled == 1)
+                true_neg_i = np.sum(targets_resampled + preds_resampled == 0)
+                #total_neg_i = np.sum(targets_resampled == 1)
+                total_neg_i = np.sum(targets_resampled == 0)
                 acc_array[ii] = 100 * float(num_correct_i) / len(data_loader)
                 bacc_array[ii] = 100. * ((true_pos_i + eps) / (total_pos_i + eps) + (true_neg_i + eps) / (total_neg_i + eps)) / 2
                 if not all(targets_resampled == targets_resampled[0]):  # more than one label
@@ -412,6 +416,8 @@ if __name__ == '__main__':
     if sys.platform == 'linux':
         TILE_SIZE = 256
         TILES_PER_BAG = 50
+        if args.model == 'receptornet_preact_resnet50':
+            TILES_PER_BAG = 10 #RanS 6.1.21, preact resnet is too heavy
     if sys.platform == 'win32':
         TILE_SIZE = 256
 
@@ -518,7 +524,7 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    model = utils.get_model(args.model)
+    model = utils.get_model(args.model, args.saved_model_path)
 
     utils.run_data(experiment=experiment, model=model.model_name)
 

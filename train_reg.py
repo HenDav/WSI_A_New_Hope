@@ -277,9 +277,9 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             true_pos += predicted[targets.eq(1)].eq(1).sum().item()
             true_neg += predicted[targets.eq(0)].eq(0).sum().item()
 
-        acc = 100 * float(num_correct) / total
+        #acc = 100 * float(num_correct) / total
         #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
-        balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
+        #balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
 
         if data_loader.dataset.train:
             writer_string = 'Train_2'
@@ -290,8 +290,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 writer_string = 'Test (train mode)'
 
         if not args.bootstrap:
+            acc = 100 * float(num_correct) / total
+            bacc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
             roc_auc = np.nan
-            if not all(true_labels==true_labels[0]): #more than one label
+            if not all(true_labels == true_labels[0]): #more than one label
                 fpr, tpr, _ = roc_curve(true_labels, scores)
                 roc_auc = auc(fpr, tpr)
 
@@ -310,6 +312,11 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             roc_auc_array = np.empty(n_iterations)
             slide_roc_auc_array = np.empty(n_iterations)
             roc_auc_array[:], slide_roc_auc_array[:] = np.nan, np.nan
+            acc_array, bacc_array = np.empty(n_iterations), np.empty(n_iterations)
+            acc_array[:], bacc_array[:] = np.nan, np.nan
+
+            all_preds = np.array([int(score > 0.5) for score in scores])
+
             for ii in range(n_iterations):
                 #slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
                 #fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
@@ -318,11 +325,19 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 #patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
                 slide_names = np.array(slide_names)
                 slide_choice = resample(np.unique(np.array(slide_names)))
-                slide_resampled = np.concatenate([slide_names[slide_names==slide] for slide in slide_choice])
+                slide_resampled = np.concatenate([slide_names[slide_names == slide] for slide in slide_choice])
                 scores_resampled = np.concatenate([scores[slide_names == slide] for slide in slide_choice])
                 labels_resampled = np.concatenate([true_labels[slide_names == slide] for slide in slide_choice])
+                preds_resampled = np.concatenate([all_preds[slide_names == slide] for slide in slide_choice])
                 patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
 
+                num_correct_i = np.sum(preds_resampled == labels_resampled)
+                true_pos_i = np.sum(labels_resampled + preds_resampled == 2)
+                total_pos_i = np.sum(labels_resampled == 1)
+                true_neg_i = np.sum(labels_resampled + preds_resampled == 0)
+                total_neg_i = np.sum(labels_resampled == 0)
+                acc_array[ii] = 100 * float(num_correct_i) / len(data_loader)
+                bacc_array[ii] = 100. * ((true_pos_i + eps) / (total_pos_i + eps) + (true_neg_i + eps) / (total_neg_i + eps)) / 2
                 fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
                 if not all(labels_resampled == labels_resampled[0]): #more than one label
                     roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
@@ -334,18 +349,25 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             roc_auc_slide = np.nanmean(slide_roc_auc_array)
             roc_auc_std = np.nanstd(roc_auc_array)
             roc_auc_slide_std = np.nanstd(slide_roc_auc_array)
+            acc = np.nanmean(acc_array)
+            acc_err = np.nanstd(acc_array)
+            bacc = np.nanmean(bacc_array)
+            bacc_err = np.nanstd(bacc_array)
+
+            writer_all.add_scalar(writer_string + '/Accuracy error', acc_err, epoch)
+            writer_all.add_scalar(writer_string + '/Balanced Accuracy error', bacc_err, epoch)
             writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
             writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
-        writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
+        writer_all.add_scalar(writer_string + '/Balanced Accuracy', bacc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
         writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
         print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
     model.train()
-    return acc, balanced_acc
+    return acc, bacc
 
 
 
@@ -373,8 +395,18 @@ if __name__ == '__main__':
                                                      DX=args.dx,
                                                      DataSet=args.dataset)
     else:
+        #args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
+        #    _, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
         args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-            TILES_PER_BAG, args.dx, args.dataset, args.target = utils.run_data(experiment=args.experiment)
+           _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)
+        print('args.dataset:', args.dataset)
+        print('args.target:', args.target)
+
+        print('args.output_dir:', args.output_dir)
+        print('args.test_fold:', args.test_fold)
+        print('args.transform_type:', args.transform_type)
+        print('args.dx:', args.dx)
+
         experiment = args.experiment
 
     # Get number of available CPUs:
