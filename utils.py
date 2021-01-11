@@ -218,14 +218,19 @@ def get_cpu():
     return cpu
 
 
-def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none',#transformations: bool = False,
-             tile_size: int = 256, tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
+'''def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
+             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
+             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
+             MultiSlide: bool = False):'''
+def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
+             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: list = ['TCGA'],
              epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
              MultiSlide: bool = False):
     """
     This function writes the run data to file
     :param experiment:
     :param from_epoch:
+    :param MultiSlide: Describes if tiles from different slides with same class are mixed in the same bag
     :return:
     """
 
@@ -253,9 +258,11 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
             experiment = 1
 
         location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
+        if type(DataSet) is not list:
+            DataSet = [DataSet]
+
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
-                    #'Transformations': transformations,
                     'Transformations': transform_type,
                     'Tile Size': tile_size,
                     'Tiles Per Bag': tiles_per_bag,
@@ -263,7 +270,7 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
                     'No. of Bags': num_bags,
                     'Location': location,
                     'DX': DX,
-                    'DataSet': DataSet,
+                    'DataSet': ' / '.join(DataSet),
                     'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,

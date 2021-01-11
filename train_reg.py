@@ -63,17 +63,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     print('Start Training...')
-    best_train_loss = 1e5
     previous_epoch_loss = 1e5
-
-    # The following 3 lines initialize variables to compute AUC for train dataset.
-    best_model = None
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
-        ### true_pos_train, true_neg_train = 0, 0
         true_labels_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
         slide_names = []
@@ -106,20 +101,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             correct_labeling += predicted.eq(target).sum().item()
             correct_pos += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
-
-
-            '''
-            if target == 1:
-                total_pos_train += 1
-                true_labels_train[batch_idx] = 1
-                if label == 1:
-                    true_pos_train += 1
-            elif target == 0:
-                total_neg_train += 1
-                true_labels_train[batch_idx] = 0
-                if label == 0:
-                    true_neg_train += 1
-            '''
 
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
@@ -291,7 +272,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
         if not args.bootstrap:
             roc_auc = np.nan
-            if not all(true_labels==true_labels[0]): #more than one label
+            if not all(true_labels == true_labels[0]): #more than one label
                 fpr, tpr, _ = roc_curve(true_labels, scores)
                 roc_auc = auc(fpr, tpr)
 
@@ -318,7 +299,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 #patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
                 slide_names = np.array(slide_names)
                 slide_choice = resample(np.unique(np.array(slide_names)))
-                slide_resampled = np.concatenate([slide_names[slide_names==slide] for slide in slide_choice])
+                slide_resampled = np.concatenate([slide_names[slide_names == slide] for slide in slide_choice])
                 scores_resampled = np.concatenate([scores[slide_names == slide] for slide in slide_choice])
                 labels_resampled = np.concatenate([true_labels[slide_names == slide] for slide in slide_choice])
                 patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})

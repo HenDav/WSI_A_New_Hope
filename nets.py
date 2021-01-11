@@ -284,7 +284,11 @@ class ResNet50(nn.Module):
         self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
 
     def forward(self, x):
-        x = x.squeeze()
+        if len(x.shape) == 5:
+            num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+            x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+
+        #x = x.squeeze()
         x = self.basic_resnet(x)
         return x
 

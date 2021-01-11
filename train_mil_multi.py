@@ -34,53 +34,6 @@ parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=1, help='Tiles 
 
 args = parser.parse_args()
 
-"""
-def simple_train(model: nn.Module, dloader_train: DataLoader, dloadet_test: DataLoader):
-
-    print('Start Training...')
-    for e in range(epoch):
-        print('Epoch {}:'.format(e))
-        correct_train, num_samples, train_loss = 0, 0, 0
-
-        model.train()
-        for idx, (data, target) in enumerate(tqdm(dloader_train)):
-            data, target = data.to(DEVICE), target.to(DEVICE)
-            model.to(DEVICE)
-            prob, label, weights = model(data)
-            correct_train += (label == target).data.cpu().int().item()
-            num_samples += 1
-
-            prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
-            loss = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
-            train_loss += loss.data.cpu().item()
-            # criterion = nn.CrossEntropyLoss()
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        train_accuracy = 100 * float(correct_train) / num_samples
-        print('Finished Epoch: {}, Train Accuracy: {:.2f}% ({}/{}), Loss: {:.2f}'.format(e,
-                                                                                         train_accuracy,
-                                                                                         correct_train,
-                                                                                         num_samples,
-                                                                                         train_loss))
-        print('Checking post-epoch accuracy over training set...')
-        correct_post = 0
-        num_sample_post = 0
-        with torch.no_grad():
-            #model.eval()
-            for idx, (data_post, target_post) in enumerate(train_loader):
-                data_post, target_post = data_post.to(DEVICE), target_post.to(DEVICE)
-
-                prob_post, label_post, weights_post = model(data_post)
-                correct_post += (label_post == target_post).data.cpu().int().item()
-                num_sample_post += 1
-
-            accuracy_post_train = 100 * float(correct_post) / num_sample_post
-            print('Post train accuracy: {:.2f}% ({} / {})'.format(accuracy_post_train, correct_post, num_sample_post))
-"""
-
 def norm_img(img):
     img -= img.min()
     img /= img.max()
@@ -112,7 +65,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     print()
     print('Training will be conducted with {} bags per MiniBatch'.format(num_bags))
     print('Start Training...')
-    best_train_loss = 1e5
     previous_epoch_loss = 1e5
 
     '''    

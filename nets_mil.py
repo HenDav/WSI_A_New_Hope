@@ -936,7 +936,6 @@ class ResNet50_GatedAttention_MultiBag_Other_Loss(nn.Module):
     def forward(self, x):
         #print('Before: ', x.shape, end=' ')
         num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
-
         x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
         #print('After: ', x.shape)
 

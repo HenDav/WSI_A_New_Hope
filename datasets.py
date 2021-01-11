@@ -180,6 +180,7 @@ class WSI_Master_Dataset(Dataset):
         idx = idx % self.real_length
         basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+        #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids_Old', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
 
         tiles, time_list = _choose_data(grid_file, image_file, self.bag_size,
