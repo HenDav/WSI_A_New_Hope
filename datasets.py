@@ -42,7 +42,7 @@ class WSI_Master_Dataset(Dataset):
                  train_type: str = 'MASTER',
                  c_param: float = 0.1,
                  n_patches: int = 50,
-                 tta = False):
+                 tta: bool = False):
 
         # Define data root:
         self.ROOT_PATH = define_data_root(DataSet)
@@ -1304,17 +1304,17 @@ class WSI_MILdataset(WSI_Master_Dataset):
                  train: bool = True,
                  print_timing: bool = False,
                  transform_type: str = 'flip',
-                 DX : bool = False,
+                 DX: bool = False,
                  get_images: bool = False,
                  c_param: float = 0.1,
-                 tta=False
+                 tta: bool = False
                  ):
         super(WSI_MILdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
                                              bag_size=bag_size,
                                              target_kind=target_kind,
                                              test_fold=test_fold,
-                                             train= train,
+                                             train=train,
                                              print_timing=print_timing,
                                              transform_type=transform_type,
                                              DX=DX,

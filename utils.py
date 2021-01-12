@@ -303,16 +303,16 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
     else:
         location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
         test_fold = int(run_DF_exp.loc[[experiment], ['Test Fold']].values[0][0])
-        #transformations = bool(run_DF_exp.loc[[experiment], ['Transformations']].values[0][0])
         transformations = run_DF_exp.loc[[experiment], ['Transformations']].values[0][0] #RanS 9.12.20
         tile_size = int(run_DF_exp.loc[[experiment], ['Tile Size']].values[0][0])
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
+        num_bags = int(run_DF_exp.loc[[experiment], ['No. of Bags']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
         DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, DX, DataSet, Receptor, MultiSlide
+        return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags, DX, DataSet, Receptor, MultiSlide
 
 
 def get_concat(im1, im2):

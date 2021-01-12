@@ -1,7 +1,9 @@
 import utils
 from torch.utils.data import DataLoader
 import torch
-from nets import PreActResNet50, ResNet_50
+import datasets
+import nets
+import PreActResNets
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 import os
@@ -11,12 +13,12 @@ from tqdm import tqdm
 import pickle
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=79, help='Continue train of this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=12000, help='Use this epoch model for inference')
+parser.add_argument('-ex', '--experiment', type=int, default=210, help='Continue train of this experiment')
+parser.add_argument('-fe', '--from_epoch', type=int, default=730, help='Use this epoch model for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=5, help='Number of tiles to use')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[2], help=' folds to infer')
-### parser.add_argument('-ev', dest='eval', action='store_true', help='Use eval mode (or train mode')
+# TODO: load the model automatically
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -26,10 +28,10 @@ data_path = ''
 
 # Load saved model:
 #model = PreActResNet50()
-model = ResNet_50()
+model = PreActResNets.PreActResNet50_Ron()
 
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, _, _, TILE_SIZE, _, _, _, args.look_for = utils.run_data(experiment=args.experiment)
+output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _ = utils.run_data(experiment=args.experiment)
 
 TILE_SIZE = 128
 if sys.platform == 'linux':
@@ -43,14 +45,22 @@ model_data_loaded = torch.load(os.path.join(data_path, output_dir,
 model.load_state_dict(model_data_loaded['model_state_dict'])
 
 
-inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
+'''inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
                                       tiles_per_iter=150,
                                       target_kind=args.look_for,
                                       folds=args.folds,
                                       print_timing=True,
                                       DX=False,
-                                      num_tiles=args.num_tiles)
+                                      num_tiles=args.num_tiles)'''
+
+inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
+                                  tile_size=TILE_SIZE,
+                                  tiles_per_iter=150,
+                                  target_kind=args.target,
+                                  folds=args.folds,
+                                  num_tiles=args.num_tiles
+                                  )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
 in_between = True
@@ -61,25 +71,25 @@ all_targets = []
 
 # The following 2 lines initialize variables to compute AUC for train dataset.
 total_pos, total_neg = 0, 0
-true_pos, true_neg = 0, 0
+correct_pos, correct_neg = 0, 0
 
 model.eval()
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
         if in_between:
-            scores_1 = np.zeros(0)
-            target_current = target
-            slide_batch_num = 0
-            in_between = False
+           scores_0, scores_1 = np.zeros(0), np.zeros(0)
+           target_current = target
+           slide_batch_num = 0
+           in_between = False
 
         data = data.squeeze()
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
 
-        out = model(data)
-        outputs = torch.nn.functional.softmax(out, dim=1)
+        scores = model(data)
 
-        ### score_current, _ = outputs.max(1)
+        outputs = torch.nn.functional.softmax(scores, dim=1)
+        scores_0 = np.concatenate((scores_0, outputs[:, 0].cpu().detach().numpy()))
         scores_1 = np.concatenate((scores_1, outputs[:, 1].cpu().detach().numpy()))
 
         slide_batch_num += 1
@@ -87,22 +97,27 @@ with torch.no_grad():
         if last_batch:
             in_between = True
 
+            current_slide_tile_scores = np.vstack((scores_0, scores_1))
+
+            predicted = current_slide_tile_scores.mean(1).argmax()
+
             all_scores.append(scores_1.mean())
-            all_labels.append(0 if all_scores[-1] < 0.5 else 1)
+            all_labels.append(predicted)  # all_labels.append(0 if all_scores[-1] < 0.5 else 1)
             all_targets.append(target.cpu().numpy()[0][0])
 
             # Sanity check:
             if target_current != target.cpu().numpy()[0][0]:
                 print('Target Error!!')
 
+
             if target == 1:
                 total_pos += 1
                 if all_labels[-1] == 1:
-                    true_pos += 1
+                    correct_pos += 1
             elif target == 0:
                 total_neg += 1
                 if all_labels[-1] == 0:
-                    true_neg += 1
+                    correct_neg += 1
 
 fpr_train, tpr_train, _ = roc_curve(all_targets, all_scores)
 
