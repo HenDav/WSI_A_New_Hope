@@ -56,7 +56,7 @@ model.load_state_dict(model_data_loaded['model_state_dict'])
 
 inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
-                                  tiles_per_iter=150,
+                                  tiles_per_iter=2,
                                   target_kind=args.target,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles
@@ -82,7 +82,8 @@ with torch.no_grad():
            slide_batch_num = 0
            in_between = False
 
-        data = data.squeeze()
+        data = data.squeeze(0)
+
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
 
@@ -127,7 +128,7 @@ if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
 
 file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch)
                          + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
-inference_data = [fpr_train, tpr_train, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, len(inf_dset)]
+inference_data = [fpr_train, tpr_train, all_labels, all_targets, all_scores, total_pos, correct_pos, total_neg, correct_neg, len(inf_dset)]
 with open(file_name, 'wb') as filehandle:
     pickle.dump(inference_data, filehandle)
 
