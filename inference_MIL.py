@@ -14,15 +14,15 @@ import pickle
 from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
-#parser.add_argument('-ex', '--experiment', type=int, default=71, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=71, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=910, help='Use this epoch model for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[2], help=' folds to infer')
 parser.add_argument('-ev', dest='eval', action='store_true', help='Use eval mode (or train mode')
-parser.add_argument('--model_path', type=str, default='/home/womer/project', help='path of saved model') #RanS 28.12.20
+#parser.add_argument('--model_path', type=str, default='/home/womer/project', help='path of saved model') #RanS 28.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 28.12.20
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares') # RanS 7.12.20
+#parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares') # RanS 7.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
 args = parser.parse_args()
 eps = 1e-7
@@ -30,23 +30,24 @@ eps = 1e-7
 args.folds = list(map(int, args.folds))
 
 DEVICE = utils.device_gpu_cpu()
-#data_path = ''
+data_path = ''
 #data_path = r'C:\ran_data\HEROHE_examples' #temp RanS 5.11.20
-data_path = args.model_path
+#data_path = args.model_path
 # Load saved model:
 #model = ResNet34_GN_GatedAttention()
 # Load model
 model = utils.get_model(args.model)
 
-#print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-#output_dir, _, _, TILE_SIZE, _, _, _ = utils.run_data(experiment=args.experiment)
+print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
+output_dir, _, _, TILE_SIZE, _, _, _, _, target, _ = utils.run_data(experiment=args.experiment)
 
 # Tile size definition:
 TILE_SIZE = 128
 if sys.platform in ['linux', 'win32']:
     TILE_SIZE = 256
 
-model_data_loaded = torch.load(os.path.join(data_path, 'Model_CheckPoints',
+#model_data_loaded = torch.load(os.path.join(data_path, 'Model_CheckPoints',
+model_data_loaded = torch.load(os.path.join(data_path, output_dir, 'Model_CheckPoints',
                                             'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
 
 model.load_state_dict(model_data_loaded['model_state_dict'])
@@ -57,7 +58,7 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                       tile_size=TILE_SIZE,
                                       folds=args.folds,
                                       num_tiles=args.num_tiles,
-                                      target_kind=args.target)
+                                      target_kind=target)
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
 model.infer = True
@@ -77,7 +78,10 @@ model.eval()
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
         if in_between:
-            all_features = np.zeros([num_patches, model.M], dtype='float32')
+            try:
+                all_features = np.zeros([num_patches, model.M], dtype='float32')
+            except:
+                all_features = np.zeros([num_patches, 512], dtype='float32') #temp RanS 11.1.21, for REG models
             all_weights = np.zeros([1, num_patches], dtype='float32')
             slide_batch_num = 0
             in_between = False

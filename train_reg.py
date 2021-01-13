@@ -35,8 +35,9 @@ parser.add_argument('--transform_type', default='flip', type=str, help='none / f
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
 parser.add_argument('--model', default='resnet50_gn', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
-parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs') #TODO
-parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') #TODO
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 args = parser.parse_args()
 eps = 1e-7
 
@@ -374,12 +375,14 @@ if __name__ == '__main__':
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
-                                                     DataSet=args.dataset)
+                                                     DataSet=args.dataset,
+                                                     Receptor=args.target)
     else:
         #args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
         #    _, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
         args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-           _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)
+           _, _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)
+
         print('args.dataset:', args.dataset)
         print('args.target:', args.target)
 
@@ -403,7 +406,8 @@ if __name__ == '__main__':
                                          print_timing=args.time,
                                          transform_type=args.transform_type,
                                          n_patches=args.n_patches_train,
-                                         c_param=args.c_param
+                                         c_param=args.c_param,
+                                         get_images=args.images
                                          )
 
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
@@ -413,7 +417,8 @@ if __name__ == '__main__':
                                         train=False,
                                         print_timing=False,
                                         transform_type='none',
-                                        n_patches=args.n_patches_test
+                                        n_patches=args.n_patches_test,
+                                        get_images=args.images
                                         )
 
     if args.balanced_sampling:
@@ -440,20 +445,7 @@ if __name__ == '__main__':
 
 
     # Load model
-    # RanS 14.12.20
-    if args.model == 'resnet50_3FC':
-        model = nets.resnet50_with_3FC()
-    elif args.model == 'preact_resnet50':
-        model = nets.PreActResNet50()
-    elif args.model == 'resnet50_gn':
-        model = nets.ResNet50_GN()
-    elif args.model == 'resnet18':
-        model = nets.ResNet_18()
-    elif args.model == 'resnet50':
-        model = nets.ResNet_50()
-
-    else:
-        print('model not defined!')
+    model = utils.get_model(args.model, '')
 
     utils.run_data(experiment=experiment, model=model.model_name)
 

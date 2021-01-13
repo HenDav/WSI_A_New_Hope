@@ -407,7 +407,7 @@ if __name__ == '__main__':
         # data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
-    if args.experiment is 0:
+    if args.experiment == 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
                                                      transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
@@ -417,7 +417,7 @@ if __name__ == '__main__':
                                                      Receptor=args.look_for,
                                                      MultiSlide=args.multi_slides)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, args.dx,\
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, TILES_PER_BAG, _, args.dx,\
             args.dataset, args.look_for, args.multi_slides = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 

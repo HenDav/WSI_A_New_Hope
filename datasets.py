@@ -67,6 +67,11 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
 
+        # RanS 12.1.21, this slide is buggy, avoid it
+        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'ER status'] = 'Missing Data'
+        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'PR status'] = 'Missing Data'
+        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'Her2 status'] = 'Missing Data'
+        self.meta_data_DF.reset_index(inplace=True)
 
         # for lung, take only origin:lung
         if self.DataSet == 'LUNG':

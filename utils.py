@@ -20,6 +20,7 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
 Image.MAX_IMAGE_PIXELS = None
 from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
+import nets
 
 
 
@@ -479,6 +480,18 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
+
+        elif transform_type == 'aug_receptornet':  #
+        #elif transform_type == 'c_0_05_bnfrsc' or 'c_0_05_bnfrs':  # color 0.1, blur, noise, flip, rotate, scale, +-cutout
+            scale_factor = 0
+            transform1 = \
+                transforms.Compose([
+                    transforms.ColorJitter(brightness=64.0/255, contrast=0.75, saturation=0.25, hue=0.04),
+                    transforms.RandomHorizontalFlip(),
+                    MyRotation(angles=[0, 90, 180, 270]),
+                    transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                ])
+
         elif transform_type == 'cbnfr':  # color, blur, noise, flip, rotate
             scale_factor = 0
             transform1 = \
@@ -533,7 +546,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
     else:
         transform = final_transform
 
-    if transform_type in ['cbnfrsc', 'bnfrsc', 'c_0_05_bnfrsc', 'pcbnfrsc']:
+    if transform_type in ['cbnfrsc', 'bnfrsc', 'c_0_05_bnfrsc', 'pcbnfrsc', 'aug_receptornet']:
         transform.transforms.append(Cutout(n_holes=1, length=100)) #RanS 24.12.20
 
     return transform, scale_factor
@@ -547,6 +560,8 @@ def define_data_root(DataSet):
         elif DataSet[:6] == 'CARMEL':
             N = DataSet[6:]
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
+        elif DataSet == 'Breast': #temp RanS 12.1.21
+            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
         else:
             ROOT_PATH = r'/home/womer/project/All Data'
 
@@ -594,7 +609,7 @@ def get_breast_dir_dict():
 def assert_dataset_target(DataSet,target_kind):
     if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
         raise ValueError('target should be one of: PDL1, EGFR')
-    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet[:6] == 'CARMEL')) and target_kind not in ['ER', 'PR', 'Her2']:
+    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet[:6] == 'CARMEL') or (DataSet == 'Breast')) and target_kind not in ['ER', 'PR', 'Her2']:
         raise ValueError('target should be one of: ER, PR, Her2')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
@@ -671,10 +686,27 @@ def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
 
 
 def get_model(model_name, saved_model_path='none'):
+    #if train_type == 'MIL':
+    # MIL models
     if model_name == 'resnet50_gn':
         model = ResNet50_GN_GatedAttention()
     elif model_name == 'receptornet':
         model = ReceptorNet('resnet50_2FC', saved_model_path)
     elif model_name == 'receptornet_preact_resnet50':
         model = ReceptorNet('preact_resnet50', saved_model_path)
+    #elif train_type == 'REG':
+
+    #REG models
+    elif model_name == 'resnet50_3FC':
+        model = nets.resnet50_with_3FC()
+    elif model_name == 'preact_resnet50':
+        model = nets.PreActResNet50()
+    elif model_name == 'resnet50_gn':
+        model = nets.ResNet50_GN()
+    elif model_name == 'resnet18':
+        model = nets.ResNet_18()
+    elif model_name == 'resnet50':
+        model = nets.ResNet_50()
+    else:
+        print('model not defined!')
     return model

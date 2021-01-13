@@ -36,7 +36,8 @@ output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _ = utils.run_data(experim
 TILE_SIZE = 128
 if sys.platform == 'linux':
     TILE_SIZE = 256
-    data_path = '/home/womer/project'
+    #data_path = '/home/womer/project'
+    data_path = '' #RanS 13.1.21
 
 model_data_loaded = torch.load(os.path.join(data_path, output_dir,
                                             'Model_CheckPoints',
