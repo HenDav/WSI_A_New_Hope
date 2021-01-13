@@ -1,4 +1,4 @@
-import utils0 as utils
+import utils
 import PreActResNets
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -17,66 +17,18 @@ import sys
 import datasets
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=4, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='keyword for transform type')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
 
 
 args = parser.parse_args()
-
-"""
-def simple_train(model: nn.Module, dloader_train: DataLoader, dloadet_test: DataLoader):
-
-    print('Start Training...')
-    for e in range(epoch):
-        print('Epoch {}:'.format(e))
-        correct_train, num_samples, train_loss = 0, 0, 0
-
-        model.train()
-        for idx, (data, target) in enumerate(tqdm(dloader_train)):
-            data, target = data.to(DEVICE), target.to(DEVICE)
-            model.to(DEVICE)
-            prob, label, weights = model(data)
-            correct_train += (label == target).data.cpu().int().item()
-            num_samples += 1
-
-            prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
-            loss = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
-            train_loss += loss.data.cpu().item()
-            # criterion = nn.CrossEntropyLoss()
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        train_accuracy = 100 * float(correct_train) / num_samples
-        print('Finished Epoch: {}, Train Accuracy: {:.2f}% ({}/{}), Loss: {:.2f}'.format(e,
-                                                                                         train_accuracy,
-                                                                                         correct_train,
-                                                                                         num_samples,
-                                                                                         train_loss))
-        print('Checking post-epoch accuracy over training set...')
-        correct_post = 0
-        num_sample_post = 0
-        with torch.no_grad():
-            #model.eval()
-            for idx, (data_post, target_post) in enumerate(train_loader):
-                data_post, target_post = data_post.to(DEVICE), target_post.to(DEVICE)
-
-                prob_post, label_post, weights_post = model(data_post)
-                correct_post += (label_post == target_post).data.cpu().int().item()
-                num_sample_post += 1
-
-            accuracy_post_train = 100 * float(correct_post) / num_sample_post
-            print('Post train accuracy: {:.2f}% ({} / {})'.format(accuracy_post_train, correct_post, num_sample_post))
-"""
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -100,7 +52,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     print('Start Training...')
-    best_train_loss = 1e5
     previous_epoch_loss = 1e5
 
     for e in range(from_epoch, epoch + from_epoch):
@@ -122,7 +73,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.zero_grad()
             outputs = model(data)
             loss = criterion(outputs, target)
-            print(loss)
+            #print(loss)
             loss.backward()
             optimizer.step()
 
@@ -290,60 +241,63 @@ if __name__ == '__main__':
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transformations=args.transformation,
+                                                     transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
+                                                     num_bags=10,
                                                      DX=args.dx,
                                                      DataSet=args.dataset,
-                                                     Receptor=args.target)
+                                                     Receptor=args.target,
+                                                     MultiSlide=False)
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
+        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
             TILES_PER_BAG, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
         experiment = args.experiment
 
     # Get number of available CPUs:
     cpu_available = utils.get_cpu()
-    #cpu_available = 1
 
     # Get data:
-    if False:
-        train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
-                                          tile_size=TILE_SIZE,
-                                          target_kind=args.target,
-                                          test_fold=args.test_fold,
-                                          train=True,
-                                          print_timing=args.time,
-                                          transform=args.transformation,
-                                          DX=args.dx)
+    ''' 
+    train_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                      tile_size=TILE_SIZE,
+                                      target_kind=args.target,
+                                      test_fold=args.test_fold,
+                                      train=True,
+                                      print_timing=args.time,
+                                      transform=args.transformation,
+                                      DX=args.dx)
 
-        test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+    test_dset = utils.WSI_REGdataset(DataSet=args.dataset,
+                                     tile_size=TILE_SIZE,
+                                     target_kind=args.target,
+                                     test_fold=args.test_fold,
+                                     train=False,
+                                     print_timing=False,
+                                     transform=False,
+                                     DX=args.dx)
+    '''
+    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                          tile_size=TILE_SIZE,
                                          target_kind=args.target,
                                          test_fold=args.test_fold,
-                                         train=False,
-                                         print_timing=False,
-                                         transform=False,
-                                         DX=args.dx)
-    else:
-        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type
-                                             )
-        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=args.time,
-                                            transform_type='none'
-                                            )
+                                         train=True,
+                                         print_timing=args.time,
+                                         transform_type=args.transform_type,
+                                         n_patches=10
+                                         )
+    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                        tile_size=TILE_SIZE,
+                                        target_kind=args.target,
+                                        test_fold=args.test_fold,
+                                        train=False,
+                                        print_timing=args.time,
+                                        transform_type='none',
+                                        n_patches=1
+                                        )
 
 
-    train_loader = DataLoader(train_dset, batch_size=10, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=16, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader  = DataLoader(test_dset, batch_size=50, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'

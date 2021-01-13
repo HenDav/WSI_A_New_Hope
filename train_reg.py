@@ -63,17 +63,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_writer = SummaryWriter(os.path.join(writer_folder, 'time'))
 
     print('Start Training...')
-    best_train_loss = 1e5
     previous_epoch_loss = 1e5
-
-    # The following 3 lines initialize variables to compute AUC for train dataset.
-    best_model = None
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
-        ### true_pos_train, true_neg_train = 0, 0
         true_labels_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
         slide_names = []
@@ -106,20 +101,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             correct_labeling += predicted.eq(target).sum().item()
             correct_pos += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
-
-
-            '''
-            if target == 1:
-                total_pos_train += 1
-                true_labels_train[batch_idx] = 1
-                if label == 1:
-                    true_pos_train += 1
-            elif target == 0:
-                total_neg_train += 1
-                true_labels_train[batch_idx] = 0
-                if label == 0:
-                    true_neg_train += 1
-            '''
 
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
