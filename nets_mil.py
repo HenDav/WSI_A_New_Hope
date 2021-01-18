@@ -2,7 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import nets
-from nets import ResNet50_GN, ResNet34_GN, ReceptorNet_feature_extractor
+import torchvision.models as models
+import os
+
+THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
 
 
 class Flatten(nn.Module):
@@ -13,6 +16,17 @@ class Flatten(nn.Module):
     def forward(self, x):
         N, C, H, W = x.size()  # read in N, C, H, W
         return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
+
+
+class MyGroupNorm(nn.Module):
+    def __init__(self, num_channels):
+        super(MyGroupNorm, self).__init__()
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=num_channels,
+                                 eps=1e-5, affine=True)
+
+    def forward(self, x):
+        x = self.norm(x)
+        return x
 
 
 class ResNet18_GatedAttention(nn.Module):
@@ -427,74 +441,6 @@ class ResNet50_GatedAttention(nn.Module):
     """
 
 
-def PreActResNet50():
-    # return PreActResNet(PreActBottleneck, [3, 4, 6, 3])
-    return PreActResNet(PreActBottleneck, [3, 4, 6, 2])
-
-
-class PreActResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=500):
-        super(PreActResNet, self).__init__()
-        self.in_planes = 16
-
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 128, num_blocks[3], stride=2)
-        self.dropout = nn.Dropout(p=0.5)
-        self.linear = nn.Linear(128 * block.expansion, num_classes)
-
-    def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1] * (num_blocks - 1)
-        layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = x.squeeze(0)
-        out = self.conv1(x)
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        out = F.avg_pool2d(out, out.shape[3])
-        out = out.view(out.size(0), -1)
-        #feat = out
-        out = self.dropout(self.linear(out))
-        return out#, feat
-
-
-class PreActBottleneck(nn.Module):
-    '''Pre-activation version of the original Bottleneck module.'''
-    expansion = 4
-
-    def __init__(self, in_planes, planes, stride=1):
-        super(PreActBottleneck, self).__init__()
-        self.bn1 = nn.BatchNorm2d(in_planes)
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
-
-        if stride != 1 or in_planes != self.expansion * planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(x))
-        shortcut = self.shortcut(out) if hasattr(self, 'shortcut') else x
-        out = self.conv1(out)
-        out = self.conv2(F.relu(self.bn2(out)))
-        out = self.conv3(F.relu(self.bn3(out)))
-        out += shortcut
-        return out
-
-
 class ResNet50_GatedAttention_Ron(nn.Module):
     def __init__(self):
         super(ResNet50_GatedAttention_Ron, self).__init__()
@@ -644,16 +590,6 @@ class GatedAttention(nn.Module):
 ####################################################################################################################
 
 
-class MyGroupNorm(nn.Module):
-    def __init__(self, num_channels):
-        super(MyGroupNorm, self).__init__()
-        self.norm = nn.GroupNorm(num_groups=32, num_channels=num_channels,
-                                 eps=1e-5, affine=True)
-
-    def forward(self, x):
-        x = self.norm(x)
-        return x
-
 '''
 def ResNet34_GN():
     return resnet.ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=1000, zero_init_residual=False,
@@ -664,7 +600,7 @@ def ResNet34_GN():
 class ResNet34_GN_GatedAttention(nn.Module):
     def __init__(self):
         super(ResNet34_GN_GatedAttention, self).__init__()
-        self.model_name = 'ResNet34_GN_GatedAttention'
+        self.model_name = THIS_FILE + 'ResNet34_GN_GatedAttention()'
         print('Using model {}'.format(self.model_name))
         self.M = 500
         self.L = 128
@@ -674,7 +610,7 @@ class ResNet34_GN_GatedAttention(nn.Module):
         self.part_1 = False
         self.part_2 = False
 
-        self.feat_ext_part_1 = ResNet34_GN()
+        self.feat_ext_part_1 = nets.ResNet34_GN()
         self.linear_1 = nn.Linear(in_features=1000, out_features=700)
         self.linear_2 = nn.Linear(in_features=700, out_features=self.M)
         self.att_V_1 = nn.Linear(self.M, self.L)
@@ -742,7 +678,7 @@ class ResNet34_GN_GatedAttention(nn.Module):
 class ResNet50_GN_GatedAttention(nn.Module):
     def __init__(self):
         super(ResNet50_GN_GatedAttention, self).__init__()
-        self.model_name = 'ResNet50_GN_GatedAttention'
+        self.model_name = THIS_FILE + 'ResNet50_GN_GatedAttention()'
         print('Using model {}'.format(self.model_name))
         print('As Feature Extractor, the model will be ', end='')
 
@@ -754,7 +690,7 @@ class ResNet50_GN_GatedAttention(nn.Module):
         self.part_1 = False
         self.part_2 = False
 
-        self.feat_ext_part_1 = ResNet50_GN().con_layers
+        self.feat_ext_part_1 = nets.ResNet50_GN().con_layers
         self.linear_1 = nn.Linear(in_features=1000, out_features=700)
         self.linear_2 = nn.Linear(in_features=700, out_features=self.M)
         self.att_V_1 = nn.Linear(self.M, self.L)
@@ -825,6 +761,9 @@ class ResNet50_GatedAttention_MultiBag(nn.Module):
                  tiles: int = 50):
         super(ResNet50_GatedAttention_MultiBag, self).__init__()
 
+        self.model_name = THIS_FILE + 'ResNet50_GatedAttention_MultiBag()'
+        print('Using model {}'.format(self.model_name))
+
         self.num_bags = num_bags
         self.tiles = tiles
         self.M = 500
@@ -843,9 +782,6 @@ class ResNet50_GatedAttention_MultiBag(nn.Module):
         self.class_2 = nn.Sigmoid()
         #self.class_10 = nn.Linear(self.M * self.K, 2)
         self.weig = nn.Linear(self.L, self.K)
-
-        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag + ' + self.feat_ext_part1.model_name
-        print('Using model {}'.format(self.model_name))
 
 
     def forward(self, x):
@@ -911,6 +847,9 @@ class ResNet50_GatedAttention_MultiBag_Other_Loss(nn.Module):
                  tiles: int = 50):
         super(ResNet50_GatedAttention_MultiBag_Other_Loss, self).__init__()
 
+        self.model_name = THIS_FILE + 'ResNet50_GatedAttention_MultiBag_Other_Loss()'
+        print('Using model {}'.format(self.model_name))
+
         self.num_bags = num_bags
         self.tiles = tiles
         self.M = 2
@@ -928,9 +867,6 @@ class ResNet50_GatedAttention_MultiBag_Other_Loss(nn.Module):
         self.class_1 = nn.Linear(self.M * self.K, 2)
         self.class_2 = nn.Sigmoid()
         self.weig = nn.Linear(self.L, self.K)
-
-        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag_Other_Loss + ' + self.feat_ext_part1.model_name
-        print('Using model {}'.format(self.model_name))
 
 
     def forward(self, x):
@@ -993,7 +929,8 @@ class ResNet50_GN_GatedAttention_MultiBag_2(nn.Module):
     def __init__(self,
                  tiles: int = 50):
         super(ResNet50_GN_GatedAttention_MultiBag_2, self).__init__()
-        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag_2'
+
+        self.model_name = THIS_FILE + 'ResNet50_GN_GatedAttention_MultiBag_2()'
         print('Using model {}'.format(self.model_name))
         print('As Feature Extractor, the model will be ', end='')
 
@@ -1080,7 +1017,7 @@ class ResNet50_GN_GatedAttention_MultiBag_1(nn.Module):
     def __init__(self,
                  tiles: int = 50):
         super(ResNet50_GN_GatedAttention_MultiBag_1, self).__init__()
-        self.model_name = 'ResNet50_GN_GatedAttention_MultiBag_1'
+        self.model_name = THIS_FILE + 'ResNet50_GN_GatedAttention_MultiBag_1()'
         print('Using model {}'.format(self.model_name))
         print('As Feature Extractor, the model will be ', end='')
 

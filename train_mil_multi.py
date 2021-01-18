@@ -377,7 +377,8 @@ if __name__ == '__main__':
                                                      MultiSlide=True)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
-        TILES_PER_BAG, args.dx, args.dataset, args.target, is_MultiSlide = utils.run_data(experiment=args.experiment)
+        TILES_PER_BAG, args.num_bags, args.dx, args.dataset, args.target, is_MultiSlide, model_name = utils.run_data(experiment=args.experiment)
+
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -418,8 +419,11 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    model = ResNet50_GatedAttention_MultiBag(num_bags=args.num_bags,
-                                             tiles=args.tiles_per_bag)
+    if args.experiment != 0:
+        model = eval(model_name)
+    else:
+        model = ResNet50_GatedAttention_MultiBag(num_bags=args.num_bags,
+                                                 tiles=args.tiles_per_bag)
 
     '''
     model_basic = ResNet34_GN_GatedAttention()
@@ -427,8 +431,6 @@ if __name__ == '__main__':
     model_basic_params = sum(p.numel() for p in model_basic.parameters())
     print('basic: {}. Multi: {}'.format(model_basic_params, model_params))
     '''
-
-
 
     '''
     counter = 0
@@ -441,13 +443,14 @@ if __name__ == '__main__':
             # module.track_running_stats = False
     print('Updated {} model variables'.format(counter))
     '''
+
     utils.run_data(experiment=experiment, model=model.model_name)
 
     epoch = args.epochs
     from_epoch = args.from_epoch
 
     # In case we continue from an already trained model, than load the previous model and optimizer data:
-    if args.experiment is not 0:
+    if args.experiment != 0:
         print('Loading pre-saved model...')
         model_data_loaded = torch.load(os.path.join(args.output_dir,
                                                     'Model_CheckPoints',

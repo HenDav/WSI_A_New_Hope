@@ -314,8 +314,10 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
+        model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags, DX, DataSet, Receptor, MultiSlide
+        return location, test_fold, transformations, tile_size, tiles_per_bag,\
+               num_bags, DX, DataSet, Receptor, MultiSlide, model_name
 
 
 def get_concat(im1, im2):

@@ -23,7 +23,7 @@ parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
+# parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
@@ -447,61 +447,34 @@ if __name__ == '__main__':
     else:
         test_transform = 'none'
 
-    if not args.multi_slides:
-        train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             bag_size=TILES_PER_BAG,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             #transform=args.transformation,
-                                             transform_type=args.transform_type,
-                                             DX=args.dx,
-                                             get_images=args.images,
-                                             c_param=args.c_param)
+    train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
+                                         tile_size=TILE_SIZE,
+                                         bag_size=TILES_PER_BAG,
+                                         target_kind=args.target,
+                                         test_fold=args.test_fold,
+                                         train=True,
+                                         print_timing=args.time,
+                                         #transform=args.transformation,
+                                         transform_type=args.transform_type,
+                                         DX=args.dx,
+                                         get_images=args.images,
+                                         c_param=args.c_param)
 
-        test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            #bag_size=TILES_PER_BAG,
-                                            bag_size=args.bag_size_test, #RanS 29.12.20
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            #transform=False,
-                                            #transform_type='none',
-                                            transform_type=test_transform,
-                                            DX=args.dx,
-                                            get_images=args.images,
-                                            tta=args.tta)
-    else:
-        train_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
-                                               tile_size=TILE_SIZE,
-                                               bag_size=TILES_PER_BAG,
-                                               target_kind=args.target,
-                                               TPS=10,
-                                               test_fold=args.test_fold,
-                                               train=True,
-                                               print_timing=args.time,
-                                               #transform=args.transformation,
-                                               transform_type=args.transform_type,
-                                               DX=args.dx,
-                                               c_param=args.c_param)
+    test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
+                                        tile_size=TILE_SIZE,
+                                        #bag_size=TILES_PER_BAG,
+                                        bag_size=args.bag_size_test, #RanS 29.12.20
+                                        target_kind=args.target,
+                                        test_fold=args.test_fold,
+                                        train=False,
+                                        print_timing=False,
+                                        #transform=False,
+                                        #transform_type='none',
+                                        transform_type=test_transform,
+                                        DX=args.dx,
+                                        get_images=args.images,
+                                        tta=args.tta)
 
-        test_dset = datasets.WSI_MIL3_dataset(DataSet=args.dataset,
-                                              tile_size=TILE_SIZE,
-                                              #bag_size=TILES_PER_BAG,
-                                              bag_size=args.bag_size_test, #RanS 29.12.20
-                                              target_kind=args.target,
-                                              TPS=10,
-                                              test_fold=args.test_fold,
-                                              train=False,
-                                              print_timing=False,
-                                              #transform=False,
-                                              #transform_type='none',
-                                              transform_type=test_transform,
-                                              DX=args.dx)
 
     if args.balanced_sampling:
         num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
@@ -511,7 +484,8 @@ if __name__ == '__main__':
         weights = np.zeros(num_samples)
         weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
 
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights,
+                                                                 num_samples=num_samples,
                                                                  replacement=False)
     else:
         sampler = None

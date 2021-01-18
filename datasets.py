@@ -155,6 +155,7 @@ class WSI_Master_Dataset(Dataset):
 
         self.image_file_names = []
         self.image_path_names = []
+        self.image_full_filenames = []
         self.in_fold = []
         self.tissue_tiles = []
         self.target = []
@@ -164,6 +165,7 @@ class WSI_Master_Dataset(Dataset):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
                 self.image_file_names.append(all_image_file_names[index])
                 self.image_path_names.append(all_image_path_names[index])
+                self.image_full_filenames.append(os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1]))
                 self.in_fold.append(all_in_fold[index])
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
@@ -1423,7 +1425,6 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.folds = folds
         self.magnification = []
         self.num_patches = []
-        self.image_full_filenames = []
         self.slide_grids = []
 
         for _, slide_num in enumerate(self.valid_slide_indices):
@@ -1435,9 +1436,6 @@ class Infer_Dataset(WSI_Master_Dataset):
                     print('{} Slide available patches are less than {}'.format(self.all_image_file_names[slide_num],
                                                                                num_tiles))
                 self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
-
-                full_image_filename = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
-                self.image_full_filenames.append(full_image_filename)
                 basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
                 grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids',
                                          basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
@@ -1514,7 +1512,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         else:
             last_batch = False
 
-        return X, label, time_list, last_batch, self.initial_num_patches
+        return X, label, time_list, last_batch, self.initial_num_patches, self.current_file
 
 
 

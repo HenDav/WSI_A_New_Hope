@@ -17,15 +17,15 @@ import sys
 import datasets
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=4, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='keyword for transform type')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 
 
 args = parser.parse_args()
@@ -210,7 +210,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
         roc_auc = auc(fpr, tpr)
 
-        writer_string = 'Test (eval mode)'
+        writer_string = 'Test'
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', balanced_acc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
@@ -251,7 +251,8 @@ if __name__ == '__main__':
                                                      MultiSlide=False)
     else:
         args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-            TILES_PER_BAG, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
+            TILES_PER_BAG, _, args.dx, args.dataset, args.target, _, model_name = utils.run_data(experiment=args.experiment)
+
         experiment = args.experiment
 
     # Get number of available CPUs:
@@ -305,27 +306,29 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    # model = nets.PreActResNet50()
-    # model = nets.ResNet50_GN()
-    # model = nets.ResNet_18()
-    # model = nets.ResNet_34()
-    # model = nets.ResNet50()
-    # model = PreActResNets.preactresnet50_Omer()
-    # model = PreActResNets.preactresnet50()
-    model = PreActResNets.PreActResNet50_Ron()
-
+    if args.experiment != 0:
+        model = eval(model_name)
+    else:
+        # model = nets.PreActResNet50()
+        # model = nets.ResNet50_GN()
+        # model = nets.ResNet_18()
+        # model = nets.ResNet_34()
+        # model = nets.ResNet50()
+        # model = PreActResNets.preactresnet50_Omer()
+        # model = PreActResNets.preactresnet50()
+        # model = PreActResNets.PreActResNet50_Ron()
+        model = nets.ResNet_50_NO_downsample()
 
     '''model_params = sum(p.numel() for p in model.parameters())
     print(model_params)'''
 
     utils.run_data(experiment=experiment, model=model.model_name)
 
-
     epoch = args.epochs
     from_epoch = args.from_epoch
 
     # In case we continue from an already trained model, than load the previous model and optimizer data:
-    if args.experiment is not 0:
+    if args.experiment != 0:
         print('Loading pre-saved model...')
         model_data_loaded = torch.load(os.path.join(args.output_dir,
                                                     'Model_CheckPoints',

@@ -14,11 +14,10 @@ import pickle
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', type=int, default=210, help='Continue train of this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=730, help='Use this epoch model for inference')
-parser.add_argument('-nt', '--num_tiles', type=int, default=5, help='Number of tiles to use')
+parser.add_argument('-fe', '--from_epoch', type=int, default=1320, help='Use this epoch model for inference')
+parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, default=[2], help=' folds to infer')
-# TODO: load the model automatically
+parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -26,12 +25,8 @@ args.folds = list(map(int, args.folds))
 DEVICE = utils.device_gpu_cpu()
 data_path = ''
 
-# Load saved model:
-#model = PreActResNet50()
-model = PreActResNets.PreActResNet50_Ron()
-
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _ = utils.run_data(experiment=args.experiment)
+output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=args.experiment)
 
 TILE_SIZE = 128
 if sys.platform == 'linux':
@@ -39,10 +34,12 @@ if sys.platform == 'linux':
     #data_path = '/home/womer/project'
     data_path = '' #RanS 13.1.21
 
+# Load saved model:
+#model = eval(model_name)
+model = PreActResNets.PreActResNet50_Ron()
 model_data_loaded = torch.load(os.path.join(data_path, output_dir,
                                             'Model_CheckPoints',
                                             'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
-
 model.load_state_dict(model_data_loaded['model_state_dict'])
 
 
@@ -57,7 +54,7 @@ model.load_state_dict(model_data_loaded['model_state_dict'])
 
 inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
-                                  tiles_per_iter=2,
+                                  tiles_per_iter=150,
                                   target_kind=args.target,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles
@@ -76,7 +73,7 @@ correct_pos, correct_neg = 0, 0
 
 model.eval()
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, num_patches, file_name) in enumerate(tqdm(inf_loader)):
         if in_between:
            scores_0, scores_1 = np.zeros(0), np.zeros(0)
            target_current = target

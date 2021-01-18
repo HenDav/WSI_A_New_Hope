@@ -7,6 +7,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+
+THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
 
 class PreActBasic(nn.Module):
 
@@ -174,7 +177,7 @@ def preactresnet34():
 
 def preactresnet50():
     model = PreActResNet(PreActBottleNeck, [3, 4, 6, 3])
-    model.model_name = 'preactresnet_50()'
+    model.model_name = THIS_FILE + 'preactresnet50()'
     print('Using model {}'.format(model.model_name))
     return model
 
@@ -267,6 +270,7 @@ class PreActResNet_Ron(nn.Module):
 
 def PreActResNet50_Ron():
     model = PreActResNet_Ron(PreActBottleneck_Ron, [3, 4, 6, 3])
-    model.model_name = 'PreActResNet50_Ron()'
+    model.model_name = THIS_FILE + 'PreActResNet50_Ron()'
+    print(model.model_name)
     return model
 
