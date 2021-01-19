@@ -476,21 +476,30 @@ if __name__ == '__main__':
                                         tta=args.tta)
 
 
+    sampler = None
+    do_shuffle = True
     if args.balanced_sampling:
-        num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
+        '''num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
         num_samples = (num_neg + num_pos) * train_dset.factor
         targets_numpy = np.array(train_dset.target)
         pos_targets, neg_targets = targets_numpy == 'Positive', targets_numpy == 'Negative'
         weights = np.zeros(num_samples)
         weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
+                                                                 replacement=False)'''
 
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights,
-                                                                 num_samples=num_samples,
-                                                                 replacement=False)
-    else:
-        sampler = None
+        labels = pd.DataFrame(train_dset.target * train_dset.factor)
+        n_pos = np.sum(labels == 'Positive').item()
+        n_neg = np.sum(labels == 'Negative').item()
+        weights = pd.DataFrame(np.zeros(len(train_dset)))
+        weights[np.array(labels == 'Positive')] = 1 / n_pos
+        weights[np.array(labels == 'Negative')] = 1 / n_neg
+        do_shuffle = False  # the sampler shuffles
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
+                                                                 #, replacement=False)
+        do_shuffle = False
 
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, num_workers=cpu_available, pin_memory=True, sampler=sampler)
+    train_loader = DataLoader(train_dset, batch_size=1, shuffle=do_shuffle, num_workers=cpu_available, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'

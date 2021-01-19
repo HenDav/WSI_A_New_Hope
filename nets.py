@@ -380,9 +380,15 @@ class net_with_2FC(nn.Module):
         nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
 
     def forward(self, x):
-        x = self.pretrained(x)
+        #old version:
+        '''x = self.pretrained(x)
         x = F.relu(self.fc1(self.dropout(x)))
-        x = self.fc2(x)
+        x = self.fc2(x)'''
+
+        #RanS 14.1.21, Nikhil's version
+        x = self.pretrained(x)
+        x = self.dropout(F.relu(self.fc1(x)))
+        x = self.dropout(F.relu(self.fc2(x)))
         return x
 
 

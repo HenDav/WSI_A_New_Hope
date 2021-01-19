@@ -46,12 +46,15 @@ import subprocess
 subprocess.run(['python', 'train_mil_joint.py',
                 '--test_fold', str(1),
                 '--epochs', str(2),
-                '--dataset', 'LUNG',
-                '--target', 'PDL1',
+                #'--dataset', 'LUNG',
+                '--dataset', 'TCGA',
+                '--target', 'Her2',
+                #'--target', 'PDL1',
                 #'--transform_type', 'wcfrs',
-                '--transform_type', 'bnfrs',
+                '--transform_type', 'aug_receptornet',
                 #'--transform_type', 'hedcfrs',
-                '--model', 'receptornet_preact_resnet50',
-                '--saved_model_path', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\model_data_Epoch_124.pt',
-                '--bootstrap'
+                '--model', 'receptornet',
+                #'--saved_model_path', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\model_data_Epoch_124.pt',
+                '--bootstrap',
+                '--balanced_sampling'
                 ])

@@ -418,6 +418,17 @@ class MyGaussianNoiseTransform:
         x = Image.fromarray(noise_img)
         return x
 
+class MyMeanPixelRegularization:
+    """replace patch with single pixel value"""
+
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, x):
+        if np.random.rand() < self.p:
+            x = torch.zeros_like(x) + torch.tensor([[[0.87316266]], [[0.79902739]], [[0.84941472]]])
+        return x
+
 
 class HEDColorJitter:
     """Jitter colors in HED color space rather than RGB color space."""
@@ -433,7 +444,12 @@ class HEDColorJitter:
 def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=0.1):
 
     # Setting the transformation:
-    final_transform = transforms.Compose([transforms.ToTensor(),
+    if transform_type == 'aug_receptornet':
+        final_transform = transforms.Compose([transforms.Normalize(
+                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+    else:
+        final_transform = transforms.Compose([transforms.ToTensor(),
                                           transforms.Normalize(
                                               mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
                                               std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
@@ -492,6 +508,10 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
+                    #Mean Pixel Regularization
+                    transforms.ToTensor(),
+                    Cutout(n_holes=1, length=100),  # RanS 24.12.20
+                    MyMeanPixelRegularization(p=0.75)
                 ])
 
         elif transform_type == 'cbnfr':  # color, blur, noise, flip, rotate
@@ -548,8 +568,13 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
     else:
         transform = final_transform
 
-    if transform_type in ['cbnfrsc', 'bnfrsc', 'c_0_05_bnfrsc', 'pcbnfrsc', 'aug_receptornet']:
+    if transform_type in ['cbnfrsc', 'bnfrsc', 'c_0_05_bnfrsc', 'pcbnfrsc']:
         transform.transforms.append(Cutout(n_holes=1, length=100)) #RanS 24.12.20
+
+    #RanS 14.1.21 - mean pixel regularization
+    #if transform_type == 'aug_receptornet':
+    #    transform.transforms.append(MyMeanPixelRegularization(p=0.75))
+        #transform.transforms.append(transforms.RandomApply(torch.nn.ModuleList([MyMeanPixelRegularization]), p=0.75))
 
     return transform, scale_factor
 
@@ -658,9 +683,10 @@ def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
         color_trans = transforms.Compose([
             transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
                                    saturation=0.1, hue=(-0.1, 0.1)),
+            #transforms.ColorJitter(brightness=64.0/255, contrast=0.75, saturation=0.25, hue=0.04),  # RanS 13.1.21
             transforms.ToTensor()])
 
-        blur_trans = transforms.Compose([
+        '''blur_trans = transforms.Compose([
             transforms.GaussianBlur(5, sigma=0.1),  # RanS 23.12.20
             transforms.ToTensor()])
 
@@ -670,12 +696,12 @@ def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
 
         cutout_trans = transforms.Compose([
             transforms.ToTensor(),
-            Cutout(n_holes=1, length=100)])  # RanS 24.12.20]
+            Cutout(n_holes=1, length=100)])  # RanS 24.12.20]'''
 
-        # img5 = color_trans(tiles[ii])
+        img5 = color_trans(tiles[ii])
         # img5 = blur_trans(tiles[ii])
         # img5 = noise_trans(tiles[ii])
-        img5 = cutout_trans(tiles[ii])
+        #img5 = cutout_trans(tiles[ii])
         grid5[ii].imshow(np.transpose(img5, axes=(1, 2, 0)))
 
     fig1.suptitle('original patches', fontsize=14)

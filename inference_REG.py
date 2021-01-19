@@ -29,10 +29,16 @@ print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment
 output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=args.experiment)
 
 TILE_SIZE = 128
+tiles_per_iter = 2
 if sys.platform == 'linux':
     TILE_SIZE = 256
     #data_path = '/home/womer/project'
     data_path = '' #RanS 13.1.21
+    tiles_per_iter = 150
+elif sys.platform == 'win32':
+    TILE_SIZE = 256
+    output_dir = output_dir.replace(r'/', '\\')
+    data_path = os.getcwd()
 
 # Load saved model:
 #model = eval(model_name)
@@ -42,19 +48,9 @@ model_data_loaded = torch.load(os.path.join(data_path, output_dir,
                                             'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
 model.load_state_dict(model_data_loaded['model_state_dict'])
 
-
-'''inf_dset = utils.Infer_WSI_MILdataset(DataSet=args.dataset,
-                                      tile_size=TILE_SIZE,
-                                      tiles_per_iter=150,
-                                      target_kind=args.look_for,
-                                      folds=args.folds,
-                                      print_timing=True,
-                                      DX=False,
-                                      num_tiles=args.num_tiles)'''
-
 inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
-                                  tiles_per_iter=150,
+                                  tiles_per_iter=tiles_per_iter,
                                   target_kind=args.target,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles
@@ -127,6 +123,7 @@ if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
 file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch)
                          + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
 inference_data = [fpr_train, tpr_train, all_labels, all_targets, all_scores, total_pos, correct_pos, total_neg, correct_neg, len(inf_dset)]
+
 with open(file_name, 'wb') as filehandle:
     pickle.dump(inference_data, filehandle)
 

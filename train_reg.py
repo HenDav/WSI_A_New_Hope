@@ -20,7 +20,7 @@ from sklearn.utils import resample
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-parser.add_argument('-ex', '--experiment', type=int, default=6, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
@@ -130,7 +130,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         train_acc = 100 * correct_labeling / total
 
         #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
-        balanced_acc_train = 100. * (correct_pos / (total_pos_train + EPS) + correct_neg / (total_neg_train + EPS)) / 2
+        balanced_acc_train = 100. * ((correct_pos + EPS) / (total_pos_train + EPS) + (correct_neg + EPS) / (total_neg_train + EPS)) / 2
 
         roc_auc_train = np.nan
         if not all(true_targets_train==true_targets_train[0]): #more than one label
@@ -242,7 +242,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
         if not args.bootstrap:
             acc = 100 * float(correct_labeling_test) / total_test
-            bacc = 100. * (true_pos_test / (total_pos_test + EPS) + true_neg_test / (total_neg_test + EPS)) / 2
+            bacc = 100. * ((true_pos_test + EPS) / (total_pos_test + EPS) + (true_neg_test + EPS) / (total_neg_test + EPS)) / 2
             roc_auc = np.nan
             if not all(true_labels_test == true_labels_test[0]): #more than one label
                 fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
@@ -287,7 +287,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 total_pos_i = np.sum(labels_resampled == 1)
                 true_neg_i = np.sum(labels_resampled + preds_resampled == 0)
                 total_neg_i = np.sum(labels_resampled == 0)
-                acc_array[ii] = 100 * float(num_correct_i) / len(data_loader)
+                tot = total_pos_i + total_neg_i
+                acc_array[ii] = 100 * float(num_correct_i) / tot
                 bacc_array[ii] = 100. * ((true_pos_i + EPS) / (total_pos_i + EPS) + (true_neg_i + EPS) / (total_neg_i + EPS)) / 2
                 fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
                 if not all(labels_resampled == labels_resampled[0]): #more than one label
@@ -321,9 +322,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.train()
     return acc, bacc
 
-
-
-##################################################################################################
 
 if __name__ == '__main__':
     # Device definition:
@@ -392,22 +390,29 @@ if __name__ == '__main__':
                                         get_images=args.images
                                         )
 
+    sampler = None
+    do_shuffle = True
     if args.balanced_sampling:
-        num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
+        '''num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
         num_samples = (num_neg + num_pos) * train_dset.factor
         targets_numpy = np.array(train_dset.target)
         pos_targets, neg_targets = targets_numpy == 'Positive', targets_numpy == 'Negative'
         weights = np.zeros(num_samples)
-        weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
+        weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg'''
+        labels = pd.DataFrame(train_dset.target * train_dset.factor)
+        n_pos = np.sum(labels == 'Positive').item()
+        n_neg = np.sum(labels == 'Negative').item()
+        weights = pd.DataFrame(np.zeros(len(train_dset)))
+        weights[np.array(labels == 'Positive')] = 1 / n_pos
+        weights[np.array(labels == 'Negative')] = 1 / n_neg
+        do_shuffle = False  # the sampler shuffles
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
+                                                                 #, replacement=False)
 
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples, replacement=True)
-        train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=False,
-                                  num_workers=cpu_available, pin_memory=True, sampler=sampler)
-    else:
-        train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True,
-                                  num_workers=cpu_available, pin_memory=True, sampler=None)
-
-    test_loader = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
+                              num_workers=cpu_available, pin_memory=True, sampler=sampler)
+    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
+                              num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
