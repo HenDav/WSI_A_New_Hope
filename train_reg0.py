@@ -23,9 +23,9 @@ parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='k
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='PR', help='Target Receptor to look for')
 
 
 args = parser.parse_args()
@@ -69,7 +69,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             data, target = data.to(DEVICE), target.to(DEVICE)
             target = target.squeeze()
             model.to(DEVICE)
-
             optimizer.zero_grad()
             outputs = model(data)
             loss = criterion(outputs, target)
@@ -316,8 +315,8 @@ if __name__ == '__main__':
         # model = nets.ResNet50()
         # model = PreActResNets.preactresnet50_Omer()
         # model = PreActResNets.preactresnet50()
-        # model = PreActResNets.PreActResNet50_Ron()
-        model = nets.ResNet_50_NO_downsample()
+        model = PreActResNets.PreActResNet50_Ron()
+        #model = nets.ResNet_50_NO_downsample()
 
     '''model_params = sum(p.numel() for p in model.parameters())
     print(model_params)'''

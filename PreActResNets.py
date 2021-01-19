@@ -263,8 +263,7 @@ class PreActResNet_Ron(nn.Module):
         out = F.avg_pool2d(out, out.shape[3])
         out = out.view(out.size(0), -1)
         feat = out
-        # out = self.dropout(self.linear(out))
-        out = self.linear(out)
+        out = self.linear(self.dropout(out))
         return out
 
 

@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets
+import nets, PreActResNets
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -20,12 +20,12 @@ from sklearn.utils import resample
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
-parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=6, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
+parser.add_argument('-tar', '--target', default='PR', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
@@ -33,13 +33,14 @@ parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty
 parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
 parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
-parser.add_argument('--model', default='resnet50_gn', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 args = parser.parse_args()
-eps = 1e-7
+
+EPS = 1e-7
 
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
@@ -70,8 +71,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_epoch_start = time.time()
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
-        true_labels_train, scores_train = np.zeros(0), np.zeros(0)
+        true_targets_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
+
         slide_names = []
         print('Epoch {}:'.format(e))
         model.train()
@@ -93,7 +95,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
-            true_labels_train = np.concatenate((true_labels_train, target.cpu().detach().numpy()))
+            true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
             slide_names.extend(slide_names_batch)
 
             total += target.size(0)
@@ -128,11 +130,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         train_acc = 100 * correct_labeling / total
 
         #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
-        balanced_acc_train = 100. * ((correct_pos + eps) / (total_pos_train + eps) + (correct_neg + eps) / (total_neg_train + eps)) / 2
+        balanced_acc_train = 100. * (correct_pos / (total_pos_train + EPS) + correct_neg / (total_neg_train + EPS)) / 2
 
         roc_auc_train = np.nan
-        if not all(true_labels_train==true_labels_train[0]): #more than one label
-            fpr_train, tpr_train, _ = roc_curve(true_labels_train, scores_train)
+        if not all(true_targets_train==true_targets_train[0]): #more than one label
+            fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
             roc_auc_train = auc(fpr_train, tpr_train)
 
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
@@ -156,13 +158,14 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         if e % args.eval_rate == 0:
             #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # RanS 8.12.20, perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_labels_train})
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
             if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
+            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
+            #acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
             # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
@@ -188,49 +191,21 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         else:
             acc_test, bacc_test = None, None
 
-        '''
-        if train_loss < best_train_loss:
-            best_train_loss = train_loss
-            best_train_acc = train_acc
-            best_epoch = e
-            best_model = model
-
-    
-    # If epochs ended - Save best model:
-    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
-
-    try:
-        best_model_state_dict = best_model.module.state_dict()
-    except AttributeError:
-        best_model_state_dict = best_model.state_dict()
-    
-    torch.save({'epoch': best_epoch,
-                'model_state_dict': best_model_state_dict,
-                'best_train_loss': best_train_loss,
-                'best_train_acc': best_train_acc,
-                'tile_size': TILE_SIZE,
-                'tiles_per_bag': 1},
-               os.path.join(args.output_dir, 'Model_CheckPoints', 'best_model_Ep_' + str(best_epoch) + '.pt'))
-    '''
     all_writer.close()
     if print_timing:
         time_writer.close()
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
-    num_correct = 0
-    total_pos, total_neg = 0, 0
-    true_pos, true_neg = 0, 0
-    true_labels, scores = np.zeros(0), np.zeros(0)
+#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
+
+    total_test, true_pos_test, true_neg_test = 0, 0, 0
+    total_pos_test, total_neg_test = 0, 0
+    true_labels_test, scores_test = np.zeros(0), np.zeros(0)
+    correct_labeling_test, loss_test = 0, 0
     slide_names = []
 
-    test_loss, total = 0, 0
-
-    if eval_mode:
-        model.eval()
-    else:
-        model.train()
+    model.eval()
 
     with torch.no_grad():
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
@@ -244,43 +219,37 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             targets = targets.squeeze()
             loss = criterion(outputs, targets)
 
-            test_loss += loss.item()
+            loss_test += loss.item()
             _, predicted = outputs.max(1)
 
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
-            scores = np.concatenate((scores, outputs[:, 1].cpu().detach().numpy()))
-            true_labels = np.concatenate((true_labels, targets.cpu().detach().numpy()))
+            scores_test = np.concatenate((scores_test, outputs[:, 1].cpu().detach().numpy()))
+            true_labels_test = np.concatenate((true_labels_test, targets.cpu().detach().numpy()))
             slide_names.extend(slide_names_batch)
 
-            total += targets.size(0)
-            num_correct += predicted.eq(targets).sum().item()
-            total_pos += targets.eq(1).sum().item()
-            total_neg += targets.eq(0).sum().item()
-            true_pos += predicted[targets.eq(1)].eq(1).sum().item()
-            true_neg += predicted[targets.eq(0)].eq(0).sum().item()
+            total_test += targets.size(0)
+            correct_labeling_test += predicted.eq(targets).sum().item()
+            total_pos_test += targets.eq(1).sum().item()
+            total_neg_test += targets.eq(0).sum().item()
+            true_pos_test += predicted[targets.eq(1)].eq(1).sum().item()
+            true_neg_test += predicted[targets.eq(0)].eq(0).sum().item()
 
         #acc = 100 * float(num_correct) / total
         #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
         #balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
 
-        if data_loader.dataset.train:
-            writer_string = 'Train_2'
-        else:
-            if eval_mode:
-                writer_string = 'Test (eval mode)'
-            else:
-                writer_string = 'Test (train mode)'
+        writer_string = 'Test'
 
         if not args.bootstrap:
-            acc = 100 * float(num_correct) / total
-            bacc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
+            acc = 100 * float(correct_labeling_test) / total_test
+            bacc = 100. * (true_pos_test / (total_pos_test + EPS) + true_neg_test / (total_neg_test + EPS)) / 2
             roc_auc = np.nan
-            if not all(true_labels == true_labels[0]): #more than one label
-                fpr, tpr, _ = roc_curve(true_labels, scores)
+            if not all(true_labels_test == true_labels_test[0]): #more than one label
+                fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
                 roc_auc = auc(fpr, tpr)
 
             #RanS 8.12.20, perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
             if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
@@ -297,7 +266,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             acc_array, bacc_array = np.empty(n_iterations), np.empty(n_iterations)
             acc_array[:], bacc_array[:] = np.nan, np.nan
 
-            all_preds = np.array([int(score > 0.5) for score in scores])
+            all_preds = np.array([int(score > 0.5) for score in scores_test])
 
             for ii in range(n_iterations):
                 #slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
@@ -308,8 +277,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 slide_names = np.array(slide_names)
                 slide_choice = resample(np.unique(np.array(slide_names)))
                 slide_resampled = np.concatenate([slide_names[slide_names == slide] for slide in slide_choice])
-                scores_resampled = np.concatenate([scores[slide_names == slide] for slide in slide_choice])
-                labels_resampled = np.concatenate([true_labels[slide_names == slide] for slide in slide_choice])
+                scores_resampled = np.concatenate([scores_test[slide_names == slide] for slide in slide_choice])
+                labels_resampled = np.concatenate([true_labels_test[slide_names == slide] for slide in slide_choice])
                 preds_resampled = np.concatenate([all_preds[slide_names == slide] for slide in slide_choice])
                 patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
 
@@ -319,7 +288,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
                 true_neg_i = np.sum(labels_resampled + preds_resampled == 0)
                 total_neg_i = np.sum(labels_resampled == 0)
                 acc_array[ii] = 100 * float(num_correct_i) / len(data_loader)
-                bacc_array[ii] = 100. * ((true_pos_i + eps) / (total_pos_i + eps) + (true_neg_i + eps) / (total_neg_i + eps)) / 2
+                bacc_array[ii] = 100. * ((true_pos_i + EPS) / (total_pos_i + EPS) + (true_neg_i + EPS) / (total_neg_i + EPS)) / 2
                 fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
                 if not all(labels_resampled == labels_resampled[0]): #more than one label
                     roc_auc_array[ii] = roc_auc_score(labels_resampled, scores_resampled)
@@ -347,7 +316,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
-        print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
+        #print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
+        print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
     model.train()
     return acc, bacc
 
@@ -362,7 +332,6 @@ if __name__ == '__main__':
 
     # Tile size definition:
     TILE_SIZE =128
-    timing = False
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -376,16 +345,18 @@ if __name__ == '__main__':
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
                                                      DataSet=args.dataset,
-                                                     Receptor=args.target)
+                                                     Receptor=args.target,
+                                                     num_bags=args.batch_size)
     else:
-        #args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-        #    _, args.dx, args.dataset, args.target, _ = utils.run_data(experiment=args.experiment)
-        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-           _, _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)
+        '''args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
+           _, _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)'''
+
+        args.output_dir, args.test_fold, args.transform_type, TILE_SIZE, tiles_per_bag, \
+        args.batch_size,  args.dx, args.dataset, args.target, _, args.model = utils.run_data(experiment=args.experiment)
 
         print('args.dataset:', args.dataset)
         print('args.target:', args.target)
-
+        print('args.args.batch_size:', args.batch_size)
         print('args.output_dir:', args.output_dir)
         print('args.test_fold:', args.test_fold)
         print('args.transform_type:', args.transform_type)
@@ -429,15 +400,14 @@ if __name__ == '__main__':
         weights = np.zeros(num_samples)
         weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg
 
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples,
-                                                                 replacement=False)
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights, num_samples=num_samples, replacement=True)
+        train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=False,
+                                  num_workers=cpu_available, pin_memory=True, sampler=sampler)
     else:
-        sampler = None
+        train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True,
+                                  num_workers=cpu_available, pin_memory=True, sampler=None)
 
-    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True,
-                              num_workers=cpu_available, pin_memory=True, sampler=sampler)
-    test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
-                              num_workers=cpu_available, pin_memory=True)
+    test_loader = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -445,7 +415,8 @@ if __name__ == '__main__':
 
 
     # Load model
-    model = utils.get_model(args.model, '')
+    #model = utils.get_model(args.model, '')
+    model = eval(args.model)
 
     utils.run_data(experiment=experiment, model=model.model_name)
 
@@ -479,5 +450,4 @@ if __name__ == '__main__':
                     state[k] = v.to(DEVICE)
 
     criterion = nn.CrossEntropyLoss()
-    # simple_train(model, train_loader, test_loader)
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
