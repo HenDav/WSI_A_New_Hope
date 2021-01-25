@@ -112,6 +112,7 @@ class PreActResNet(nn.Module):
         x = F.adaptive_avg_pool2d(x, 1)
         x = x.view(x.size(0), -1)
         x = self.linear(x)
+        x = torch.nn.functional.softmax(x, dim=1)
 
         return x
 
@@ -160,6 +161,7 @@ class PreActResNet_Omer(nn.Module):
         x = F.adaptive_avg_pool2d(x, 1)
         x = x.view(x.size(0), -1)
         x = self.linear(x)
+        x = torch.nn.functional.softmax(x, dim=1)
 
         return x
 
@@ -268,6 +270,8 @@ class PreActResNet_Ron(nn.Module):
         out = out.view(out.size(0), -1)
         feat = out
         out = self.linear(self.dropout(out))
+        x = torch.nn.functional.softmax(x, dim=1)
+
         return out
 
 
