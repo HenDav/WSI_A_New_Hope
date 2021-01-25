@@ -393,6 +393,7 @@ class net_with_2FC(nn.Module):
         x = self.pretrained(x)
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
