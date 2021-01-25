@@ -133,7 +133,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         balanced_acc_train = 100. * ((correct_pos + EPS) / (total_pos_train + EPS) + (correct_neg + EPS) / (total_neg_train + EPS)) / 2
 
         roc_auc_train = np.nan
-        if not all(true_targets_train==true_targets_train[0]): #more than one label
+        if not all(true_targets_train == true_targets_train[0]):  #more than one label
             fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
             roc_auc_train = auc(fpr_train, tpr_train)
 
@@ -161,7 +161,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
+            if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
             acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)

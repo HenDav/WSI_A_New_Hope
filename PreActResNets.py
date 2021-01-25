@@ -255,6 +255,10 @@ class PreActResNet_Ron(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        if len(x.shape) == 5:
+            num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+            x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+
         out = self.conv1(x)
         out = self.layer1(out)
         out = self.layer2(out)

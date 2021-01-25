@@ -287,7 +287,6 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         return location, experiment
 
     elif experiment is not None and epoch is not None:
-        print(epoch)
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
         run_DF.at[index, 'Last Epoch'] = epoch
         run_DF.to_excel(run_file_name)
@@ -318,6 +317,22 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
 
         return location, test_fold, transformations, tile_size, tiles_per_bag,\
                num_bags, DX, DataSet, Receptor, MultiSlide, model_name
+
+
+def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
+                         epoch: int = None,  transformation_string: str = None):
+    num_experiments = len(experiments)
+    if experiments is not None and transformation_string is not None:
+        for index in range(num_experiments):
+            run_data(experiment=experiments[index], transformation_string=transformation_string)
+    elif experiments is not None and models is not None:
+        for index in range(num_experiments):
+            run_data(experiment=experiments[index], model=models[index])
+    elif experiments is not None and epoch is not None:
+        for index in range(num_experiments):
+            run_data(experiment=experiments[index], epoch=epoch)
+
+
 
 
 def get_concat(im1, im2):

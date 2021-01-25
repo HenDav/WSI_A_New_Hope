@@ -195,6 +195,7 @@ class ResNet18(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.basic_resnet(x)
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -208,6 +209,7 @@ class ResNet34(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.basic_resnet(x)
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -226,6 +228,7 @@ class ResNet50(nn.Module):
 
         #x = x.squeeze()
         x = self.basic_resnet(x)
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -271,7 +274,7 @@ class ResNet34_GN(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.linear_layer(self.con_layers(x))
-
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -291,7 +294,7 @@ class ResNet50_GN(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.linear_layer(self.con_layers(x))
-
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -349,6 +352,7 @@ class net_with_3FC(nn.Module):
         x = F.relu(self.fc1(self.dropout(x)))
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
@@ -408,7 +412,7 @@ class ReceptorNet_feature_extractor(nn.Module):
 
 class ResNet_NO_downsample(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
+    def __init__(self, block, layers, num_classes=2, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet_NO_downsample, self).__init__()
@@ -496,6 +500,9 @@ class ResNet_NO_downsample(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        if len(x.shape) == 5:
+            num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+            x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
         # See note [TorchScript super()]
         x = self.conv1(x)
         x = self.bn1(x)
@@ -510,7 +517,7 @@ class ResNet_NO_downsample(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
-
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
