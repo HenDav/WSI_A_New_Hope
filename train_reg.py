@@ -363,7 +363,7 @@ if __name__ == '__main__':
         experiment = args.experiment
 
     # Get number of available CPUs:
-    cpu_available = utils.get_cpu() * 4
+    cpu_available = utils.get_cpu()
     #cpu_available = 1
 
     # Get data:

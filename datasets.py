@@ -380,8 +380,6 @@ class Infer_Dataset(WSI_Master_Dataset):
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
                 grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',
                                          basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-                print('basic file name: ', basic_file_name)
-                print('grid  file:      ', grid_file)
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_patches[-1])
 
                 with open(grid_file, 'rb') as filehandle:
