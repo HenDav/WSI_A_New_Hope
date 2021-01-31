@@ -25,7 +25,7 @@ parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue t
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='PR', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
+parser.add_argument('-tar', '--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
@@ -213,9 +213,9 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
             model.to(DEVICE)
 
-            out = model(data)
+            outputs = model(data)
 
-            outputs = torch.nn.functional.softmax(out, dim=1)
+            # outputs = torch.nn.functional.softmax(out, dim=1)
             targets = targets.squeeze()
             loss = criterion(outputs, targets)
 
@@ -363,7 +363,7 @@ if __name__ == '__main__':
         experiment = args.experiment
 
     # Get number of available CPUs:
-    cpu_available = utils.get_cpu()
+    cpu_available = utils.get_cpu() * 4
     #cpu_available = 1
 
     # Get data:
