@@ -215,7 +215,7 @@ def get_cpu():
 
 
     #cpu = 20
-    print('Running on {} with {} workers'.format(platform, cpu))
+    print('Running on {} with {} CPUs'.format(platform, cpu))
     return cpu
 
 

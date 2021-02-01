@@ -9,7 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 
-THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
+#THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
+THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 
 class PreActBasic(nn.Module):
 

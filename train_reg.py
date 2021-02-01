@@ -16,6 +16,8 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
+from adabelief_pytorch import AdaBelief
+import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -38,9 +40,17 @@ parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to e
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
+parser.add_argument('-ada', dest='adabelief', action='store_true', help='use adabelief optimizer') #RanS 20.1.21
+parser.add_argument('--workers_factor', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
 args = parser.parse_args()
 
 EPS = 1e-7
+
+#RanS 28.1.21
+#https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+nvidia_smi.nvmlInit()
+handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+# card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
@@ -86,6 +96,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             optimizer.zero_grad()
             outputs = model(data)
+
             loss = criterion(outputs, target)
             loss.backward()
             optimizer.step()
@@ -106,6 +117,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
 
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
+
+            # RanS 28.1.21
+            res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+            #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
+            all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
+            all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
 
             train_time = time.time() - train_start
             if print_timing:
@@ -408,11 +425,13 @@ if __name__ == '__main__':
         do_shuffle = False  # the sampler shuffles
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
                                                                  #, replacement=False)
-
+    #num_workers = cpu_available
+    num_workers = cpu_available*args.workers_factor #RanS 28.1.21
+    print('num workers = ',  num_workers)
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
-                              num_workers=cpu_available, pin_memory=True, sampler=sampler)
+                              num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
-                              num_workers=cpu_available, pin_memory=True)
+                              num_workers=num_workers, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -441,8 +460,12 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    #optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
+    if args.adabelief:
+        print('using AdaBelief optimizer')
+        optimizer = AdaBelief(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=1e-8, betas=(0.9, 0.999), weight_decouple=True, rectify=False)
+        #optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True

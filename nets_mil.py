@@ -4,8 +4,10 @@ import torch.nn.functional as F
 import nets
 import torchvision.models as models
 import os
+import PreActResNets
 
-THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
+#THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
+THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 
 
 class Flatten(nn.Module):
@@ -1133,7 +1135,8 @@ class ReceptorNet(nn.Module):
     #def __init__(self):
     def __init__(self, feature_extractor, saved_model_path='none'): #RanS 6.1.21
         super(ReceptorNet, self).__init__()
-        self.model_name = 'ReceptorNet_' + feature_extractor
+        self.model_name = THIS_FILE + "ReceptorNet(feature_extractor='" + feature_extractor+ "',savel_model_path=" + saved_model_path + ')'
+        #self.model_name = 'ReceptorNet_' + feature_extractor
         print('Using model {}'.format(self.model_name))
         print('As Feature Extractor, the model will be ', end='')
 
@@ -1145,14 +1148,14 @@ class ReceptorNet(nn.Module):
         self.infer_part = 0
 
         if feature_extractor == 'resnet50_2FC':
-            self.feat_ext_part_1 = ReceptorNet_feature_extractor()
+            self.feat_ext_part_1 = nets.ReceptorNet_feature_extractor()
         elif feature_extractor == 'preact_resnet50':
             self.M = 500
-            self.feat_ext_part_1 = PreActResNet50()
+            self.feat_ext_part_1 = PreActResNets.PreActResNet50_Ron()
 
         if saved_model_path != 'none':
             model_data_loaded = torch.load(saved_model_path, map_location='cpu')
-            saved_model = nets.PreActResNet50()
+            saved_model = PreActResNets.PreActResNet50_Ron()
             saved_model.load_state_dict(model_data_loaded['model_state_dict'])
             saved_model.linear = nn.Linear(saved_model.linear.in_features, self.M)
             nn.init.kaiming_normal_(saved_model.linear.weight, mode='fan_in', nonlinearity='relu')

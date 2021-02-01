@@ -343,10 +343,11 @@ class Infer_Dataset(WSI_Master_Dataset):
     def __init__(self,
                  DataSet: str = 'TCGA',
                  tile_size: int = 256,
-                 tiles_per_iter: int = 400,
+                 tiles_per_iter: int = 500,
                  target_kind: str = 'ER',
                  folds: List = [1],
-                 num_tiles: int = 500
+                 num_tiles: int = 500,
+                 dx: bool = False
                  ):
         super(Infer_Dataset, self).__init__(DataSet=DataSet,
                                             tile_size=tile_size,
@@ -357,7 +358,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                                             train=True,
                                             print_timing=False,
                                             transform_type='none',
-                                            DX=False,
+                                            DX=dx,
                                             get_images=False,
                                             train_type='Infer')
 
@@ -367,7 +368,8 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.num_patches = []
         self.slide_grids = []
 
-        for ind, slide_num in enumerate(self.valid_slide_indices):
+        ind = 0
+        for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
                 if num_tiles <= self.all_tissue_tiles[slide_num]:
                     self.num_patches.append(num_tiles)
@@ -380,8 +382,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
                 grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',
                                          basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-                print('basic file name: ', basic_file_name)
-                print('grid  file:      ', grid_file)
+
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_patches[-1])
 
                 with open(grid_file, 'rb') as filehandle:
@@ -389,6 +390,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                 chosen_locations = [grid_list[loc] for loc in which_patches]
                 chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
                 self.slide_grids.extend(chosen_locations_chunks)
+
+                ind += 1 #RanS 29.1.21
 
         # The following properties will be used in the __getitem__ function
         self.tiles_to_go = None

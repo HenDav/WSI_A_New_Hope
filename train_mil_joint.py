@@ -15,6 +15,7 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
+import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
@@ -23,7 +24,7 @@ parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-# parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
+parser.add_argument('-ms', dest='multi_slides', action='store_true', help='Use more than one slide in each bag')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
@@ -43,6 +44,12 @@ parser.add_argument('--saved_model_path', default='none', type=str, help='path f
 
 args = parser.parse_args()
 eps = 1e-7
+
+#RanS 28.1.21
+#https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+nvidia_smi.nvmlInit()
+handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+# card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
 
 def norm_img(img):
@@ -138,6 +145,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.step()
 
             all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
+
+            # RanS 28.1.21
+            res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+            # print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
+            all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
+            all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
 
             # Calculate training accuracy
             correct_labeling += label.eq(target).cpu().detach().int().item()
@@ -499,8 +512,10 @@ if __name__ == '__main__':
                                                                  #, replacement=False)
         do_shuffle = False
 
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=do_shuffle, num_workers=cpu_available, pin_memory=True, sampler=sampler)
-    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    num_workers = cpu_available * 8  # RanS 28.1.21
+    print('num workers = ', num_workers)
+    train_loader = DataLoader(train_dset, batch_size=1, shuffle=do_shuffle, num_workers=num_workers, pin_memory=True, sampler=sampler)
+    test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])

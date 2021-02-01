@@ -2,6 +2,7 @@ import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch
+import nets_mil
 from nets_mil import ResNet34_GN_GatedAttention
 import numpy as np
 from sklearn.metrics import roc_curve, auc, roc_auc_score
@@ -37,7 +38,8 @@ data_path = ''
 
 # Load saved model:
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, _, _, TILE_SIZE, _, _, _, _, target, _, model_name = utils.run_data(experiment=args.experiment)
+output_dir, _, _, TILE_SIZE, _, _, dx, _, target, _, model_name = utils.run_data(experiment=args.experiment)
+
 
 model = eval(model_name)
 # Tile size definition:
@@ -57,7 +59,8 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles,
-                                  target_kind=target)
+                                  target_kind=target,
+                                  dx=dx)
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
 model.infer = True
@@ -75,7 +78,7 @@ num_correct = 0
 
 model.eval()
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, num_patches) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, num_patches, file_name) in enumerate(tqdm(inf_loader)):
         if in_between:
             try:
                 all_features = np.zeros([num_patches, model.M], dtype='float32')
@@ -155,12 +158,11 @@ else:  # bootstrap, RanS 16.12.20
     bacc_err = np.nanstd(bacc_array)
 
 # Save roc_curve to file:
-if not os.path.isdir(os.path.join(data_path, 'Inference')):
-    os.mkdir(os.path.join(data_path, 'Inference'))
+if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+    os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
 
-file_name = os.path.join(data_path, 'Inference', 'Model_Epoch_' + str(args.from_epoch)
-                         + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + ('-EVAL_' if args.eval else '-TRAIN_') + 'MODE'
-                         + '.data')
+file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch)
+                         + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
 #inference_data = [fpr, tpr, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, len(inf_dset)]
 inference_data = [roc_auc, roc_auc_err, acc, acc_err, bacc, bacc_err,
                   all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, len(inf_dset)]
