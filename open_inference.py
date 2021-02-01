@@ -27,10 +27,13 @@ inference_files['exp38_epoch482_test_200'] = r'C:\Pathnet_results\MIL_general_tr
 #inference_files['test_100'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_558-Folds_[1]-Tiles_100.data'
 #inference_files['test_500'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_500.data'
 #inference_files['test_1000'] = 'Data from gipdeep/runs/79/Inference/Model_Epoch_12000-Folds_[2]-Tiles_1000.data'
-inference_files['TCGA, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp70\Inference\Model_Epoch_34-Folds_[1]-Tiles_500.data'
+'''inference_files['TCGA, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp70\Inference\Model_Epoch_34-Folds_[1]-Tiles_500.data'
 inference_files['TCGA, no mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp63,64\exp63\Inference\Model_Epoch_48-Folds_[1]-Tiles_500.data'
-inference_files['TCGA dx only, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp77\Inference\Model_Epoch_72-Folds_[1]-Tiles_500.data'
-infer_type = 'MIL'
+inference_files['TCGA dx only, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp77\Inference\Model_Epoch_72-Folds_[1]-Tiles_500.data' '''
+inference_files['ex38_epoch1080_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1080-Folds_[1]-Tiles_2.data'
+inference_files['ex38_epoch1060_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1060-Folds_[1]-Tiles_2.data'
+inference_files['ex38_epoch1040_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1040-Folds_[1]-Tiles_2.data'
+infer_type = 'REG'
 
 legend_labels = []
 roc_auc = []

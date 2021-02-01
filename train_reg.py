@@ -41,7 +41,7 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-ada', dest='adabelief', action='store_true', help='use adabelief optimizer') #RanS 20.1.21
-parser.add_argument('--workers_factor', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
+#parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -425,8 +425,9 @@ if __name__ == '__main__':
         do_shuffle = False  # the sampler shuffles
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
                                                                  #, replacement=False)
-    #num_workers = cpu_available
-    num_workers = cpu_available*args.workers_factor #RanS 28.1.21
+    num_workers = cpu_available
+    #num_workers = cpu_available*args.workers_factor #RanS 28.1.21
+    #num_workers = args.workers  # RanS 1.2.21
     print('num workers = ',  num_workers)
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
                               num_workers=num_workers, pin_memory=True, sampler=sampler)

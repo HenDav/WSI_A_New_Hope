@@ -13,7 +13,8 @@ from tqdm import tqdm
 import pickle
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
-parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=79, help='Use models from this experiment')
+#parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=79, help='Use models from this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
 parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[11210, 12000], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=50, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
@@ -53,7 +54,7 @@ for counter, epoch in enumerate(args.from_epoch):
 TILE_SIZE = 128
 tiles_per_iter = 20
 if sys.platform == 'linux':
-    #TILE_SIZE = 256
+    TILE_SIZE = 256
     tiles_per_iter = 150
 elif sys.platform == 'win32':
     TILE_SIZE = 256
@@ -67,13 +68,14 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
-in_between = True
+new_slide = True
 
 NUM_MODELS = len(models)
 NUM_SLIDES = len(inf_dset.valid_slide_indices)
 
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
+patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
 slide_num = 0
 
 # The following 2 lines initialize variables to compute AUC for train dataset.
@@ -82,11 +84,11 @@ correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, num_patches, file_name) in enumerate(tqdm(inf_loader)):
-        if in_between:
+        if new_slide:
             scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             target_current = target
             slide_batch_num = 0
-            in_between = False
+            new_slide = False
 
         data = data.squeeze(0)
 
@@ -103,7 +105,7 @@ with torch.no_grad():
         slide_batch_num += 1
 
         if last_batch:
-            in_between = True
+            new_slide = True
 
             all_targets.append(target.cpu().numpy()[0][0])
             if target == 1:
@@ -116,6 +118,7 @@ with torch.no_grad():
 
                 predicted = current_slide_tile_scores.mean(1).argmax()
 
+                patch_scores[slide_num, model_num, :] = scores_1[model_num]
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
 
@@ -136,7 +139,7 @@ for model_num in range(NUM_MODELS):
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr_train, tpr_train, all_labels[:, model_num], all_targets, all_scores[:, model_num],
-                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset)]
+                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset), patch_scores]
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)

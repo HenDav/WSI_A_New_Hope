@@ -90,12 +90,12 @@ with torch.no_grad():
 
         scores = model(data)
 
-        outputs = torch.nn.functional.softmax(scores, dim=1)
+        #outputs = torch.nn.functional.softmax(scores, dim=1) #cancelled RanS 1.2.21, this is done on the model
         #scores_0 = np.concatenate((scores_0, outputs[:, 0].cpu().detach().numpy()))
         #scores_1 = np.concatenate((scores_1, outputs[:, 1].cpu().detach().numpy()))
         n_tiles_iter = data.shape[0]
-        scores_0[patch_count : patch_count + n_tiles_iter] = outputs[:, 0].cpu().detach().numpy()
-        scores_1[patch_count : patch_count + n_tiles_iter] = outputs[:, 1].cpu().detach().numpy()
+        scores_0[patch_count : patch_count + n_tiles_iter] = scores[:, 0].cpu().detach().numpy()
+        scores_1[patch_count : patch_count + n_tiles_iter] = scores[:, 1].cpu().detach().numpy()
         patch_count += n_tiles_iter
 
         slide_batch_num += 1
