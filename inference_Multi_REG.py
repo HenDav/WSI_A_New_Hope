@@ -117,8 +117,8 @@ with torch.no_grad():
                 current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num]))
 
                 predicted = current_slide_tile_scores.mean(1).argmax()
-
-                patch_scores[slide_num, model_num, :] = scores_1[model_num]
+                #print('len(scores_1[model_num]):', len(scores_1[model_num])) #temp
+                patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
 
