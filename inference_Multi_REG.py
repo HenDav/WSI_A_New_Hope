@@ -139,7 +139,7 @@ for model_num in range(NUM_MODELS):
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr_train, tpr_train, all_labels[:, model_num], all_targets, all_scores[:, model_num],
-                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset), patch_scores[:, model_num]]
+                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset), np.squeeze(patch_scores[:, model_num,:])]
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)
