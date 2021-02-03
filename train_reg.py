@@ -269,7 +269,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels']==slide_mean_score_df['labels'][0]): #more than one label
+            if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]): #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
         else: #bootstrap, RanS 16.12.20
             # load dataset
@@ -326,16 +326,21 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             writer_all.add_scalar(writer_string + '/Accuracy error', acc_err, epoch)
             writer_all.add_scalar(writer_string + '/Balanced Accuracy error', bacc_err, epoch)
             writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
-            writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
+            if args.n_patches_test > 1:
+                writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
 
         writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
         writer_all.add_scalar(writer_string + '/Balanced Accuracy', bacc, epoch)
         writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
-        writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
+        if args.n_patches_test > 1:
+            writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
 
         #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
         #print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
-        print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
+        if args.n_patches_test > 1:
+            print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
+        else:
+            print('Tile AUC of {:.2f} over Test set'.format(roc_auc))
     model.train()
     return acc, bacc
 

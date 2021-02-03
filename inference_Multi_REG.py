@@ -13,32 +13,64 @@ from tqdm import tqdm
 import pickle
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
-#parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=79, help='Use models from this experiment')
-parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
-parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[11210, 12000], help='Use this epoch models for inference')
-parser.add_argument('-nt', '--num_tiles', type=int, default=50, help='Number of tiles to use')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
+#parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
+parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[210], help='Use models from this experiment')
+parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[985, 999], help='Use this epoch models for inference')
+parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
+
+# If args.experiment contains 1 number than all epochs are from the same experiments, BUT if it is bigger than 1 than all
+# the length of args.experiment should be equal to args.from_epoch
+if len(args.experiment) > 1:
+    if len(args.experiment) != len(args.from_epoch):
+        raise Exception("number of from_epoch(-fe) should be equal to number of experiment(-ex)")
+    else:
+        different_experiments = True
+        Output_Dirs = []
+else:
+    different_experiments = False
 
 DEVICE = utils.device_gpu_cpu()
 data_path = ''
 
 print('Loading pre-saved models:')
 models = []
-for counter, epoch in enumerate(args.from_epoch):
-    print('  Exp. {} and Epoch {}'.format(args.experiment, epoch))
-    if counter == 0:  # Basic meta data will be taken from the first model
-        output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=args.experiment)
 
+
+for counter in range(len(args.from_epoch)):
+    epoch = args.from_epoch[counter]
+    experiment = args.experiment[counter] if different_experiments else args.experiment[0]
+
+    print('  Exp. {} and Epoch {}'.format(experiment, epoch))
+    # Basic meta data will be taken from the first model (ONLY if all inferences are done from the same experiment)
+    if counter == 0:
+        output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=experiment)
+        if different_experiments:
+            Output_Dirs.append(output_dir)
+        fix_data_path = True
+    elif counter > 0 and different_experiments:
+        output_dir, _, _, _, _, _, _, _, target, _, model_name = utils.run_data(experiment=experiment)
+        Output_Dirs.append(output_dir)
+        fix_data_path = True
+
+    if fix_data_path:
         # we need to make some root modifications according to the computer we're running at.
         if sys.platform == 'linux':
             data_path = ''
         elif sys.platform == 'win32':
             output_dir = output_dir.replace(r'/', '\\')
             data_path = os.getcwd()
+
+        fix_data_path = False
+
+        # Verifying that the target receptor is not changed:
+        if counter > 1 and args.target != target:
+            raise Exception("Target Receptor is changed between models - DataSet cannot support this action")
+
 
     # loading basic model type
     model = eval(model_name)
@@ -130,6 +162,8 @@ with torch.no_grad():
             slide_num += 1
 
 for model_num in range(NUM_MODELS):
+    if different_experiments:
+        output_dir = Output_Dirs[model_num]
     fpr_train, tpr_train, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
@@ -144,9 +178,10 @@ for model_num in range(NUM_MODELS):
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)
 
-
-    print('For model from Epoch {}: {} / {} correct classifications'
-          .format(args.from_epoch[model_num],
+    experiment = args.experiment[model_num] if different_experiments else args.experiment[0]
+    print('For model from Experiment {} and Epoch {}: {} / {} correct classifications'
+          .format(experiment,
+                  args.from_epoch[model_num],
                   int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
                   len(all_labels[:, model_num])))
-    print('Done !')
+print('Done !')
