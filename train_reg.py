@@ -42,16 +42,11 @@ parser.add_argument('--c_param', default=0.1, type=float, help='color jitter par
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-ada', dest='adabelief', action='store_true', help='use adabelief optimizer') #RanS 20.1.21
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
+parser.add_argument('-fast', dest='fast_preloading', action='store_true', help='preload patches') #RanS 2.2.21
+parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
 args = parser.parse_args()
 
 EPS = 1e-7
-
-#RanS 28.1.21
-#https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
-nvidia_smi.nvmlInit()
-handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
-# card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
-
 
 def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
     """
@@ -79,6 +74,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
+
+        #RanS 2.2.21
+        if args.fast_preloading:
+            dloader_train.dataset.init_epoch(num_workers)
+
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
         true_targets_train, scores_train = np.zeros(0), np.zeros(0)
@@ -119,10 +119,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
-            res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-            #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
-            all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
-            all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
+            if DEVICE.type == 'cuda':
+                res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+                #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
+                all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
+                all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
 
             train_time = time.time() - train_start
             if print_timing:
@@ -225,6 +226,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.eval()
 
     with torch.no_grad():
+        # RanS 2.2.21
+        if args.fast_preloading:
+            data_loader.dataset.init_epoch(num_workers)
+
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
@@ -343,10 +348,15 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
-    # Data type definition:
+    # RanS 28.1.21
+    # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+    if DEVICE.type == 'cuda':
+        nvidia_smi.nvmlInit()
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+        # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
     # Tile size definition:
-    TILE_SIZE =128
+    TILE_SIZE = 128
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -384,28 +394,57 @@ if __name__ == '__main__':
     #cpu_available = 1
 
     # Get data:
-    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                         tile_size=TILE_SIZE,
-                                         target_kind=args.target,
-                                         test_fold=args.test_fold,
-                                         train=True,
-                                         print_timing=args.time,
-                                         transform_type=args.transform_type,
-                                         n_patches=args.n_patches_train,
-                                         c_param=args.c_param,
-                                         get_images=args.images
-                                         )
+    #RanS 2.2.21
+    if args.fast_preloading:
+        train_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
+                                             tile_size=TILE_SIZE,
+                                             target_kind=args.target,
+                                             test_fold=args.test_fold,
+                                             train=True,
+                                             print_timing=args.time,
+                                             transform_type=args.transform_type,
+                                             n_patches=args.n_patches_train,
+                                             c_param=args.c_param,
+                                             get_images=args.images,
+                                             mag=args.mag
+                                             )
 
-    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                        tile_size=TILE_SIZE,
-                                        target_kind=args.target,
-                                        test_fold=args.test_fold,
-                                        train=False,
-                                        print_timing=False,
-                                        transform_type='none',
-                                        n_patches=args.n_patches_test,
-                                        get_images=args.images
-                                        )
+        test_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
+                                            tile_size=TILE_SIZE,
+                                            target_kind=args.target,
+                                            test_fold=args.test_fold,
+                                            train=False,
+                                            print_timing=False,
+                                            transform_type='none',
+                                            n_patches=args.n_patches_test,
+                                            get_images=args.images,
+                                            mag=args.mag
+                                            )
+    else:
+        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                             tile_size=TILE_SIZE,
+                                             target_kind=args.target,
+                                             test_fold=args.test_fold,
+                                             train=True,
+                                             print_timing=args.time,
+                                             transform_type=args.transform_type,
+                                             n_patches=args.n_patches_train,
+                                             c_param=args.c_param,
+                                             get_images=args.images,
+                                             mag=args.mag
+                                             )
+
+        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                            tile_size=TILE_SIZE,
+                                            target_kind=args.target,
+                                            test_fold=args.test_fold,
+                                            train=False,
+                                            print_timing=False,
+                                            transform_type='none',
+                                            n_patches=args.n_patches_test,
+                                            get_images=args.images,
+                                            mag=args.mag
+                                            )
 
     sampler = None
     do_shuffle = True
@@ -428,6 +467,9 @@ if __name__ == '__main__':
     num_workers = cpu_available
     #num_workers = cpu_available*args.workers_factor #RanS 28.1.21
     #num_workers = args.workers  # RanS 1.2.21
+    #num_workers = 4 #temp RanS 2.2.21
+    if sys.platform == 'win32':
+        num_workers = 4  # temp RanS 2.2.21
     print('num workers = ',  num_workers)
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
                               num_workers=num_workers, pin_memory=True, sampler=sampler)

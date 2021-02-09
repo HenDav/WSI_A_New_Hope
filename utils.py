@@ -39,16 +39,16 @@ def make_dir(dirname):
             raise
 
 
-def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False):
+def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
     :param how_many: how_many describes how many tiles to pick from the whole image
     :return:
     """
-    BASIC_OBJ_POWER = 20
+    #BASIC_OBJ_POWER = 20
     #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    adjusted_tile_size = int(tile_size * (magnification / BASIC_OBJ_POWER))  # RanS 22.12.20
+    adjusted_tile_size = int(tile_size * (magnification / desired_mag))  # RanS 22.12.20
     # open grid list:
     with open(grid_file, 'rb') as filehandle:
         grid_list = pickle.load(filehandle)
@@ -138,15 +138,16 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
     return tiles_PIL, time_list
 
 
-def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256):
+def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
     """
     This function returns the grid location of tile for a specific slide.
     :param file_name:
     :return:
     """
 
-    BASIC_OBJ_POWER = 20
-    adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    #BASIC_OBJ_POWER = 20
+    #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
+    adjusted_tile_size = int(tile_size * (magnification / desired_mag))  # RanS 8.2.21
     basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
 
     # open grid list:

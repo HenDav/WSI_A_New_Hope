@@ -23,6 +23,25 @@ import matplotlib.pyplot as plt
 
 Image.MAX_IMAGE_PIXELS = None
 
+#RanS 8.2.21
+def check_level1_mag():
+    slide_files = glob.glob(os.path.join(r'/home/womer/project/All Data/TCGA', '*.svs'))
+    l1 = np.zeros(len(slide_files))
+    for ind, file in enumerate(tqdm(slide_files)):
+        img = openslide.open_slide(file)
+        try:
+            l1[ind] = int(img.level_downsamples[1])
+        except:
+            print('failed to read, img.level_downsamples:', img.level_downsamples)
+        if l1[ind]!=4:
+            print('file:', file)
+            print('l1:', l1[ind])
+    #print(l1)
+    '''if np.all(l1 == 4):
+        print('all downsamples are 4!')
+    else:
+        print(l1[l1!=4])'''
+
 
 def herohe_slides2images():
     slide_files_mrxs = glob.glob(os.path.join('All Data', 'HEROHE', '*.mrxs'))

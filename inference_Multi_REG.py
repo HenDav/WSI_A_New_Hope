@@ -19,6 +19,7 @@ parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[11210, 
 parser.add_argument('-nt', '--num_tiles', type=int, default=50, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -64,7 +65,8 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tiles_per_iter=tiles_per_iter,
                                   target_kind=args.target,
                                   folds=args.folds,
-                                  num_tiles=args.num_tiles
+                                  num_tiles=args.num_tiles,
+                                  mag=args.mag
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -76,6 +78,7 @@ NUM_SLIDES = len(inf_dset.valid_slide_indices)
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
+patch_scores[:] = np.nan
 slide_num = 0
 
 # The following 2 lines initialize variables to compute AUC for train dataset.

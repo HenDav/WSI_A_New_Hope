@@ -41,15 +41,10 @@ parser.add_argument('--c_param', default=0.1, type=float, help='color jitter par
 parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
 parser.add_argument('--tta', action='store_true', help='use test-time augmentation') #RanS 4.1.21
 parser.add_argument('--saved_model_path', default='none', type=str, help='path for saved model for MIL feature extractor')  # RanS 6.1.21
+parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
 
 args = parser.parse_args()
 eps = 1e-7
-
-#RanS 28.1.21
-#https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
-nvidia_smi.nvmlInit()
-handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
-# card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
 
 def norm_img(img):
@@ -147,10 +142,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
-            res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-            # print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
-            all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
-            all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
+            if DEVICE.type == 'cuda':
+                res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+                # print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
+                all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
+                all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
 
             # Calculate training accuracy
             correct_labeling += label.eq(target).cpu().detach().int().item()
@@ -418,6 +414,14 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_
 if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
+
+    # RanS 28.1.21
+    if DEVICE.type == 'cuda':
+        # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+        nvidia_smi.nvmlInit()
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+        # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
+
     # Data type definition:
     DATA_TYPE = 'WSI'
 
@@ -471,7 +475,8 @@ if __name__ == '__main__':
                                          transform_type=args.transform_type,
                                          DX=args.dx,
                                          get_images=args.images,
-                                         c_param=args.c_param)
+                                         c_param=args.c_param,
+                                         mag=args.mag)
 
     test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -486,7 +491,8 @@ if __name__ == '__main__':
                                         transform_type=test_transform,
                                         DX=args.dx,
                                         get_images=args.images,
-                                        tta=args.tta)
+                                        tta=args.tta,
+                                        mag=args.mag)
 
 
     sampler = None

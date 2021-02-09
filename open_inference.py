@@ -30,14 +30,46 @@ inference_files['exp38_epoch482_test_200'] = r'C:\Pathnet_results\MIL_general_tr
 '''inference_files['TCGA, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp70\Inference\Model_Epoch_34-Folds_[1]-Tiles_500.data'
 inference_files['TCGA, no mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp63,64\exp63\Inference\Model_Epoch_48-Folds_[1]-Tiles_500.data'
 inference_files['TCGA dx only, mean pixel regularization, test set, 500 patches'] = r'C:\Pathnet_results\MIL_general_try4\exp77\Inference\Model_Epoch_72-Folds_[1]-Tiles_500.data' '''
-inference_files['ex38_epoch1080_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1080-Folds_[1]-Tiles_2.data'
-inference_files['ex38_epoch1060_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1060-Folds_[1]-Tiles_2.data'
-inference_files['ex38_epoch1040_test_2'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1040-Folds_[1]-Tiles_2.data'
+#inference_files['ex38_epoch1080_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1080-Folds_[1]-Tiles_500.data'
+#inference_files['ex38_epoch1080_train_fold2_20'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1080-Folds_[2]-Tiles_20.data'
+#inference_files['ex38_epoch1060_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1060-Folds_[1]-Tiles_500.data'
+#inference_files['ex38_epoch1040_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1040-Folds_[1]-Tiles_500.data'
+#inference_files['ex38_epoch1020_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1020-Folds_[1]-Tiles_500.data'
+#inference_files['ex38_epoch1000_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1000-Folds_[1]-Tiles_500.data'
+#inference_files['ex38_epoch1080_test_500_single_infer'] = r'C:\Pathnet_results\MIL_general_try4\exp36,38,42,43\exp38\Inference\Model_Epoch_1080-Folds_[1]-Tiles_500_inference_REG.data'
+#inference_files['rons_epoch1607_test_500'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\Model_Epoch_1607-Folds_[1]-Tiles_500.data'
+#inference_files['rons_epoch1607_test_20_resnet_v2'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\out1_20tiles_resnet_v2_070221.data'
+#inference_files['rons_epoch1607_test_20_resnet_v2_no_softmax'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\out1_20tiles_resnet_v2_no_softmax_070221.data'
+#inference_files['rons_epoch1607_test_20_resnet_v2_no_softmax_fold2'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\out1_20tiles_resnet_v2_no_softmax_fold2_070221.data'
+inference_files['rons_epoch1467_20_patches_fold1_test_mag10'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\out1_20tiles_mag10_resnet_v2_no_softmax_fold1_080221.data'
+inference_files['rons_epoch1467_20_patches_fold1_test_mag20'] = r'C:\Pathnet_results\Rons_TCGA\fold1_compare\fold_1_ER - Ron\Inference\out1_20tiles_mag20_resnet_v2_no_softmax_fold1_080221.data'
+
 infer_type = 'REG'
+
+
+def auc_for_n_patches(patch_scores, n, all_targets):
+    max_n = patch_scores.shape[1]
+    n_iter = 10
+    auc_array = np.zeros(n_iter)
+    for iter in range(n_iter):
+        patches = np.random.choice(np.arange(max_n), n, replace=False)
+        chosen_patches = patch_scores[:, patches]
+        chosen_mean_scores = np.array([np.nanmean(chosen_patches[ii, chosen_patches[ii, :] > 0]) for ii in range(chosen_patches.shape[0])])
+
+        # TODO RanS 4.2.21 - handle slides with nans (less than max_n patches)
+        #temp fix - remove slides if all selected patches are nan
+        chosen_targets = np.array([all_targets[ii] for ii in range(len(all_targets)) if ~np.isnan(chosen_mean_scores[ii])])
+        chosen_mean_scores = np.array([chosen_mean_score for chosen_mean_score in chosen_mean_scores if ~np.isnan(chosen_mean_score)])
+        #chosen_targets = np.array([all_targets[patch] for patch in patches])
+        auc_array[iter] = roc_auc_score(chosen_targets, chosen_mean_scores)
+
+    auc_res = np.nanmean(auc_array)
+    return auc_res
+
 
 legend_labels = []
 roc_auc = []
-for _, key in enumerate(inference_files.keys()):
+for ind, key in enumerate(inference_files.keys()):
     with open(inference_files[key], 'rb') as filehandle:
         inference_data = pickle.load(filehandle)
 
@@ -45,9 +77,14 @@ for _, key in enumerate(inference_files.keys()):
         fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides, patch_scores = inference_data
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
+        #temp fix RanS 4.2.21
+        if patch_scores.ndim==3:
+            patch_scores = np.squeeze(patch_scores[:, ind,:])
         # all_scores = np.max(patch_scores, axis=1) #maxpool - temp! RanS 20.1.21
-        slide_score_std = patch_scores.std(axis=1)
-        slide_score_mean = patch_scores.mean(axis=1)
+        #slide_score_std = np.nanstd(patch_scores, axis=1)
+        #slide_score_mean = np.nanmean(patch_scores, axis=1)
+        slide_score_mean = np.array([np.nanmean(patch_scores[ii, patch_scores[ii, :] > 0]) for ii in range(patch_scores.shape[0])])
+        slide_score_std = np.array([np.nanstd(patch_scores[ii, patch_scores[ii, :] > 0]) for ii in range(patch_scores.shape[0])])
         slide_conf = np.abs(slide_score_mean - 0.5)
         correct_array = all_labels == all_targets
         std_wrong = slide_score_std[~correct_array]
@@ -56,6 +93,18 @@ for _, key in enumerate(inference_files.keys()):
         conf_correct = slide_conf[correct_array]
         # plt.hist([conf_wrong, conf_correct])
         # plt.legend(['confidence - wrong predictions','confidence - correct predictions'])
+
+        test_n_patches = False
+        if test_n_patches:
+            n_list = np.arange(1, 500, 1)
+            auc_n = np.zeros(n_list.shape)
+            for ind, n in enumerate(n_list):
+                auc_n[ind] = auc_for_n_patches(patch_scores, n, all_targets)
+            plt.plot(n_list,auc_n)
+            plt.xlabel('# of patches')
+            plt.ylabel('test AUC score')
+            plt.ylim([0,1])
+            plt.xlim([1, 500])
 
     elif infer_type == 'MIL':
         roc_auc1, roc_auc_err, acc, acc_err, bacc, bacc_err, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides = inference_data

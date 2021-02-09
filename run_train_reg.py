@@ -3,12 +3,12 @@ import subprocess
 infer = True
 
 if infer:
-    subprocess.run(['python', 'inference_REG.py',
+    subprocess.run(['python', 'inference_Multi_REG.py',
                     '--folds', '123456',
                     '--dataset', 'Breast',
-                    '--num_tiles', '10',
-                    '-ex', '169',
-                    '--from_epoch', '0'
+                    '--num_tiles', '20',
+                    '-ex', '38',
+                    '--from_epoch', '1080'
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',
@@ -28,6 +28,7 @@ else:
                     '--bootstrap',
                     #'--transform_type', 'aug_receptornet',
                     '--transform_type', 'flip',
+                    '-fast'
                     #'-im'
                     #'--balanced_sampling'
                 ])

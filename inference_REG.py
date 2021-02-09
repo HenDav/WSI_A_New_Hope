@@ -29,7 +29,7 @@ print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment
 output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=args.experiment)
 
 TILE_SIZE = 128
-tiles_per_iter = 2
+tiles_per_iter = 10
 if sys.platform == 'linux':
     TILE_SIZE = 256
     #data_path = '/home/womer/project'
@@ -61,6 +61,7 @@ new_slide = True
 slide_ind = 0
 n_slides = len(inf_dset.image_file_names)
 patch_scores = np.zeros([n_slides, args.num_tiles])
+patch_scores[:] = np.nan
 all_scores = np.zeros(n_slides)
 all_labels = np.zeros(n_slides)
 all_targets = np.zeros(n_slides)
@@ -84,6 +85,18 @@ with torch.no_grad():
             patch_count = 0
 
         data = data.squeeze(0)
+
+        # temp plot RanS 8.2.21
+        if False:
+            import matplotlib.pyplot as plt
+
+            i_patch = 1
+            img = np.array(np.transpose(np.squeeze(data[i_patch, :, :, :]), (2, 1, 0)))
+            img = (img - np.min(img)) / (np.max(img) - np.min(img))
+            plt.figure()
+            plt.imshow(img)
+            plt.figure()
+            # plt.imshow(orig_tiles[i_patch])
 
         data, target = data.to(DEVICE), target.to(DEVICE)
         model.to(DEVICE)
