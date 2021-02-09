@@ -186,7 +186,8 @@ class WSI_Master_Dataset(Dataset):
                 #RanS 9.2.21, preload slides
                 try:
                     image_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
-                    self.slides.append(openslide.open_slide(image_file))
+                    if sys.platform != 'win32':
+                        self.slides.append(openslide.open_slide(image_file))
                     basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
                     grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
@@ -219,10 +220,14 @@ class WSI_Master_Dataset(Dataset):
         '''basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])'''
-
+        if sys.platform == 'win32':
+            image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+            slide = openslide.open_slide(image_file)
+        else:
+            slide = self.slides[idx]
         #tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
         # RanS 9.2.21, preload slides
-        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], self.slides[idx], self.bag_size,
+        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], slide, self.bag_size,
                                         self.magnification[idx],
                                         # self.tile_size,
                                         int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
@@ -271,354 +276,6 @@ class WSI_Master_Dataset(Dataset):
 
         return X, label, time_list, self.image_file_names[idx], images
 
-#RanS 2.2.21, preloading all patches at the start of the epoch
-class WSI_REGdataset_fast(WSI_Master_Dataset):
-    def __init__(self,
-                 DataSet: str = 'TCGA',
-                 tile_size: int = 256,
-                 target_kind: str = 'ER',
-                 test_fold: int = 1,
-                 train: bool = True,
-                 print_timing: bool = False,
-                 transform_type: str = 'flip',
-                 DX: bool = False,
-                 get_images: bool = False,
-                 c_param: float = 0.1,
-                 n_patches: int = 50,
-                 mag: int = 20
-                 ):
-        super(WSI_REGdataset_fast, self).__init__(DataSet=DataSet,
-                                             tile_size=tile_size,
-                                             bag_size=1,
-                                             target_kind=target_kind,
-                                             test_fold=test_fold,
-                                             train=train,
-                                             print_timing=print_timing,
-                                             transform_type=transform_type,
-                                             DX=DX,
-                                             get_images=get_images,
-                                             train_type='REG',
-                                             c_param=c_param,
-                                             n_patches=n_patches,
-                                             mag=mag)
-
-        self.labels = torch.zeros(self.real_length, dtype=torch.long)
-        for i_slide, _ in enumerate(self.image_file_names):
-            self.labels[i_slide] = 1 if self.target[i_slide] == 'Positive' else 0
-        self.epoch_patches = torch.zeros([self.real_length, self.factor, 3, self.tile_size, self.tile_size],
-                                         requires_grad=False)
-        print(
-            'Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
-                .format(self.train_type,
-                        'Train' if self.train else 'Test',
-                        self.DataSet,
-                        self.target_kind,
-                        self.real_length,
-                        self.tile_size,
-                        self.bag_size,
-                        'Without' if transform_type == 'none' else 'With',
-                        self.test_fold,
-                        'ON' if self.DX else 'OFF'))
-
-
-    def __getitem__(self, idx):
-        #start = time.time()
-        i_slide = idx % self.real_length
-        i_patch = int(np.floor(idx/self.real_length))
-        tile = self.epoch_patches[i_slide][i_patch]
-        label = self.labels[i_slide]
-        image_file_names = self.image_file_names[i_slide]
-        time_list = [0] #TODO RanS 2.2.21
-        images = [0]  # TODO RanS 2.2.21
-
-        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        #if magnification_relation != 1:
-        if tile_sz != self.tile_size: #TODO RanS 9.2.21 - does not work for level1 - need to create an array of tile sizes
-            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-        else:
-            transform = self.transform
-        # print('31, i_slide=', str(i_slide))  # temp
-        # X will hold the tiles after all the transformations
-        # X = torch.zeros([self.factor, 3, self.tile_size, self.tile_size])
-        # print('32, i_slide=', str(i_slide))  # temp
-        #for i in range(self.factor):
-            # print('32, i_slide=', str(i_slide), 'i=', str(i))  # temp
-            # X[i] = transform(tiles[i])
-            #self.epoch_patches[i_slide, i] = transform(tiles[i])
-        X = transform(tile)
-
-        #end = time.time()
-        #print('patch read time: ', str(end - start))
-        return X, label, time_list, image_file_names, images
-
-
-    def get_epoch_slides(self, i_slide):
-        #start = time.time() #temp
-        #print('1, i_slide=', str(i_slide)) #temp
-        #print('11, i_slide=', str(i_slide))  # temp
-        basic_file_name = '.'.join(self.image_file_names[i_slide].split('.')[:-1])
-        #print('12, i_slide=', str(i_slide))  # temp
-        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], 'Grids',
-                                 basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-        #print('13, i_slide=', str(i_slide))  # temp
-        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
-
-        #print('2, i_slide=', str(i_slide)) #temp
-        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
-                                        self.magnification[i_slide],
-                                        int(self.tile_size / (1 - self.scale_factor)),
-                                        print_timing=self.print_time,
-                                        desired_mag = self.BASIC_MAGNIFICATION) #RanS 8.2.21
-
-        #print('3, i_slide=', str(i_slide)) #temp
-        #self.epoch_patches[i_slide] = tiles
-        #print('4, i_slide=', str(i_slide)) #temp
-        #end = time.time()  # temp
-        #print('read_slide_time:', str(end - start))  # temp RanS 2.2.21
-        #return X
-        return tiles
-
-
-    def init_epoch(self, n_workers):
-        start = time.time()
-        print('preparing patches')
-        self.epoch_patches = np.empty((self.real_length,), dtype=object)
-        #self.epoch_patches = torch.zeros([self.real_length, self.factor, 3, self.tile_size, self.tile_size], requires_grad=False)
-        slide_ind_list = [ii for ii in range(self.real_length)]
-
-        #list(map(self.get_epoch_slides, slide_ind_list))
-
-        with Pool(n_workers) as pool:
-            #list(pool.map(self.get_epoch_slides, slide_ind_list))
-            #pool.map(self.get_epoch_slides, slide_ind_list)
-            self.epoch_patches = pool.map(self.get_epoch_slides, slide_ind_list, 10)
-        #    pool.map(self.get_epoch_slides, slide_ind_list, 10)
-        '''it = pool.imap(self.get_epoch_slides, slide_ind_list, 1)
-        for ii in range(self.real_length):
-            print('ii=', str(ii)) #temp
-            self.epoch_patches[ii] = next(it)'''
-
-        end = time.time()
-        print('init_epoch time: ', str(end-start))
-
-
-    def get_epoch_slides1(self, i_slide):
-        start = time.time() #temp
-        print('1, i_slide=', str(i_slide)) #temp
-        print('11, i_slide=', str(i_slide))  # temp
-        basic_file_name = '.'.join(self.image_file_names[i_slide].split('.')[:-1])
-        print('12, i_slide=', str(i_slide))  # temp
-        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], 'Grids',
-                                 basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-        print('13, i_slide=', str(i_slide))  # temp
-        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
-
-        print('2, i_slide=', str(i_slide)) #temp
-        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
-                                        self.magnification[i_slide],
-                                        int(self.tile_size / (1 - self.scale_factor)),
-                                        print_timing=self.print_time,
-                                        desired_mag = self.BASIC_MAGNIFICATION) #RanS 8.2.21
-
-        print('3, i_slide=', str(i_slide)) #temp
-        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        #if magnification_relation != 1:
-        if tile_sz != self.tile_size:
-            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-        else:
-            transform = self.transform
-        print('31, i_slide=', str(i_slide))  # temp
-        # X will hold the tiles after all the transformations
-        X = torch.zeros([self.factor, 3, self.tile_size, self.tile_size])
-        print('32, i_slide=', str(i_slide))  # temp
-        for i in range(self.factor):
-            X[i] = transform(tiles[i])
-
-        print('4, i_slide=', str(i_slide)) #temp
-        end = time.time()  # temp
-        print('read_slide_time:', str(end - start))  # temp RanS 2.2.21
-        return X
-
-    def init_epoch_1process(self):
-        start_init_epoch = time.time()
-        self.labels = torch.zeros(self.real_length, dtype=torch.long)
-        self.epoch_patches = torch.zeros([self.real_length, self.factor, 3, self.tile_size, self.tile_size], requires_grad=False)
-
-        for i_slide, _ in enumerate(self.image_file_names):
-
-            # X will hold the tiles after all the transformations
-            X = torch.zeros([self.factor, 3, self.tile_size, self.tile_size])
-            basic_file_name = '.'.join(self.image_file_names[i_slide].split('.')[:-1])
-            grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], 'Grids',
-                                     basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-            image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
-
-            start_slide = time.time()
-            tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
-                                                     self.magnification[i_slide],
-                                                     int(self.tile_size / (1 - self.scale_factor)),
-                                                     print_timing=self.print_time,
-                                                     desired_mag=self.BASIC_MAGNIFICATION)  # RanS 8.2.21
-
-            read_slide_time = time.time()  # temp
-            print('read_slide_time:', str(read_slide_time - start_slide))  # temp RanS 2.2.21
-
-            #self.labels[i_slide] = [1] if self.target[i_slide] == 'Positive' else [0]
-            self.labels[i_slide] = 1 if self.target[i_slide] == 'Positive' else 0
-
-            #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-            #if magnification_relation != 1:
-            if tile_sz != self.tile_size:
-                transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-            else:
-                transform = self.transform
-
-            for i in range(self.factor):
-                X[i] = transform(tiles[i])
-
-            self.epoch_patches[i_slide] = X
-            end_slide = time.time()
-            slide_time = end_slide - read_slide_time
-            print('aug_time:', str(slide_time)) # temp RanS 2.2.21
-
-
-        epoch_init_time = time.time() - start_init_epoch
-        #print('epoch_init_time:', str(epoch_init_time)) # temp RanS 2.2.21
-        #labels = torch.LongTensor(labels)
-        return epoch_init_time
-
-
-class WSI_REGdataset_fast2(WSI_Master_Dataset):
-    def __init__(self,
-                 DataSet: str = 'TCGA',
-                 tile_size: int = 256,
-                 target_kind: str = 'ER',
-                 test_fold: int = 1,
-                 train: bool = True,
-                 print_timing: bool = False,
-                 transform_type: str = 'flip',
-                 DX : bool = False,
-                 get_images: bool = False,
-                 c_param: float = 0.1,
-                 n_patches: int = 50,
-                 mag: int = 20
-                 ):
-        super(WSI_REGdataset_fast2, self).__init__(DataSet=DataSet,
-                                             tile_size=tile_size,
-                                             bag_size=1,
-                                             target_kind=target_kind,
-                                             test_fold=test_fold,
-                                             train=train,
-                                             print_timing=print_timing,
-                                             transform_type=transform_type,
-                                             DX=DX,
-                                             get_images=get_images,
-                                             train_type='REG',
-                                             c_param=c_param,
-                                             n_patches=n_patches,
-                                             mag=mag)
-
-        self.epoch_patches = np.empty((self.real_length,), dtype=object)
-        self.loaded_slides = np.zeros(self.real_length, dtype=int)
-        self.count2 = 0 #temp
-        self.count1 = 0 #temp
-        print(
-            'Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
-                .format(self.train_type,
-                        'Train' if self.train else 'Test',
-                        self.DataSet,
-                        self.target_kind,
-                        self.real_length,
-                        self.tile_size,
-                        self.bag_size,
-                        'Without' if transform_type == 'none' else 'With',
-                        self.test_fold,
-                        'ON' if self.DX else 'OFF'))
-
-
-    def init_epoch(self):
-        #self.epoch_patches = torch.zeros([self.real_length, self.factor, 3, self.tile_size, self.tile_size], requires_grad=False)
-        #self.epoch_patches = np.zeros([self.real_length, self.factor])
-        self.epoch_patches = np.empty((self.real_length,), dtype=object)
-        self.loaded_slides = np.zeros(self.real_length, dtype=int)
-        self.count2 = 0 #temp
-        self.count1 = 0 #temp
-
-    def __getitem__(self, idx):
-        start_getitem = time.time()
-        i_slide = idx % self.real_length
-
-        if self.loaded_slides[i_slide] > 0: #slide was already loaded on this epoch
-            #tile = torch.squeeze(self.epoch_patches[i_slide, self.loaded_slides[i_slide]])
-            tile = self.epoch_patches[i_slide][self.loaded_slides[i_slide]]
-            self.loaded_slides[i_slide] += 1
-
-            self.count2 += 1 #temp
-            print('count2=', str(self.count2)) #temp
-            #time2 = time.time() #temp
-            #print('time2:', str(time2-start_getitem)) #temp
-        else:
-            basic_file_name = '.'.join(self.image_file_names[i_slide].split('.')[:-1])
-            grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], 'Grids',
-                                     basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-            image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
-
-            all_slide_tiles, _, tile_sz = _choose_data(grid_file, image_file, self.factor,
-                                            self.magnification[i_slide],
-                                            int(self.tile_size / (1 - self.scale_factor)),
-                                            print_timing=self.print_time,
-                                            desired_mag=self.BASIC_MAGNIFICATION)  # RanS 8.2.21
-            tile = all_slide_tiles[0]
-            self.epoch_patches[i_slide] = all_slide_tiles
-            self.loaded_slides[i_slide] += 1
-
-            self.count1 += 1  # temp
-            print('count1=', str(self.count1))  # temp
-            #time1 = time.time()  # temp
-            #print('time1:', str(time1 - start_getitem))  # temp
-
-        label = [1] if self.target[i_slide] == 'Positive' else [0]
-        label = torch.LongTensor(label)
-
-        # X will hold the images after all the transformations
-        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
-
-        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        #if magnification_relation != 1:
-        if tile_sz != self.tile_size:
-            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-        else:
-            transform = self.transform
-
-        start_aug = time.time()
-        #for i in range(self.bag_size):
-        #    X[i] = transform(tiles[i])
-        X = transform(tile)
-
-        if self.get_images:
-            images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
-            trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
-            #for i in range(self.bag_size):
-            #    images[i] = trans(tile[i])
-            images = trans(tile)
-        else:
-            images = 0
-
-        aug_time = (time.time() - start_aug) / self.bag_size
-        total_time = time.time() - start_getitem
-        '''if self.print_time:
-            time_list = (time_list[0], time_list[1], aug_time, total_time)
-        else:
-            time_list = [0]'''
-        time_list = 0 #TODO
-
-        debug_patches_and_transformations = False
-        if debug_patches_and_transformations:
-            show_patches_and_transformations(X, images, tile, self.scale_factor, self.tile_size)
-
-        return X, label, time_list, self.image_file_names[i_slide], images
-
-########################################################################################################################
 
 class WSI_MILdataset(WSI_Master_Dataset):
     def __init__(self,
@@ -795,6 +452,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         if self.tiles_to_go is None:
             self.tiles_to_go = self.num_patches[self.slide_num]
             self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
+            self.current_slide = openslide.open_slide(self.current_file)
 
             self.initial_num_patches = self.num_patches[self.slide_num]
 
@@ -810,7 +468,8 @@ class Infer_Dataset(WSI_Master_Dataset):
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
         downsample = int(self.magnification[idx] / self.BASIC_MAGNIFICATION)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
-        tiles, time_list, tile_sz = _get_tiles(self.current_file,
+        #tiles, time_list, tile_sz = _get_tiles(self.current_file,
+        tiles, time_list, tile_sz = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
                                       self.print_time,

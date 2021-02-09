@@ -41,7 +41,7 @@ def make_dir(dirname):
 
 #def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
 #RanS 9.2.21, preload slides
-def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
+def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -80,7 +80,7 @@ def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int =
 
 #def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
 #RanS 9.2.21, preload slides
-def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
+def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
     """
     This function returns an array of tiles
     :param file_name:
@@ -138,16 +138,10 @@ def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: b
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         try:
-            #temp
-            '''t1 = time.time()
-            image = img.read_region((loc[1], loc[0]), 1, (256, 256)).convert('RGB')
-            t2 = time.time()
-            print(t2-t1)'''
-
             #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
             image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
         except:
-            print('failed to read slide ' + file_name + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
+            print('failed to read slide ' + str(slide) + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
             print('taking blank patch instead')
             image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
         tiles_PIL.append(image)
