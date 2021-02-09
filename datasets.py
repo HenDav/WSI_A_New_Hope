@@ -205,12 +205,12 @@ class WSI_Master_Dataset(Dataset):
         #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids_Old', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
 
-        tiles, time_list = _choose_data(grid_file, image_file, self.bag_size,
+        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
                                         self.magnification[idx],
                                         # self.tile_size,
                                         int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
                                         print_timing=self.print_time,
-                                        desired_mag = self.BASIC_MAGNIFICATION) #RanS 8.2.21
+                                        desired_mag=self.BASIC_MAGNIFICATION) #RanS 8.2.21
 
         #time1 = time.time()  # temp
         #print('time1:', str(time1 - start_getitem))  # temp
@@ -222,9 +222,10 @@ class WSI_Master_Dataset(Dataset):
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
         #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
-        magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
-        if magnification_relation != 1:
-            transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform ])
+        #magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
+        #if magnification_relation != 1:
+        if tile_sz != self.tile_size:
+            transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
 
@@ -313,8 +314,9 @@ class WSI_REGdataset_fast(WSI_Master_Dataset):
         time_list = [0] #TODO RanS 2.2.21
         images = [0]  # TODO RanS 2.2.21
 
-        magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        if magnification_relation != 1:
+        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
+        #if magnification_relation != 1:
+        if tile_sz != self.tile_size: #TODO RanS 9.2.21 - does not work for level1 - need to create an array of tile sizes
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
@@ -345,7 +347,7 @@ class WSI_REGdataset_fast(WSI_Master_Dataset):
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
 
         #print('2, i_slide=', str(i_slide)) #temp
-        tiles, time_list = _choose_data(grid_file, image_file, self.factor,
+        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
                                         self.magnification[i_slide],
                                         int(self.tile_size / (1 - self.scale_factor)),
                                         print_timing=self.print_time,
@@ -395,15 +397,16 @@ class WSI_REGdataset_fast(WSI_Master_Dataset):
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
 
         print('2, i_slide=', str(i_slide)) #temp
-        tiles, time_list = _choose_data(grid_file, image_file, self.factor,
+        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
                                         self.magnification[i_slide],
                                         int(self.tile_size / (1 - self.scale_factor)),
                                         print_timing=self.print_time,
                                         desired_mag = self.BASIC_MAGNIFICATION) #RanS 8.2.21
 
         print('3, i_slide=', str(i_slide)) #temp
-        magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        if magnification_relation != 1:
+        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
+        #if magnification_relation != 1:
+        if tile_sz != self.tile_size:
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
@@ -434,11 +437,11 @@ class WSI_REGdataset_fast(WSI_Master_Dataset):
             image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
 
             start_slide = time.time()
-            tiles, time_list = _choose_data(grid_file, image_file, self.factor,
-                                            self.magnification[i_slide],
-                                            int(self.tile_size / (1 - self.scale_factor)),
-                                            print_timing=self.print_time,
-                                            desired_mag=self.BASIC_MAGNIFICATION)  # RanS 8.2.21
+            tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.factor,
+                                                     self.magnification[i_slide],
+                                                     int(self.tile_size / (1 - self.scale_factor)),
+                                                     print_timing=self.print_time,
+                                                     desired_mag=self.BASIC_MAGNIFICATION)  # RanS 8.2.21
 
             read_slide_time = time.time()  # temp
             print('read_slide_time:', str(read_slide_time - start_slide))  # temp RanS 2.2.21
@@ -446,8 +449,9 @@ class WSI_REGdataset_fast(WSI_Master_Dataset):
             #self.labels[i_slide] = [1] if self.target[i_slide] == 'Positive' else [0]
             self.labels[i_slide] = 1 if self.target[i_slide] == 'Positive' else 0
 
-            magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-            if magnification_relation != 1:
+            #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
+            #if magnification_relation != 1:
+            if tile_sz != self.tile_size:
                 transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
             else:
                 transform = self.transform
@@ -542,7 +546,7 @@ class WSI_REGdataset_fast2(WSI_Master_Dataset):
                                      basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
             image_file = os.path.join(self.ROOT_PATH, self.image_path_names[i_slide], self.image_file_names[i_slide])
 
-            all_slide_tiles, _ = _choose_data(grid_file, image_file, self.factor,
+            all_slide_tiles, _, tile_sz = _choose_data(grid_file, image_file, self.factor,
                                             self.magnification[i_slide],
                                             int(self.tile_size / (1 - self.scale_factor)),
                                             print_timing=self.print_time,
@@ -562,8 +566,9 @@ class WSI_REGdataset_fast2(WSI_Master_Dataset):
         # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
-        magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
-        if magnification_relation != 1:
+        #magnification_relation = self.magnification[i_slide] / self.BASIC_MAGNIFICATION
+        #if magnification_relation != 1:
+        if tile_sz != self.tile_size:
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
@@ -786,17 +791,19 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.tiles_to_go -= self.tiles_per_iter
 
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
-        magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
-        adjusted_tile_size = int(self.tile_size * magnification_relation) #RanS 30.12.20
-        tiles, time_list = _get_tiles(self.current_file,
+        downsample = int(self.magnification[idx] / self.BASIC_MAGNIFICATION)
+        adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
+        tiles, time_list, tile_sz = _get_tiles(self.current_file,
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
-                                      self.print_time)
+                                      self.print_time,
+                                      downsample)
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 
         #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
-        if magnification_relation != 1:
+        #if downsample != 1:
+        if tile_sz != self.tile_size:
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
@@ -821,7 +828,8 @@ class Infer_Dataset(WSI_Master_Dataset):
             images = torch.zeros_like(X)
             trans = transforms.Compose(
                 [transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
-            if magnification_relation != 1:
+            #if magnification_relation != 1:
+            if tile_sz != self.tile_size:
                 trans = transforms.Compose([transforms.Resize(self.tile_size), trans])
             for i in range(self.tiles_per_iter):
                 images[i] = trans(tiles[i])

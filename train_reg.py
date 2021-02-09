@@ -16,7 +16,6 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
-from adabelief_pytorch import AdaBelief
 import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
@@ -40,7 +39,6 @@ parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to e
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
-parser.add_argument('-ada', dest='adabelief', action='store_true', help='use adabelief optimizer') #RanS 20.1.21
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
 parser.add_argument('-fast', dest='fast_preloading', action='store_true', help='preload patches') #RanS 2.2.21
 parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
@@ -508,12 +506,7 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    if args.adabelief:
-        print('using AdaBelief optimizer')
-        optimizer = AdaBelief(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=1e-8, betas=(0.9, 0.999), weight_decouple=True, rectify=False)
-        #optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    else:
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True

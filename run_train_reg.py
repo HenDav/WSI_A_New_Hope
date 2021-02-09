@@ -1,6 +1,6 @@
 import subprocess
 
-infer = True
+infer = False
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -28,7 +28,8 @@ else:
                     '--bootstrap',
                     #'--transform_type', 'aug_receptornet',
                     '--transform_type', 'flip',
-                    '-fast'
+                    #'-fast',
+                    '--mag', str(10),
                     #'-im'
                     #'--balanced_sampling'
                 ])

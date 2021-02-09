@@ -48,7 +48,8 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
     """
     #BASIC_OBJ_POWER = 20
     #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    adjusted_tile_size = int(tile_size * (magnification / desired_mag))  # RanS 22.12.20
+    downsample = int(magnification / desired_mag)
+    adjusted_tile_size = int(tile_size * downsample)  # RanS 22.12.20
     # open grid list:
     with open(grid_file, 'rb') as filehandle:
         grid_list = pickle.load(filehandle)
@@ -56,7 +57,7 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
     # Choose locations from the grid:
     loc_num = len(grid_list)
 
-    #temp try RanS 4.1.21
+    #print grid issues, RanS 4.1.21
     try:
         idxs = sample(range(loc_num), how_many)
     except:
@@ -66,12 +67,12 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
 
     locs = [grid_list[idx] for idx in idxs]
 
-    image_tiles, time_list = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing)
+    image_tiles, time_list, tile_sz = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
 
-    return image_tiles, time_list
+    return image_tiles, time_list, tile_sz
 
 
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False):
+def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
     """
     This function returns an array of tiles
     :param file_name:
@@ -87,6 +88,13 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
 
     tiles_num = len(locations)
 
+    #RanS 9.2.21 - use level1 if applicable
+    level1_downsample = int(img.level_downsamples[1])
+    if downsample>=level1_downsample:
+        level = 1
+        tile_sz = int(tile_sz / level1_downsample)
+    else:
+        level = 0
     #RanS 20.12.20 - plot thumbnail with tile locations
     temp = False
     if temp:
@@ -120,7 +128,14 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
     for idx, loc in enumerate(locations):
         # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         try:
-            image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+            #temp
+            '''t1 = time.time()
+            image = img.read_region((loc[1], loc[0]), 0, (1024, 1024)).convert('RGB')
+            t2 = time.time()
+            print(t2-t1)'''
+
+            #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
+            image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
         except:
             print('failed to read slide ' + file_name + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
             print('taking blank patch instead')
@@ -135,7 +150,7 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
     else:
         time_list = [0]
 
-    return tiles_PIL, time_list
+    return tiles_PIL, time_list, tile_sz
 
 
 def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
