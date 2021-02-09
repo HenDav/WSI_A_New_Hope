@@ -14,6 +14,7 @@ from utils import HEDColorJitter, define_transformations, define_data_root, asse
 from utils import show_patches_and_transformations, get_breast_dir_dict
 import matplotlib.pyplot as plt
 from torch.multiprocessing import Pool
+import openslide #RanS 9.2.21, preload slides
 
 
 MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
@@ -170,6 +171,8 @@ class WSI_Master_Dataset(Dataset):
         self.tissue_tiles = []
         self.target = []
         self.magnification = []
+        self.slides = [] #RanS 9.2.21, preload slides
+        self.grid_lists = [] #RanS 9.2.21, preload slides
 
         for _, index in enumerate(valid_slide_indices):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
@@ -179,6 +182,18 @@ class WSI_Master_Dataset(Dataset):
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
+
+                #RanS 9.2.21, preload slides
+                try:
+                    image_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
+                    self.slides.append(openslide.open_slide(image_file))
+                    basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
+                    grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    with open(grid_file, 'rb') as filehandle:
+                        grid_list = pickle.load(filehandle)
+                        self.grid_lists.append(grid_list)
+                except:
+                    print('aa')
 
         # Setting the transformation:
         self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
@@ -200,12 +215,14 @@ class WSI_Master_Dataset(Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
-        basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
+        #cancelled RanS 9.2.21, preload slides
+        '''basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-        #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids_Old', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])'''
 
-        tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
+        #tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
+        # RanS 9.2.21, preload slides
+        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], self.slides[idx], self.bag_size,
                                         self.magnification[idx],
                                         # self.tile_size,
                                         int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale

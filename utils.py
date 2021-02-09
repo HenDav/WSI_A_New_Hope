@@ -39,7 +39,9 @@ def make_dir(dirname):
             raise
 
 
-def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
+#def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
+#RanS 9.2.21, preload slides
+def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -51,8 +53,10 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
     downsample = int(magnification / desired_mag)
     adjusted_tile_size = int(tile_size * downsample)  # RanS 22.12.20
     # open grid list:
-    with open(grid_file, 'rb') as filehandle:
-        grid_list = pickle.load(filehandle)
+
+    #cancelled RanS 9.2.21, preload slides
+    '''with open(grid_file, 'rb') as filehandle:
+        grid_list = pickle.load(filehandle)'''
 
     # Choose locations from the grid:
     loc_num = len(grid_list)
@@ -61,18 +65,22 @@ def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: 
     try:
         idxs = sample(range(loc_num), how_many)
     except:
-        print('image_file:', image_file)
+        #print('image_file:', image_file) #cancelled RanS 9.2.21, preload slides
         print('how_many:', str(how_many))
         print('loc_num:', str(loc_num))
 
     locs = [grid_list[idx] for idx in idxs]
 
-    image_tiles, time_list, tile_sz = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
+    #image_tiles, time_list, tile_sz = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
+    #RanS 9.2.21, preload slides
+    image_tiles, time_list, tile_sz = _get_tiles(slide, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
 
     return image_tiles, time_list, tile_sz
 
 
-def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
+#def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
+#RanS 9.2.21, preload slides
+def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
     """
     This function returns an array of tiles
     :param file_name:
@@ -82,10 +90,12 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
     """
 
     # open the .svs file:
-    start_openslide = time.time()
+    #RanS 9.2.21, preload slides
+    img = slide
+    '''start_openslide = time.time()
     img = openslide.open_slide(file_name)
-    end_openslide = time.time()
-
+    end_openslide = time.time()'''
+    #print(end_openslide-start_openslide)
     tiles_num = len(locations)
 
     #RanS 9.2.21 - use level1 if applicable
@@ -130,7 +140,7 @@ def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timin
         try:
             #temp
             '''t1 = time.time()
-            image = img.read_region((loc[1], loc[0]), 0, (1024, 1024)).convert('RGB')
+            image = img.read_region((loc[1], loc[0]), 1, (256, 256)).convert('RGB')
             t2 = time.time()
             print(t2-t1)'''
 
@@ -512,9 +522,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type in ['pcbnfrsc', 'pcbnfrs']:  # parameterized color, blur, noise, flip, rotate, scale, +-cutout
-        #elif transform_type == 'c_0_05_bnfrsc' or 'c_0_05_bnfrs':  # color 0.1, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
-            #c_param = 0.05
             transform1 = \
                 transforms.Compose([
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),

@@ -432,7 +432,7 @@ if __name__ == '__main__':
 
     if sys.platform == 'linux':
         TILE_SIZE = 256
-        TILES_PER_BAG = 50
+        #TILES_PER_BAG = 50 #temp cancelled RanS 9.2.21
         if args.model == 'receptornet_preact_resnet50':
             TILES_PER_BAG = 10 #RanS 6.1.21, preact resnet is too heavy
     if sys.platform == 'win32':
@@ -518,7 +518,8 @@ if __name__ == '__main__':
                                                                  #, replacement=False)
         do_shuffle = False
 
-    num_workers = cpu_available * 8  # RanS 28.1.21
+    #num_workers = cpu_available * 8  # RanS 28.1.21
+    num_workers = cpu_available  # RanS 9.2.21
     print('num workers = ', num_workers)
     train_loader = DataLoader(train_dset, batch_size=1, shuffle=do_shuffle, num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=True)
