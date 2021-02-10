@@ -245,7 +245,7 @@ if __name__ == '__main__':
                                                      tiles_per_bag=1,
                                                      num_bags=10,
                                                      DX=args.dx,
-                                                     DataSet=args.dataset,
+                                                     DataSet_name=args.dataset,
                                                      Receptor=args.target,
                                                      MultiSlide=False)
     else:

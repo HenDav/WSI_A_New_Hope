@@ -184,7 +184,7 @@ if __name__ == '__main__':
                                                     tiles_per_bag=args.tiles_per_bag,
                                                     num_bags=args.num_bags,
                                                     DX=args.dx,
-                                                    DataSet=args.dataset,
+                                                    DataSet_name=args.dataset,
                                                     Receptor=args.target,
                                                     MultiSlide=False)
 

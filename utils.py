@@ -249,10 +249,22 @@ def get_cpu():
              tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
              epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
              MultiSlide: bool = False):'''
-def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
-             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: list = ['TCGA'],
-             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
-             MultiSlide: bool = False):
+def run_data(experiment: str = None,
+             test_fold: int = 1,
+             transform_type: str = 'none',
+             tile_size: int = 256,
+             tiles_per_bag: int = 50,
+             num_bags: int = 1,
+             DX: bool = False,
+             DataSet_name: list = ['TCGA'],
+             DataSet_size: tuple = None,
+             DataSet_Slide_magnification = None,
+             epoch: int = None,
+             model: str = None,
+             transformation_string: str = None,
+             Receptor: str = None,
+             MultiSlide: bool = False,
+             test_mean_auc: float = None):
     """
     This function writes the run data to file
     :param experiment:
@@ -285,8 +297,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
             experiment = 1
 
         location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
-        if type(DataSet) is not list:
-            DataSet = [DataSet]
+        if type(DataSet_name) is not list:
+            DataSet_name = [DataSet_name]
 
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
@@ -297,7 +309,7 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
                     'No. of Bags': num_bags,
                     'Location': location,
                     'DX': DX,
-                    'DataSet': ' / '.join(DataSet),
+                    'DataSet': ' / '.join(DataSet_name),
                     'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,
@@ -327,6 +339,23 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         run_DF.at[index, 'Transformation String'] = transformation_string
         run_DF.to_excel(run_file_name)
 
+    elif experiment is not None and DataSet_size is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'Train DataSet Size'] = DataSet_size[0]
+        run_DF.at[index, 'Test DataSet Size'] = DataSet_size[1]
+        run_DF.to_excel(run_file_name)
+
+    elif experiment is not None and DataSet_Slide_magnification is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'Slide Magnification'] = DataSet_Slide_magnification
+        run_DF.to_excel(run_file_name)
+
+    elif experiment is not None and test_mean_auc is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'TestSet Mean AUC'] = test_mean_auc
+        run_DF.to_excel(run_file_name)
+
+
     # In case we want to continue from a previous training session
     else:
         location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
@@ -336,13 +365,13 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         num_bags = int(run_DF_exp.loc[[experiment], ['No. of Bags']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
-        DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
+        DataSet_name = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag,\
-               num_bags, DX, DataSet, Receptor, MultiSlide, model_name
+        return location, test_fold, transformations, tile_size, tiles_per_bag, \
+               num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
@@ -491,9 +520,10 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                                                   std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
     else:
         final_transform = transforms.Compose([transforms.ToTensor(),
-                                          transforms.Normalize(
-                                              mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                              std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+                                              transforms.Normalize(
+                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                              ])
     scale_factor = 0
     # if self.transform and self.train:
     if transform_type != 'none' and train:
@@ -505,7 +535,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
         elif transform_type == 'rvf': #rotate, vertical flip
             transform1 = \
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
-                                     transforms.RandomVerticalFlip()])
+                                    transforms.RandomVerticalFlip()])
         elif transform_type in ['cbnfrsc', 'cbnfrs']:  # color, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             transform1 = \
