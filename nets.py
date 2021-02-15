@@ -628,7 +628,7 @@ class Bottleneck(nn.Module):
 
 
 def resnet50_pretrained():
-    model = resnet50(pretrained=False, progress=True)
+    model = resnet50(pretrained=True, progress=True)
     model.model_name = THIS_FILE + 'resnet50_pretrained()'
     print('Using model: ', model.model_name)
     return model
