@@ -2,12 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import resnet
+from torchvision.models import resnet, resnet50
 import os
 
-#THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
-
 
 '''
 class Flatten(nn.Module):
@@ -629,16 +627,11 @@ class Bottleneck(nn.Module):
         return out
 
 
-def resnet50(pretrained=False, progress=True, **kwargs):
-    r"""ResNet-50 model from
-    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   **kwargs)
+def resnet50_pretrained():
+    model = resnet50(pretrained=False, progress=True)
+    model.model_name = THIS_FILE + 'resnet50_pretrained()'
+    print('Using model: ', model.model_name)
+    return model
 
 def ResNet_50_NO_downsample():
     """
