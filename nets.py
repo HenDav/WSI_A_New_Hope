@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.models import resnet, resnet50
+from torchvision.models.resnet import ResNet
 import os
+from torchvision.models.utils import load_state_dict_from_url
 
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 
@@ -214,18 +216,24 @@ class ResNet34(nn.Module):
 
 class ResNet50(nn.Module):
     def __init__(self,
+                 pretrained=False,
                  num_classes: int = 2):
         super().__init__()
         self.model_name = THIS_FILE + 'ResNet50()'
         print('Using model {}'.format(self.model_name))
+
         self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
+
+        if pretrained:
+            state_dict = load_state_dict_from_url('https://download.pytorch.org/models/resnet50-19c8e357.pth')
+            self.basic_resnet.load_state_dict(state_dict)
+
 
     def forward(self, x):
         if len(x.shape) == 5:
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
-        #x = x.squeeze()
         x = self.basic_resnet(x)
         x = torch.nn.functional.softmax(x, dim=1)
         return x
@@ -522,7 +530,7 @@ class ResNet_NO_downsample(nn.Module):
 
 
 # def _resnet(arch, block, layers, pretrained, progress, **kwargs):
-def _resnet(arch, block, layers, progress, **kwargs):
+def _resnet_NO_DOWNSAMPLE(arch, block, layers, progress, **kwargs):
     model = ResNet_NO_downsample(block, layers, **kwargs)
     return model
 
@@ -628,8 +636,9 @@ class Bottleneck(nn.Module):
 
 
 def resnet50_pretrained():
-    model = resnet50(pretrained=True, progress=True)
+    model = resnet50(pretrained=True, progress=True, )
     model.model_name = THIS_FILE + 'resnet50_pretrained()'
+    model.fc.out_features = 2
     print('Using model: ', model.model_name)
     return model
 

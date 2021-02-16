@@ -80,7 +80,7 @@ def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int =
 
 #def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
 #RanS 9.2.21, preload slides
-def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
+def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
     """
     This function returns an array of tiles
     :param file_name:
@@ -92,10 +92,7 @@ def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: b
     # open the .svs file:
     #RanS 9.2.21, preload slides
     img = slide
-    '''start_openslide = time.time()
-    img = openslide.open_slide(file_name)
-    end_openslide = time.time()'''
-    #print(end_openslide-start_openslide)
+
     tiles_num = len(locations)
 
     #RanS 9.2.21 - use level1 if applicable
@@ -136,18 +133,34 @@ def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: b
 
     start_gettiles = time.time()
     for idx, loc in enumerate(locations):
-        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         try:
-            #temp
-            '''t1 = time.time()
-            image = img.read_region((loc[1], loc[0]), 1, (256, 256)).convert('RGB')
-            t2 = time.time()
-            print(t2-t1)'''
-
+            # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
             #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-            image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
+
+            # Shift each tile by half the size of the original tile size (in each dimension).
+            # There is a need to check the validity of the tile location within the slide and correct it's coordinates if needed
+
+            tile_shifting = sample(range(-128, 128), 2)
+            new_loc_init = {'Top': loc[0] - tile_shifting[0],
+                            'Left': loc[1] - tile_shifting[1]}
+            new_loc_end = {'Bottom': new_loc_init['Top'] + tile_sz,
+                           'Right': new_loc_init['Left'] + tile_sz}
+
+            if new_loc_init['Top'] < 0:
+                new_loc_init['Top'] += abs(new_loc_init['Top'])
+            if new_loc_init['Left'] < 0:
+                new_loc_init['Left'] += abs(new_loc_init['Left'])
+            if new_loc_end['Bottom'] > slide.dimensions[1]:
+                delta_Height = new_loc_end['Bottom'] - slide.dimensions[1]
+                new_loc_init['Top'] -= delta_Height
+            if new_loc_end['Right'] > slide.dimensions[0]:
+                delta_Width = new_loc_end['Right'] - slide.dimensions[0]
+                new_loc_init['Left'] -= delta_Width
+
+            # image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
+            image = img.read_region((new_loc_init['Left'], new_loc_init['Top']), level, (tile_sz, tile_sz)).convert('RGB')
         except:
-            print('failed to read slide ' + file_name + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
+            print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
             print('taking blank patch instead')
             image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
         tiles_PIL.append(image)
@@ -156,7 +169,7 @@ def _get_tiles(slide: str, locations: List[Tuple], tile_sz: int, print_timing: b
 
 
     if print_timing:
-        time_list = [end_openslide - start_openslide, (end_gettiles - start_gettiles) / tiles_num]
+        time_list = [0, (end_gettiles - start_gettiles) / tiles_num]
     else:
         time_list = [0]
 
@@ -296,7 +309,7 @@ def run_data(experiment: str = None,
         else:
             experiment = 1
 
-        location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
+        location = 'runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
         if type(DataSet_name) is not list:
             DataSet_name = [DataSet_name]
 
