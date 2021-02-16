@@ -40,7 +40,6 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
-parser.add_argument('-fast', dest='fast_preloading', action='store_true', help='preload patches') #RanS 2.2.21
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 args = parser.parse_args()
 
@@ -73,10 +72,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
-
-        #RanS 2.2.21
-        if args.fast_preloading:
-            dloader_train.dataset.init_epoch(num_workers)
 
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
@@ -229,10 +224,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.eval()
 
     with torch.no_grad():
-        # RanS 2.2.21
-        if args.fast_preloading:
-            data_loader.dataset.init_epoch(num_workers)
-
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
@@ -404,58 +395,29 @@ if __name__ == '__main__':
     print('num workers = ', num_workers)
 
     # Get data:
-    #RanS 2.2.21
-    if args.fast_preloading:
-        train_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type,
-                                             n_patches=args.n_patches_train,
-                                             c_param=args.c_param,
-                                             get_images=args.images,
-                                             mag=args.mag
-                                             )
-
-        test_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            transform_type='none',
-                                            n_patches=args.n_patches_test,
-                                            get_images=args.images,
-                                            mag=args.mag
-                                            )
-    else:
-        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type,
-                                             n_patches=args.n_patches_train,
-                                             c_param=args.c_param,
-                                             get_images=args.images,
-                                             mag=args.mag
-                                             )
-
-        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            transform_type='none',
-                                            n_patches=args.n_patches_test,
-                                            get_images=args.images,
-                                            mag=args.mag
-                                            )
-
+    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                         tile_size=TILE_SIZE,
+                                         target_kind=args.target,
+                                         test_fold=args.test_fold,
+                                         train=True,
+                                         print_timing=args.time,
+                                         transform_type=args.transform_type,
+                                         n_patches=args.n_patches_train,
+                                         c_param=args.c_param,
+                                         get_images=args.images,
+                                         mag=args.mag
+                                         )
+    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                        tile_size=TILE_SIZE,
+                                        target_kind=args.target,
+                                        test_fold=args.test_fold,
+                                        train=False,
+                                        print_timing=False,
+                                        transform_type='none',
+                                        n_patches=args.n_patches_test,
+                                        get_images=args.images,
+                                        mag=args.mag
+                                        )
     sampler = None
     do_shuffle = True
     if args.balanced_sampling:
