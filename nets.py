@@ -222,11 +222,13 @@ class ResNet50(nn.Module):
         self.model_name = THIS_FILE + 'ResNet50()'
         print('Using model {}'.format(self.model_name))
 
-        self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
+        self.basic_resnet = resnet.ResNet(resnet.Bottleneck, [3, 4, 6, 3])
 
         if pretrained:
             state_dict = load_state_dict_from_url('https://download.pytorch.org/models/resnet50-19c8e357.pth')
             self.basic_resnet.load_state_dict(state_dict)
+
+        self.linear_layer = nn.Linear(1000, num_classes)
 
 
     def forward(self, x):
@@ -234,7 +236,7 @@ class ResNet50(nn.Module):
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
-        x = self.basic_resnet(x)
+        x = self.linear_layer(self.basic_resnet(x))
         x = torch.nn.functional.softmax(x, dim=1)
         return x
 
