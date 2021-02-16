@@ -140,7 +140,7 @@ def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int,
             # Shift each tile by half the size of the original tile size (in each dimension).
             # There is a need to check the validity of the tile location within the slide and correct it's coordinates if needed
 
-            tile_shifting = sample(range(-128, 128), 2)
+            tile_shifting = sample(range(-tile_sz//2, tile_sz//2), 2)
             new_loc_init = {'Top': loc[0] - tile_shifting[0],
                             'Left': loc[1] - tile_shifting[1]}
             new_loc_end = {'Bottom': new_loc_init['Top'] + tile_sz,
