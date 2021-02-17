@@ -16,15 +16,23 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type o
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
 parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
+parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 15.2.21
+parser.add_argument('--out_path', type=str, default='', help='path for output files')
 args = parser.parse_args()
 
 if __name__ =='__main__':
+
+    out_path = args.data_root
+    if args.out_path != '':
+        out_path = args.out_path
+
     if args.data_collection:
-        utils_data_managment.make_slides_xl_file(DataSet=args.dataset, ROOT_DIR=args.data_root)
+        utils_data_managment.make_slides_xl_file(DataSet=args.dataset, ROOT_DIR=args.data_root, out_path=out_path)
     if args.segmentation:
-        utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root)
+        utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root, out_path=out_path)
     if args.grid:
-        utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size, tissue_coverage=args.tissue_coverage)
+        utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size,
+                                       tissue_coverage=args.tissue_coverage, desired_mag=args.mag, out_path=out_path)
     if args.stats:
         utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:
@@ -33,7 +41,7 @@ if __name__ =='__main__':
         utils_data_managment.herohe_slides2images()
 
     #utils_data_managment.make_segmentations(DataSet='HEROHE')
-    utils_data_managment.make_grid(DataSet='HEROHE', tissue_coverage=0.5)
+    #utils_data_managment.make_grid(DataSet='HEROHE', tissue_coverage=0.5)
 
     print('Data Preparation sequence is Done !')
 
