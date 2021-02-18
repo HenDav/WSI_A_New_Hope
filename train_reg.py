@@ -456,6 +456,8 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.basic_magnification)
 
+        # Saving code files, args and main file name (this file) to Code directory within the run files.
+        utils.save_code_files(args)
 
     epoch = args.epochs
     from_epoch = args.from_epoch

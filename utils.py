@@ -18,10 +18,13 @@ from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-Image.MAX_IMAGE_PIXELS = None
 from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 import nets
+from argparse import Namespace as argsNamespace
+from shutil import copy2
 
+
+Image.MAX_IMAGE_PIXELS = None
 
 
 
@@ -820,3 +823,23 @@ def get_model(model_name, saved_model_path='none'):
     else:
         print('model not defined!')
     return model
+
+
+def save_code_files(args: argsNamespace):
+    """
+    This function saves the code files and argparse data to a Code directory within the run path.
+    :param args: argsparse Namespace of the run.
+    :return:
+    """
+    code_files_path = os.path.join(args.output_dir, 'Code')
+    args.run_file = os.path.basename(__file__)
+    args_dict = vars(args)
+    args_DF = pd.DataFrame([args_dict]).transpose()
+    if not os.path.isdir(args.output_dir):
+        os.mkdir(args.output_dir)
+        os.mkdir(code_files_path)
+    args_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
+    # Get all .py files in the code path:
+    py_files = glob.glob('*.py')
+    for _, file in enumerate(py_files):
+        copy2(file, code_files_path)
