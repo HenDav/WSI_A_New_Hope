@@ -20,6 +20,7 @@ import glob
 import sys
 import cv2 as cv
 import matplotlib.pyplot as plt
+from shutil import copy2
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -303,6 +304,10 @@ def make_grid_2(DataSet: str = 'TCGA',
     """""
 
     BASIC_OBJ_PWR = desired_magnification
+
+    # Create alternative slides_data file (if needed):
+    if added_extension != '':
+        copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
 
     data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
 
