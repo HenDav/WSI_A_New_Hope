@@ -50,8 +50,10 @@ def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, mag
     """
     #BASIC_OBJ_POWER = 20
     #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    downsample = int(magnification / desired_mag)
-    adjusted_tile_size = int(tile_size * downsample)  # RanS 22.12.20
+    #downsample = int(magnification / desired_mag)
+    downsample = magnification / desired_mag
+    adjusted_tile_size = int(tile_size * downsample)
+    downsample = int(downsample)
     # open grid list:
 
     #cancelled RanS 9.2.21, preload slides

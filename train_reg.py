@@ -40,8 +40,8 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
-parser.add_argument('-fast', dest='fast_preloading', action='store_true', help='preload patches') #RanS 2.2.21
 parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--pretrain_path', default='', type=str, help='path for pretrained model') # RanS 15.12.20
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -72,10 +72,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
     for e in range(from_epoch, epoch + from_epoch):
         time_epoch_start = time.time()
-
-        #RanS 2.2.21
-        if args.fast_preloading:
-            dloader_train.dataset.init_epoch(num_workers)
 
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
@@ -117,7 +113,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
-            if DEVICE.type == 'cuda':
+            if DEVICE.type == 'cuda' and print_timing:
                 res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
                 #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
                 all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
@@ -224,9 +220,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.eval()
 
     with torch.no_grad():
-        # RanS 2.2.21
-        if args.fast_preloading:
-            data_loader.dataset.init_epoch(num_workers)
 
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
@@ -353,7 +346,7 @@ if __name__ == '__main__':
     DEVICE = utils.device_gpu_cpu()
     # RanS 28.1.21
     # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
-    if DEVICE.type == 'cuda':
+    if DEVICE.type == 'cuda' and args.time:
         nvidia_smi.nvmlInit()
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
         # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
@@ -397,57 +390,29 @@ if __name__ == '__main__':
     #cpu_available = 1
 
     # Get data:
-    #RanS 2.2.21
-    if args.fast_preloading:
-        train_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type,
-                                             n_patches=args.n_patches_train,
-                                             c_param=args.c_param,
-                                             get_images=args.images,
-                                             mag=args.mag
-                                             )
-
-        test_dset = datasets.WSI_REGdataset_fast(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            transform_type='none',
-                                            n_patches=args.n_patches_test,
-                                            get_images=args.images,
-                                            mag=args.mag
-                                            )
-    else:
-        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type,
-                                             n_patches=args.n_patches_train,
-                                             c_param=args.c_param,
-                                             get_images=args.images,
-                                             mag=args.mag
-                                             )
-
-        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            transform_type='none',
-                                            n_patches=args.n_patches_test,
-                                            get_images=args.images,
-                                            mag=args.mag
-                                            )
+    train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                         tile_size=TILE_SIZE,
+                                         target_kind=args.target,
+                                         test_fold=args.test_fold,
+                                         train=True,
+                                         print_timing=args.time,
+                                         transform_type=args.transform_type,
+                                         n_patches=args.n_patches_train,
+                                         c_param=args.c_param,
+                                         get_images=args.images,
+                                         mag=args.mag
+                                         )
+    test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                        tile_size=TILE_SIZE,
+                                        target_kind=args.target,
+                                        test_fold=args.test_fold,
+                                        train=False,
+                                        print_timing=False,
+                                        transform_type='none',
+                                        n_patches=args.n_patches_test,
+                                        get_images=args.images,
+                                        mag=args.mag
+                                        )
 
     sampler = None
     do_shuffle = True
@@ -505,6 +470,12 @@ if __name__ == '__main__':
         from_epoch = args.from_epoch + 1
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
+
+    #RanS 16.2.21, use pretrained model
+    elif args.pretrain_path != '':
+        print('Loading pre-saved model...')
+        model_data_loaded = torch.load(args.pretrain_path, map_location='cpu')
+        model.load_state_dict(model_data_loaded['model_state_dict'])
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 

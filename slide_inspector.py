@@ -10,10 +10,11 @@ from shutil import copyfile
 import cv2 as cv
 import argparse
 import pandas as pd
+import pickle
 
 parser = argparse.ArgumentParser(description='Slide inspector')
-parser.add_argument('--in_dir', default=r'\\gipnetappa\public\sgils\BCF scans\Carmel Slides\Batch_3\CARMEL3', type=str, help='input dir')
-parser.add_argument('--out_dir', default=r'\\gipnetappa\public\sgils\BCF scans\Carmel Slides\Batch_3\thumbs', type=str, help='output dir')
+parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/CARMEL4', type=str, help='input dir')
+parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/thumbs', type=str, help='output dir')
 
 args = parser.parse_args()
 #in_dir = r'\\gipnetappa\public\sgils\BCF scans\Carmel Slides\Batch_3\CARMEL3'
@@ -56,27 +57,32 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles):
 
     n_patches = np.minimum(n_patches, n_legit_tiles)
 
-    plot_seg_map = False
-    if plot_seg_map:
-        tiles, time_list, locs = _choose_data(grid_file, slide_file, n_patches, mag, patch_size)
-    else:
-        tiles, time_list = _choose_data(grid_file, slide_file, n_patches, mag, patch_size)
+    #plot_seg_map = False
+    slide = openslide.open_slide(slide_file)
+    desired_mag = 10 #RanS 15.2.21
+    with open(grid_file, 'rb') as filehandle:
+        grid_list = pickle.load(filehandle)
+
+    #if plot_seg_map:
+    #    tiles, time_list, locs = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
+    #else:
+    tiles, time_list, _ = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
 
     # RanS 31.12.20
-    if plot_seg_map:
+    '''if plot_seg_map:
         segmap = cv.imread(segmap_file)
         fig2 = plt.figure()
         fig2.set_size_inches(32, 18)
         grid2 = ImageGrid(fig2, 111, nrows_ncols=grid_shape, axes_pad=0)
         objective_pwr = 20
-        locs_segmap = np.array(locs)/objective_pwr
+        locs_segmap = np.array(locs)/objective_pwr'''
 
     for ii in range(n_patches):
         grid[ii].imshow(tiles[ii])
         grid[ii].set_yticklabels([])
         grid[ii].set_xticklabels([])
-        if plot_seg_map:
-            grid2[ii].imshow(segmap[int(locs_segmap[ii, 0]):int(locs_segmap[ii, 0]+patch_size/objective_pwr), int(locs_segmap[ii, 1]):int(locs_segmap[ii, 1]+patch_size/objective_pwr), :])
+        '''if plot_seg_map:
+            grid2[ii].imshow(segmap[int(locs_segmap[ii, 0]):int(locs_segmap[ii, 0]+patch_size/objective_pwr), int(locs_segmap[ii, 1]):int(locs_segmap[ii, 1]+patch_size/objective_pwr), :])'''
 
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, str(ind).zfill(4) +'_2_patches_' + fn + '.jpg'))

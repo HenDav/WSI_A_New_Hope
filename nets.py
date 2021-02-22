@@ -2,12 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import resnet
+from torchvision.models import resnet, resnet50
 import os
 
-#THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
-
 
 '''
 class Flatten(nn.Module):
@@ -23,68 +21,53 @@ class ResNet50_GatedAttention(nn.Module):
         self.M = 500
         self.L = 128
         self.K = 1    # in the paper referred a 1.
-
         self.infer = False
         self.part_1 = False
         self.part_2 = False
-
         self._feature_extractor_ResNet50_part_1 = models.resnet50()
-
         self._feature_extractor_fc = nn.Sequential(
             #nn.Dropout(p=0.5),
             nn.Linear(in_features=1000, out_features=self.M)
         )
-        
+
         self.feature_extractor = nn.Sequential(
             self._feature_extractor_ResNet50_part_1,
             self._feature_extractor_fc
         )
-
         self.attention_V = nn.Sequential(
             nn.Linear(self.M, self.L),
             nn.Tanh()
         )
-
         self.attention_U = nn.Sequential(
             nn.Linear(self.M, self.L),
             nn.Sigmoid()
         )
-
         self.attention_weights = nn.Linear(self.L, self.K)
-
         self.classifier = nn.Sequential(
             nn.Linear(self.M * self.K, 1),
             nn.Sigmoid()
         )
-
     def forward(self, x, H = None, A = None):
         if not self.infer:
             x = x.squeeze(0)
             # In case we are training the model we'll use bags that contains only part of the tiles.
             H = self.feature_extractor(x)
-
             """
             H = H.view(-1, 50 * 4 * 4) 
             H = self.feature_extractor_part2(H)  # NxL
             """
-
             A_V = self.attention_V(H)  # NxL
             A_U = self.attention_U(H)  # NxL
             A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
             A = torch.transpose(A, 1, 0)  # KxN
             A = F.softmax(A, dim=1)  # softmax over N
-
             M = torch.mm(A, H)  # KxM
-
             # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
             # probability that the input belong to class 1/TRUE (and not 0/FALSE)
             Y_prob = self.classifier(M)
-
             # The following line just turns probability to class.
             Y_class = torch.ge(Y_prob, 0.5).float()
-
             return Y_prob, Y_class, A
-
         # In case we want an inference of a whole slide we need ALL the tiles from that slide:
         else:
             if not self.part_1 ^ self.part_2:
@@ -97,33 +80,24 @@ class ResNet50_GatedAttention(nn.Module):
                 A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
                 A = torch.transpose(A, 1, 0)  # KxN
                 return H, A
-
             elif self.part_2:
                 A = F.softmax(A, dim=1)  # softmax over N
-
                 M = torch.mm(A, H)  # KxM
-
                 Y_prob = self.classifier(M)
-
                 Y_class = torch.ge(Y_prob, 0.5).float()
                 return Y_prob, Y_class, A
-
-
     """
     # AUXILIARY METHODS
     def calculate_classification_accuracy(self, X, Y):
         Y = Y.float()
         _, Y_hat, _ = self.forward(X)
         error = 1. - Y_hat.eq(Y).cpu().float().mean().item()
-
         return error, Y_hat
-
     def calculate_objective(self, X, Y):
         Y = Y.float()
         Y_prob, _, A = self.forward(X)
         Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
         neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
-
         return neg_log_likelihood, A
     """
 '''
@@ -131,22 +105,18 @@ class ResNet50_GatedAttention(nn.Module):
 class ResNet50_2(nn.Module):
     def __init__(self):
         super(ResNet50_2, self).__init__()
-
         self.num_classes = 2
         self.part_1 = models.resnet50(pretrained=True)
         self.dropout_1 = nn.Dropout(p=0.5)
         self.dropout_2 = nn.Dropout(p=0.5)
         self.linear_1 = nn.Linear(in_features=1000, out_features=700)
         self.linear_2 = nn.Linear(in_features=700, out_features=self.num_classes)
-
-
         self.net = nn.Sequential( self.part_1,
                                   self.linear_1,
                                   self.dropout_1,
                                   self.linear_2,
                                   self.dropout_2
                                   )
-
     def forward(self, x):
         x = x.squeeze(0)
         out = self.net(x)
@@ -155,19 +125,15 @@ class ResNet50_2(nn.Module):
         out = self.dropout_2(self.linear_2(self.dropout_1(self.linear_1(x))))
         '''
         return out
-
 class ResNext_50(nn.Module):
     def __init__(self):
         super(ResNext_50, self).__init__()
-
         self.num_classes = 2
         self.part_1 = models.resnext50_32x4d(pretrained=False)
         self.dropout_1 = nn.Dropout(p=0.5)
-
         self.net = nn.Sequential( models.resnext50_32x4d(pretrained=False),
                                   nn.Dropout(p=0.5),
                                   nn.Linear(in_features=1000, out_features=self.num_classes))
-
     def forward(self, x):
         x = x.squeeze(0)
         out = self.net(x)
@@ -227,11 +193,10 @@ class ResNet50(nn.Module):
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
-        #x = x.squeeze()
+        # x = x.squeeze()
         x = self.basic_resnet(x)
         x = torch.nn.functional.softmax(x, dim=1)
         return x
-
 
 
 '''
@@ -241,16 +206,12 @@ def ResNet_18():
     model.fc.out_features = 2
     model.model_name = 'ResNet_18()'
     return model
-
-
 def ResNet_34():
     print('Using model ResNet_34')
     model = models.resnet34(pretrained=False)
     model.fc.out_features = 2
     model.model_name = 'ResNet_34()'
     return model
-
-
 def ResNet_50():
     print('Using model ResNet_50')
     model = models.resnet50(pretrained=False)
@@ -258,6 +219,7 @@ def ResNet_50():
     model.model_name = 'ResNet_50()'
     return model
 '''
+
 
 class ResNet34_GN(nn.Module):
     def __init__(self):
@@ -267,8 +229,8 @@ class ResNet34_GN(nn.Module):
         # Replace all BatchNorm layers with GroupNorm:
 
         self.con_layers = resnet.ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=1000, zero_init_residual=False,
-                         groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                         norm_layer=MyGroupNorm)
+                                        groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                                        norm_layer=MyGroupNorm)
 
         self.linear_layer = nn.Linear(in_features=1000, out_features=2)
 
@@ -299,8 +261,7 @@ class ResNet50_GN(nn.Module):
         return x
 
 
-
-#RanS 14.12.20
+# RanS 14.12.20
 class net_with_3FC(nn.Module):
     def __init__(self, pretrained_model, reinit_last_layer=True):
         super(net_with_3FC, self).__init__()
@@ -338,18 +299,19 @@ class net_with_3FC(nn.Module):
             # nn.init.kaiming_normal_(self.pretrained.layer4[-1].conv3.weight, mode='fan_in', nonlinearity='relu')
         self.pretrained.fc = nn.Identity()
         self.dropout = nn.Dropout(p=0.5)
-        #self.fc = nn.Linear(num_ftrs, 2)
+        # self.fc = nn.Linear(num_ftrs, 2)
         self.fc1 = nn.Linear(num_ftrs, 512)
         self.fc2 = nn.Linear(512, 512)
         self.fc3 = nn.Linear(512, 2)
-        #nn.init.kaiming_normal_(self.fc.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        # nn.init.kaiming_normal_(self.fc.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc1.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc3.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+
     def forward(self, x):
         x = self.pretrained(x)
         # x = self.fc(x)
-        #x = self.fc(self.dropout(x))
+        # x = self.fc(self.dropout(x))
         x = F.relu(self.fc1(self.dropout(x)))
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
@@ -357,7 +319,7 @@ class net_with_3FC(nn.Module):
         return x
 
 
-#RanS 17.12.20
+# RanS 17.12.20
 class resnet50_with_3FC(nn.Module):
     def __init__(self, pretrained=True):
         super(resnet50_with_3FC, self).__init__()
@@ -370,7 +332,7 @@ class resnet50_with_3FC(nn.Module):
         return x
 
 
-#RanS 21.12.20
+# RanS 21.12.20
 class net_with_2FC(nn.Module):
     def __init__(self, pretrained_model):
         super(net_with_2FC, self).__init__()
@@ -385,12 +347,12 @@ class net_with_2FC(nn.Module):
         nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
 
     def forward(self, x):
-        #old version:
+        # old version:
         '''x = self.pretrained(x)
         x = F.relu(self.fc1(self.dropout(x)))
         x = self.fc2(x)'''
 
-        #RanS 14.1.21, Nikhil's version
+        # RanS 14.1.21, Nikhil's version
         x = self.pretrained(x)
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
@@ -398,7 +360,7 @@ class net_with_2FC(nn.Module):
         return x
 
 
-#RanS 21.12.20
+# RanS 21.12.20
 class ReceptorNet_feature_extractor(nn.Module):
     def __init__(self, pretrained=True):
         super(ReceptorNet_feature_extractor, self).__init__()
@@ -409,6 +371,7 @@ class ReceptorNet_feature_extractor(nn.Module):
     def forward(self, x):
         x = self.model(x)
         return x
+
 
 ##########################################################
 
@@ -509,7 +472,7 @@ class ResNet_NO_downsample(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        #x = self.maxpool(x)
+        # x = self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)
@@ -629,16 +592,12 @@ class Bottleneck(nn.Module):
         return out
 
 
-def resnet50(pretrained=False, progress=True, **kwargs):
-    r"""ResNet-50 model from
-    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
+def resnet50_pretrained():
+    model = resnet50(pretrained=True, progress=True)
+    model.model_name = THIS_FILE + 'resnet50_pretrained()'
+    print('Using model: ', model.model_name)
+    return model
 
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   **kwargs)
 
 def ResNet_50_NO_downsample():
     """
@@ -650,4 +609,3 @@ def ResNet_50_NO_downsample():
     print('Using model {}'.format(model.model_name))
 
     return model
-

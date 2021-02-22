@@ -142,7 +142,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.data[0], batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
-            if DEVICE.type == 'cuda':
+            if DEVICE.type == 'cuda' and print_timing:
                 res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
                 # print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
                 all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
@@ -416,7 +416,7 @@ if __name__ == '__main__':
     DEVICE = utils.device_gpu_cpu()
 
     # RanS 28.1.21
-    if DEVICE.type == 'cuda':
+    if DEVICE.type == 'cuda' and args.time:
         # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
         nvidia_smi.nvmlInit()
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
