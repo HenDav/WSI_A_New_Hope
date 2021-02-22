@@ -669,7 +669,13 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                 thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
                 thumb = Image.fromarray(thumb_arr)
 
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+            # RanS 22.2.21
+            if DataSet == 'ABCTB':
+                use_otsu3 = False
+            else:
+                use_otsu3 = True
+
+            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
             slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
             thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
@@ -739,7 +745,7 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     return xy
 
 
-def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:
@@ -749,9 +755,9 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     #image_array = np.array(image.convert('HSV'))
-    image_array = np.array(image.convert('CMYK')) #temp RanS 9.12.20
+    image_array = np.array(image.convert('CMYK')) #RanS 9.12.20
     # otsu Thresholding:
-    use_otsu3 = True
+    #use_otsu3 = True
     if use_otsu3:
         # RanS 25.10.20 - 3way binarization
         thresh = otsu3(image_array[:, :, 1])
