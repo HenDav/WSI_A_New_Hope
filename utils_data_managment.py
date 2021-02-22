@@ -20,6 +20,7 @@ import glob
 import sys
 import cv2 as cv
 import matplotlib.pyplot as plt
+from shutil import copy2
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -262,7 +263,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width),
-                                     coverage = tissue_coverage)
+                                     tissue_coverage= tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
@@ -290,19 +291,116 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     print('Finished Grid production phase !')
 
 
-def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: tuple, coverage: float = 0.5) -> List[Tuple]:
+def make_grid_2(DataSet: str = 'TCGA',
+                ROOT_DIR: str = 'All Data',
+                tile_sz: int = 256,
+                tissue_coverage: float = 0.5,
+                desired_magnification: int = 10,
+                added_extension: str = ''):
+    """    
+    :param DataSet: Dataset to create grid for 
+    :param ROOT_DIR: Root Directory for the data
+    :param tile_sz: final desired tile size.
+    :param tissue_coverage: tissue percent requirement for each tile in the grid 
+    :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
+           the case where we want to create alternative grids and keep the grids already created
+    :return: 
+    """""
+
+    BASIC_OBJ_PWR = desired_magnification
+
+    # Create alternative slides_data file (if needed):
+    if added_extension != '':
+        copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
+
+    data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
+
+    if DataSet == 'RedSquares':
+        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
+
+    meta_data_DF = pd.read_excel(data_file)
+    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
+    meta_data_DF.set_index('file', inplace=True)
+    tile_nums = []
+    total_tiles =[]
+    print('Starting Grid production...')
+    print()
+
+    for i, file in enumerate(tqdm(files)):
+        #filename = os.path.basename(file).split('.')[0]
+        filename = '.'.join(os.path.basename(file).split('.')[:-1])
+        database = meta_data_DF.loc[file, 'id']
+
+        # Save the grid to file:
+        if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension)):
+            os.mkdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension))
+        grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension, filename + '--tlsz' + str(tile_sz) + '.data')
+
+        segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + added_extension, 'SegMaps', filename + '_SegMap.png')
+
+        if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
+            height = int(meta_data_DF.loc[file, 'Height'])
+            width  = int(meta_data_DF.loc[file, 'Width'])
+
+            objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
+            if objective_power == 'Missing Data':
+                print('Grid was not computed for file {}'.format(file))
+                tile_nums.append(0)
+                total_tiles.append(-1)
+                continue
+
+            adjusted_tile_size = int(tile_sz * (int(objective_power) / BASIC_OBJ_PWR))
+            basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size) for col in range(0, width, adjusted_tile_size)]
+            total_tiles.append((len(basic_grid)))
+
+            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
+            legit_grid = _legit_grid(segmap_file,
+                                     basic_grid,
+                                     adjusted_tile_size,
+                                     (height, width),
+                                     tissue_coverage=tissue_coverage)
+            # create a list with number of tiles in each file
+            tile_nums.append(len(legit_grid))
+
+            with open(grid_file, 'wb') as filehandle:
+                # store the data as binary data stream
+                pickle.dump(legit_grid, filehandle)
+        else:
+            print('Grid was not computed for file {}'.format(file))
+            tile_nums.append(0)
+            total_tiles.append(-1)
+
+    # Adding the number of tiles to the excel file:
+    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
+
+    slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
+
+    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
+    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage
+
+    meta_data_DF.to_excel(data_file)
+
+    print('Finished Grid production phase !')
+
+
+def _legit_grid(image_file_name: str,
+                grid: List[Tuple],
+                adjusted_tile_size: int,
+                size: tuple,
+                tissue_coverage: float = 0.5) -> List[Tuple]:
     """
-    This function gets a .svs file name, a basic grid and tile size and returns a list of legitimate grid locations.
+    This function gets a .svs file name, a basic grid and adjusted tile size and returns a list of legitimate grid locations.
     :param image_file_name: .svs file name
     :param grid: basic grid
-    :param tile_size: tile size
+    :param adjusted_tile_size: adjusted tile size
     :param size: size of original image (height, width)
-    :param coverage: Coverage of tissue to make the slide legitimate
+    :param tissue_coverage: Coverage of tissue to make the slide legitimate
     :return:
     """
 
     # Check if coverage is a number in the range (0, 1]
-    if not (coverage > 0 and coverage <= 1):
+    if not (tissue_coverage > 0 and tissue_coverage <= 1):
         raise ValueError('Coverage Parameter should be in the range (0,1]')
 
     # open the segmentation map image from which the coverage will be calculated:
@@ -311,8 +409,8 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
     cols = size[1] / segMap.shape[1]
 
     # the complicated next line only rounds up the numbers
-    small_tile = (int(-(-tile_size//rows)), int(-(-tile_size//cols)))
-    # computing the compatible grid for the small segmenatation map:
+    small_tile = (int(-(-adjusted_tile_size // rows)), int(-(-adjusted_tile_size // cols)))
+    # computing the compatible grid for the small segmentation map:
     idx_to_remove =[]
     for idx, (row, col) in enumerate(grid):
         new_row = int(-(-(row // rows)))
@@ -321,9 +419,8 @@ def _legit_grid(image_file_name: str, grid: List[Tuple], tile_size: int, size: t
         # collect the data from the segMap:
         tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
         tile_pixels = small_tile[0] * small_tile[1]
-        #tissue_coverage = tile.sum() / tile_pixels
-        tissue_coverage = tile.sum() / tile_pixels / 255 #RanS 31.12.20 - segmap is uint8
-        if tissue_coverage < coverage:
+        tissue_coverage = tile.sum() / tile_pixels / 255
+        if tissue_coverage < tissue_coverage:
             idx_to_remove.append(idx)
 
     # We'll now remove items from the grid. starting from the end to the beginning in order to keep the indices correct:

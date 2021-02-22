@@ -15,7 +15,7 @@ import pickle
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 #parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[210], help='Use models from this experiment')
-parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[985, 999], help='Use this epoch models for inference')
+parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1300], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')

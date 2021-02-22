@@ -19,28 +19,29 @@ from sklearn.utils import resample
 import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=3, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1') # RanS 7.12.20
+parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')  # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
-parser.add_argument('--transform_type', default='flip', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
-parser.add_argument('--batch_size', default=10, type=int, help='size of batch')  # RanS 8.12.20
-parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
+parser.add_argument('--batch_size', default=18, type=int, help='size of batch')  # RanS 8.12.20
+#parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
-parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('--pretrain_path', default='', type=str, help='path for pretrained model') # RanS 15.12.20
 args = parser.parse_args()
 
@@ -53,6 +54,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     """
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
+    test_auc_list = []
 
     if from_epoch == 0:
         all_writer.add_text('Experiment No.', str(experiment))
@@ -90,6 +92,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             optimizer.zero_grad()
             outputs = model(data)
+            #print(outputs.shape)
 
             loss = criterion(outputs, target)
             loss.backward()
@@ -176,9 +179,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  #more than one label
                 roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
             all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
-            acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
-            #acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=True)
-            # acc_test, bacc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e, eval_mode=False)
+            acc_test, bacc_test, roc_auc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
+            test_auc_list.append(roc_auc_test)
+            if len(test_auc_list) == 5:
+                test_auc_mean = np.mean(test_auc_list)
+                test_auc_list.pop(0)
+                utils.run_data(experiment=experiment, test_mean_auc=test_auc_mean)
+
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
 
@@ -338,8 +345,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         else:
             print('Tile AUC of {:.2f} over Test set'.format(roc_auc))
     model.train()
-    return acc, bacc
+    return acc, bacc, roc_auc
 
+########################################################################################################
+########################################################################################################
 
 if __name__ == '__main__':
     # Device definition:
@@ -365,7 +374,7 @@ if __name__ == '__main__':
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=1,
                                                      DX=args.dx,
-                                                     DataSet=args.dataset,
+                                                     DataSet_name=args.dataset,
                                                      Receptor=args.target,
                                                      num_bags=args.batch_size)
     else:
@@ -385,9 +394,15 @@ if __name__ == '__main__':
 
         experiment = args.experiment
 
-    # Get number of available CPUs:
+    # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     #cpu_available = 1
+    # num_workers = cpu_available*args.workers_factor #RanS 28.1.21
+    # num_workers = args.workers  # RanS 1.2.21
+    num_workers = cpu_available
+    if sys.platform == 'win32':
+        num_workers = 4  # temp RanS 2.2.21
+    print('num workers = ', num_workers)
 
     # Get data:
     train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
@@ -413,7 +428,6 @@ if __name__ == '__main__':
                                         get_images=args.images,
                                         mag=args.mag
                                         )
-
     sampler = None
     do_shuffle = True
     if args.balanced_sampling:
@@ -431,14 +445,7 @@ if __name__ == '__main__':
         weights[np.array(labels == 'Negative')] = 1 / n_neg
         do_shuffle = False  # the sampler shuffles
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
-                                                                 #, replacement=False)
-    num_workers = cpu_available
-    #num_workers = cpu_available*args.workers_factor #RanS 28.1.21
-    #num_workers = args.workers  # RanS 1.2.21
-    #num_workers = 4 #temp RanS 2.2.21
-    if sys.platform == 'win32':
-        num_workers = 4  # temp RanS 2.2.21
-    print('num workers = ',  num_workers)
+
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
@@ -450,10 +457,16 @@ if __name__ == '__main__':
 
 
     # Load model
-    #model = utils.get_model(args.model, '')
     model = eval(args.model)
 
-    utils.run_data(experiment=experiment, model=model.model_name)
+    # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
+    if args.experiment == 0:
+        utils.run_data(experiment=experiment, model=model.model_name)
+        utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
+        utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.basic_magnification)
+
+        # Saving code files, args and main file name (this file) to Code directory within the run files.
+        utils.save_code_files(args)
 
     epoch = args.epochs
     from_epoch = args.from_epoch

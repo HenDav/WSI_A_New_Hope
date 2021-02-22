@@ -14,10 +14,10 @@ import pickle
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', type=int, default=210, help='perform inference for this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=1320, help='Use this epoch model for inference')
-parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
+parser.add_argument('-fe', '--from_epoch', type=int, default=1300, help='Use this epoch model for inference')
+parser.add_argument('-nt', '--num_tiles', type=int, default=200, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('-f', '--folds', type=list, default=[4], help=' folds to infer')
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -42,7 +42,6 @@ elif sys.platform == 'win32':
 
 # Load saved model:
 model = eval(model_name)
-#model = PreActResNets.PreActResNet50_Ron()
 model_data_loaded = torch.load(os.path.join(data_path, output_dir,
                                             'Model_CheckPoints',
                                             'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')

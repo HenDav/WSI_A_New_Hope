@@ -446,7 +446,7 @@ if __name__ == '__main__':
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=TILES_PER_BAG,
                                                      DX=args.dx,
-                                                     DataSet=args.dataset,
+                                                     DataSet_name=args.dataset,
                                                      Receptor=args.target,
                                                      MultiSlide=args.multi_slides)
     else:

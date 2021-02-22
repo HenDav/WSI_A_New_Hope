@@ -15,6 +15,7 @@ from utils import show_patches_and_transformations, get_breast_dir_dict
 import matplotlib.pyplot as plt
 from torch.multiprocessing import Pool
 import openslide #RanS 9.2.21, preload slides
+from tqdm import tqdm
 
 
 MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
@@ -39,7 +40,7 @@ class WSI_Master_Dataset(Dataset):
                  train: bool = True,
                  print_timing: bool = False,
                  transform_type: str = 'flip',
-                 DX : bool = False,
+                 DX: bool = False,
                  get_images: bool = False,
                  train_type: str = 'MASTER',
                  c_param: float = 0.1,
@@ -47,12 +48,13 @@ class WSI_Master_Dataset(Dataset):
                  tta: bool = False,
                  mag: int = 20):
 
+        print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
         # Define data root:
         self.ROOT_PATH = define_data_root(DataSet)
 
         self.DataSet = DataSet
         #self.BASIC_MAGNIFICATION = 20
-        self.BASIC_MAGNIFICATION = mag #RanS 8.2.21
+        self.basic_magnification = mag #RanS 8.2.21
         if DataSet == 'RedSquares':
         #    self.BASIC_MAGNIFICATION = 10
             slides_data_file = 'slides_data_RedSquares.xlsx'
@@ -174,7 +176,7 @@ class WSI_Master_Dataset(Dataset):
         self.slides = [] #RanS 9.2.21, preload slides
         self.grid_lists = [] #RanS 9.2.21, preload slides
 
-        for _, index in enumerate(valid_slide_indices):
+        for _, index in enumerate(tqdm(valid_slide_indices)):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
                 self.image_file_names.append(all_image_file_names[index])
                 self.image_path_names.append(all_image_path_names[index])
@@ -232,7 +234,7 @@ class WSI_Master_Dataset(Dataset):
                                         # self.tile_size,
                                         int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
                                         print_timing=self.print_time,
-                                        desired_mag=self.BASIC_MAGNIFICATION) #RanS 8.2.21
+                                        desired_mag=self.basic_magnification) #RanS 8.2.21
 
         #time1 = time.time()  # temp
         #print('time1:', str(time1 - start_getitem))  # temp
@@ -353,11 +355,12 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              mag=mag)
 
         print(
-            'Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+            'Initiation of WSI({}) {} {} DataSet for {} is Complete. Magnification is X{}, {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
                 .format(self.train_type,
                         'Train' if self.train else 'Test',
                         self.DataSet,
                         self.target_kind,
+                        self.basic_magnification,
                         self.real_length,
                         self.tile_size,
                         self.bag_size,
@@ -411,7 +414,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                     self.num_patches.append(num_tiles)
                 else:
                     self.num_patches.append(self.all_tissue_tiles[slide_num])
-                    print('{} Slide available patches are less than {}'.format(self.all_image_file_names[slide_num], num_tiles))
+                    print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num], num_tiles))
 
                 self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
 
@@ -466,7 +469,7 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.tiles_to_go -= self.tiles_per_iter
 
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
-        downsample = int(self.magnification[idx] / self.BASIC_MAGNIFICATION)
+        downsample = int(self.magnification[idx] / self.basic_magnification)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
         #tiles, time_list, tile_sz = _get_tiles(self.current_file,
         tiles, time_list, tile_sz = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides

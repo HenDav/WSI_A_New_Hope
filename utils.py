@@ -18,10 +18,13 @@ from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-Image.MAX_IMAGE_PIXELS = None
 from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 import nets
+from argparse import Namespace as argsNamespace
+from shutil import copy2
 
+
+Image.MAX_IMAGE_PIXELS = None
 
 
 
@@ -94,10 +97,7 @@ def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int,
     # open the .svs file:
     #RanS 9.2.21, preload slides
     img = slide
-    '''start_openslide = time.time()
-    img = openslide.open_slide(file_name)
-    end_openslide = time.time()'''
-    #print(end_openslide-start_openslide)
+
     tiles_num = len(locations)
 
     #RanS 9.2.21 - use level1 if applicable
@@ -138,12 +138,34 @@ def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int,
 
     start_gettiles = time.time()
     for idx, loc in enumerate(locations):
-        # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
         try:
+            # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
             #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-            image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
+
+            # Shift each tile by half the size of the original tile size (in each dimension).
+            # There is a need to check the validity of the tile location within the slide and correct it's coordinates if needed
+
+            tile_shifting = sample(range(-tile_sz//2, tile_sz//2), 2)
+            new_loc_init = {'Top': loc[0] - tile_shifting[0],
+                            'Left': loc[1] - tile_shifting[1]}
+            new_loc_end = {'Bottom': new_loc_init['Top'] + tile_sz,
+                           'Right': new_loc_init['Left'] + tile_sz}
+
+            if new_loc_init['Top'] < 0:
+                new_loc_init['Top'] += abs(new_loc_init['Top'])
+            if new_loc_init['Left'] < 0:
+                new_loc_init['Left'] += abs(new_loc_init['Left'])
+            if new_loc_end['Bottom'] > slide.dimensions[1]:
+                delta_Height = new_loc_end['Bottom'] - slide.dimensions[1]
+                new_loc_init['Top'] -= delta_Height
+            if new_loc_end['Right'] > slide.dimensions[0]:
+                delta_Width = new_loc_end['Right'] - slide.dimensions[0]
+                new_loc_init['Left'] -= delta_Width
+
+            # image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
+            image = img.read_region((new_loc_init['Left'], new_loc_init['Top']), level, (tile_sz, tile_sz)).convert('RGB')
         except:
-            print('failed to read slide ' + str(slide) + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
+            print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
             print('taking blank patch instead')
             image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
         tiles_PIL.append(image)
@@ -152,7 +174,7 @@ def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int,
 
 
     if print_timing:
-        time_list = [end_openslide - start_openslide, (end_gettiles - start_gettiles) / tiles_num]
+        time_list = [0, (end_gettiles - start_gettiles) / tiles_num]
     else:
         time_list = [0]
 
@@ -245,10 +267,22 @@ def get_cpu():
              tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
              epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
              MultiSlide: bool = False):'''
-def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
-             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: list = ['TCGA'],
-             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
-             MultiSlide: bool = False):
+def run_data(experiment: str = None,
+             test_fold: int = 1,
+             transform_type: str = 'none',
+             tile_size: int = 256,
+             tiles_per_bag: int = 50,
+             num_bags: int = 1,
+             DX: bool = False,
+             DataSet_name: list = ['TCGA'],
+             DataSet_size: tuple = None,
+             DataSet_Slide_magnification = None,
+             epoch: int = None,
+             model: str = None,
+             transformation_string: str = None,
+             Receptor: str = None,
+             MultiSlide: bool = False,
+             test_mean_auc: float = None):
     """
     This function writes the run data to file
     :param experiment:
@@ -280,9 +314,9 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         else:
             experiment = 1
 
-        location = 'runs/Exp_' + str(experiment) + '-TestFold_' + str(test_fold)
-        if type(DataSet) is not list:
-            DataSet = [DataSet]
+        location = 'runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
+        if type(DataSet_name) is not list:
+            DataSet_name = [DataSet_name]
 
         run_dict = {'Experiment': experiment,
                     'Test Fold': test_fold,
@@ -293,7 +327,7 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
                     'No. of Bags': num_bags,
                     'Location': location,
                     'DX': DX,
-                    'DataSet': ' / '.join(DataSet),
+                    'DataSet': ' / '.join(DataSet_name),
                     'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,
@@ -323,6 +357,23 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         run_DF.at[index, 'Transformation String'] = transformation_string
         run_DF.to_excel(run_file_name)
 
+    elif experiment is not None and DataSet_size is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'Train DataSet Size'] = DataSet_size[0]
+        run_DF.at[index, 'Test DataSet Size'] = DataSet_size[1]
+        run_DF.to_excel(run_file_name)
+
+    elif experiment is not None and DataSet_Slide_magnification is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'Slide Magnification'] = DataSet_Slide_magnification
+        run_DF.to_excel(run_file_name)
+
+    elif experiment is not None and test_mean_auc is not None:
+        index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
+        run_DF.at[index, 'TestSet Mean AUC'] = test_mean_auc
+        run_DF.to_excel(run_file_name)
+
+
     # In case we want to continue from a previous training session
     else:
         location = run_DF_exp.loc[[experiment], ['Location']].values[0][0]
@@ -332,13 +383,13 @@ def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = '
         tiles_per_bag = int(run_DF_exp.loc[[experiment], ['Tiles Per Bag']].values[0][0])
         num_bags = int(run_DF_exp.loc[[experiment], ['No. of Bags']].values[0][0])
         DX = bool(run_DF_exp.loc[[experiment], ['DX']].values[0][0])
-        DataSet = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
+        DataSet_name = str(run_DF_exp.loc[[experiment], ['DataSet']].values[0][0])
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag,\
-               num_bags, DX, DataSet, Receptor, MultiSlide, model_name
+        return location, test_fold, transformations, tile_size, tiles_per_bag, \
+               num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
@@ -487,9 +538,10 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                                                   std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
     else:
         final_transform = transforms.Compose([transforms.ToTensor(),
-                                          transforms.Normalize(
-                                              mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                              std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+                                              transforms.Normalize(
+                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
+                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                              ])
     scale_factor = 0
     # if self.transform and self.train:
     if transform_type != 'none' and train:
@@ -501,7 +553,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
         elif transform_type == 'rvf': #rotate, vertical flip
             transform1 = \
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
-                                     transforms.RandomVerticalFlip()])
+                                    transforms.RandomVerticalFlip()])
         elif transform_type in ['cbnfrsc', 'cbnfrs']:  # color, blur, noise, flip, rotate, scale, +-cutout
             scale_factor = 0.2
             transform1 = \
@@ -773,3 +825,23 @@ def get_model(model_name, saved_model_path='none'):
     else:
         print('model not defined!')
     return model
+
+
+def save_code_files(args: argsNamespace):
+    """
+    This function saves the code files and argparse data to a Code directory within the run path.
+    :param args: argsparse Namespace of the run.
+    :return:
+    """
+    code_files_path = os.path.join(args.output_dir, 'Code')
+    args.run_file = os.path.basename(__file__)
+    args_dict = vars(args)
+    args_DF = pd.DataFrame([args_dict]).transpose()
+    if not os.path.isdir(args.output_dir):
+        os.mkdir(args.output_dir)
+        os.mkdir(code_files_path)
+    args_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
+    # Get all .py files in the code path:
+    py_files = glob.glob('*.py')
+    for _, file in enumerate(py_files):
+        copy2(file, code_files_path)
