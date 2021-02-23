@@ -25,6 +25,7 @@ if __name__ =='__main__':
         utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.grid:
         utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size, tissue_coverage=args.tissue_coverage)
+
     if args.stats:
         utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:
@@ -32,7 +33,7 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid_2(DataSet='TCGA', tissue_coverage=0.9, desired_magnification=10, added_extension='_new')
+    utils_data_managment.make_grid_2(DataSet='TCGA', tissue_coverage=0.1, desired_magnification=10, added_extension='_coverage-0_1')
 
     print('Data Preparation sequence is Done !')
 

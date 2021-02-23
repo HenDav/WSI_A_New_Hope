@@ -292,18 +292,19 @@ def make_grid_2(DataSet: str = 'TCGA',
                 tile_sz: int = 256,
                 tissue_coverage: float = 0.5,
                 desired_magnification: int = 10,
-                added_extension: str = ''):
+                added_extension: str = '',
+                different_SegMap_file_extension: bool = False):
     """    
     :param DataSet: Dataset to create grid for 
     :param ROOT_DIR: Root Directory for the data
-    :param tile_sz: final desired tile size.
+    :param tile_sz: Desired tile size at desired magnification.
     :param tissue_coverage: tissue percent requirement for each tile in the grid 
     :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
            the case where we want to create alternative grids and keep the grids already created
+    :param different_SegMap_file_extension: a boolean parameter defining if the SegMap root has the same extension as
+           defined by parameter "added_extension"   
     :return: 
     """""
-
-    BASIC_OBJ_PWR = desired_magnification
 
     # Create alternative slides_data file (if needed):
     if added_extension != '':
@@ -332,7 +333,10 @@ def make_grid_2(DataSet: str = 'TCGA',
             os.mkdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension))
         grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension, filename + '--tlsz' + str(tile_sz) + '.data')
 
-        segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + added_extension, 'SegMaps', filename + '_SegMap.png')
+        if different_SegMap_file_extension:
+            segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + added_extension, 'SegMaps', filename + '_SegMap.png')
+        else:
+            segmap_file = os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
 
         if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
             height = int(meta_data_DF.loc[file, 'Height'])
@@ -345,16 +349,16 @@ def make_grid_2(DataSet: str = 'TCGA',
                 total_tiles.append(-1)
                 continue
 
-            adjusted_tile_size = int(tile_sz * (int(objective_power) / BASIC_OBJ_PWR))
-            basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size) for col in range(0, width, adjusted_tile_size)]
+            adjusted_tile_size_at_level_0 = int(tile_sz * (int(objective_power) / desired_magnification))
+            basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in range(0, width, adjusted_tile_size_at_level_0)]
             total_tiles.append((len(basic_grid)))
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
             legit_grid = _legit_grid(segmap_file,
                                      basic_grid,
-                                     adjusted_tile_size,
+                                     adjusted_tile_size_at_level_0,
                                      (height, width),
-                                     tissue_coverage=tissue_coverage)
+                                     desired_tissue_coverage=tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
@@ -382,41 +386,42 @@ def make_grid_2(DataSet: str = 'TCGA',
 
 def _legit_grid(image_file_name: str,
                 grid: List[Tuple],
-                adjusted_tile_size: int,
+                adjusted_tile_size_at_level_0: int,
                 size: tuple,
-                tissue_coverage: float = 0.5) -> List[Tuple]:
+                desired_tissue_coverage: float = 0.5) -> List[Tuple]:
     """
     This function gets a .svs file name, a basic grid and adjusted tile size and returns a list of legitimate grid locations.
     :param image_file_name: .svs file name
     :param grid: basic grid
-    :param adjusted_tile_size: adjusted tile size
+    :param adjusted_tile_size_at_level_0: adjusted tile size at level 0 of the slide
     :param size: size of original image (height, width)
     :param tissue_coverage: Coverage of tissue to make the slide legitimate
     :return:
     """
 
     # Check if coverage is a number in the range (0, 1]
-    if not (tissue_coverage > 0 and tissue_coverage <= 1):
+    if not (desired_tissue_coverage > 0 and desired_tissue_coverage <= 1):
         raise ValueError('Coverage Parameter should be in the range (0,1]')
 
     # open the segmentation map image from which the coverage will be calculated:
     segMap = np.array(Image.open(image_file_name))
-    rows = size[0] / segMap.shape[0]
-    cols = size[1] / segMap.shape[1]
+    row_ratio = size[0] / segMap.shape[0]
+    col_ratio = size[1] / segMap.shape[1]
 
     # the complicated next line only rounds up the numbers
-    small_tile = (int(-(-adjusted_tile_size // rows)), int(-(-adjusted_tile_size // cols)))
+    #adjusted_tile_at_segmap_magnification =
+    tile_size_at_segmap_magnification = (int(-(-adjusted_tile_size_at_level_0 // row_ratio)), int(-(-adjusted_tile_size_at_level_0 // col_ratio)))
     # computing the compatible grid for the small segmentation map:
     idx_to_remove =[]
     for idx, (row, col) in enumerate(grid):
-        new_row = int(-(-(row // rows)))
-        new_col = int(-(-(col // cols)))
+        new_row = int(-(-(row // row_ratio)))
+        new_col = int(-(-(col // col_ratio)))
 
         # collect the data from the segMap:
-        tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
-        tile_pixels = small_tile[0] * small_tile[1]
-        tissue_coverage = tile.sum() / tile_pixels / 255
-        if tissue_coverage < tissue_coverage:
+        tile = segMap[new_row : new_row + tile_size_at_segmap_magnification[0], new_col : new_col + tile_size_at_segmap_magnification[1]]
+        num_tile_pixels = tile_size_at_segmap_magnification[0] * tile_size_at_segmap_magnification[1]
+        tissue_coverage = tile.sum() / num_tile_pixels / 255
+        if tissue_coverage < desired_tissue_coverage:
             idx_to_remove.append(idx)
 
     # We'll now remove items from the grid. starting from the end to the beginning in order to keep the indices correct:
