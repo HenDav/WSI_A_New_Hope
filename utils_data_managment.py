@@ -196,7 +196,8 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
     return total_mean, total_var
 
 
-def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256, tissue_coverage: float = 0.5):
+def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int = 256, tissue_coverage: float = 0.5,
+              desired_mag: int = 20, out_path: str = ''):
     """
     This function creates a location for all top left corners of the grid
     :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
@@ -204,9 +205,9 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     :return:
     """
 
-    BASIC_OBJ_PWR = 20
+    #BASIC_OBJ_PWR = 20
 
-    data_file = os.path.join(ROOT_DIR, 'slides_data.xlsx')
+    data_file = os.path.join(ROOT_DIR, 'slides_data.xlsx') #should this be out_path? probably not. RanS 15.2.21
 
     if DataSet == 'RedSquares':
         data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
@@ -226,11 +227,11 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
         database = meta_data_DF.loc[file, 'id']
 
         # Save the grid to file:
-        if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids')):
-            os.mkdir(os.path.join(ROOT_DIR, database, 'Grids'))
-        grid_file = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
+        if not os.path.isdir(os.path.join(out_path, database, 'Grids')):
+            os.mkdir(os.path.join(out_path, database, 'Grids'))
+        grid_file = os.path.join(out_path, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
 
-        segmap_file = os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
+        segmap_file = os.path.join(out_path, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
 
         #RanS 31.12.20 - do not overwrite files
         #if os.path.isfile(grid_file):
@@ -248,7 +249,10 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                 total_tiles.append(-1)
                 continue
 
-            converted_tile_size = int(tile_sz * (int(obj_power) / BASIC_OBJ_PWR))
+            #RanS 15.2.21
+            downsample = obj_power / desired_mag
+            converted_tile_size = int(tile_sz * downsample)
+            #converted_tile_size = int(tile_sz * (int(obj_power) / BASIC_OBJ_PWR))
             #print(height, width, converted_tile_size)
             basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
             total_tiles.append((len(basic_grid)))
@@ -431,7 +435,7 @@ def _legit_grid(image_file_name: str,
     return grid
 
 
-def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
+def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out_path: str = ''):
     """
     This function goes over all directories and makes a table with slides data:
     (1) id
@@ -453,8 +457,10 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['LUNG'] = 'LISTA COMPLETA pdl1 - Gil - V3.xlsx'
     META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
+    META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
 
-    data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
+    #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
+    data_file = os.path.join(out_path, SLIDES_DATA_FILE) #RanS 15.2.21
     new_file = False if os.path.isfile(data_file) else True
 
     meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet]))
@@ -463,6 +469,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
     elif DataSet == 'CARMEL':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str) #RanS 16.12.20
+    elif DataSet == 'ABCTB':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Image File'].astype(str) #RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -513,7 +521,11 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
         id_dict['DX'] = True if (file.find('DX') != -1 or DataSet != 'TCGA') else False
 
         # Get some basic data about the image like MPP (Microns Per Pixel) and size:
-        img = openslide.open_slide(file)
+        try:
+            img = openslide.open_slide(file)
+        except:
+            print('failed to read slide: ', file) #RanS 17.2.21
+            continue
         try:
             #id_dict['MPP'] = float(img.properties['aperio.MPP'])
             id_dict['MPP'] = float(img.properties[mpp_dict[data_format]])
@@ -586,18 +598,19 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data'):
 
 
 #def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
-def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1):
-    data_path = os.path.join(ROOT_DIR, DataSet)
-    print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
-    if not os.path.isdir(os.path.join(data_path, 'SegData')):
-        os.mkdir(os.path.join(data_path, 'SegData'))
-    if not os.path.isdir(os.path.join(data_path, 'SegData','Thumbs')):
-        os.mkdir(os.path.join(data_path, 'SegData','Thumbs'))
-    if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegMaps')):
-        os.mkdir(os.path.join(data_path, 'SegData', 'SegMaps'))
-    if not os.path.isdir(os.path.join(data_path, 'SegData', 'SegImages')):
-        os.mkdir(os.path.join(data_path, 'SegData', 'SegImages'))
+def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = ''):
+    out_path_dataset = os.path.join(out_path, DataSet)
+    print('Making Segmentation Maps for each slide file at location: {}'.format(out_path_dataset))
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData'))
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData','Thumbs')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData','Thumbs'))
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps'))
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegImages')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegImages'))
 
+    data_path = os.path.join(ROOT_DIR, DataSet)
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
     slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))
@@ -611,9 +624,9 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         fn, data_format = os.path.splitext(os.path.basename(file))
 
         if not rewrite:
-            pic1 = os.path.exists(os.path.join(data_path, 'SegData', 'Thumbs', fn + '_thumb.png'))
-            pic2 = os.path.exists(os.path.join(data_path, 'SegData', 'SegMaps', fn + '_SegMap.png'))
-            pic3 = os.path.exists(os.path.join(data_path, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.png'))
+            pic2 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
+            pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
             if pic1 and pic2 and pic3:
                 continue
 
@@ -661,12 +674,18 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                 thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
                 thumb = Image.fromarray(thumb_arr)
 
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification)
+            # RanS 22.2.21
+            if DataSet == 'ABCTB':
+                use_otsu3 = False
+            else:
+                use_otsu3 = True
+
+            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
             slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(data_path, 'SegData',  'Thumbs', fn + '_thumb.png'))
-            thmb_seg_map.save(os.path.join(data_path, 'SegData', 'SegMaps', fn + '_SegMap.png'))
-            thmb_seg_image.save(os.path.join(data_path, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
+            thmb_seg_map.save(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
+            thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
 
         else:
             print('Error: Found no slide in path {}'.format(dir))
@@ -731,7 +750,7 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     return xy
 
 
-def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:
@@ -741,9 +760,9 @@ def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Im
 
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     #image_array = np.array(image.convert('HSV'))
-    image_array = np.array(image.convert('CMYK')) #temp RanS 9.12.20
+    image_array = np.array(image.convert('CMYK')) #RanS 9.12.20
     # otsu Thresholding:
-    use_otsu3 = True
+    #use_otsu3 = True
     if use_otsu3:
         # RanS 25.10.20 - 3way binarization
         thresh = otsu3(image_array[:, :, 1])

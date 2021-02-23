@@ -16,6 +16,7 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
+import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=3, type=int, help='fold to be as TEST FOLD')
@@ -41,6 +42,7 @@ parser.add_argument('--c_param', default=0.1, type=float, help='color jitter par
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 #parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--pretrain_path', default='', type=str, help='path for pretrained model') # RanS 15.12.20
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -90,7 +92,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             optimizer.zero_grad()
             outputs = model(data)
-            print(outputs.shape)
+            #print(outputs.shape)
 
             loss = criterion(outputs, target)
             loss.backward()
@@ -114,7 +116,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
-            if DEVICE.type == 'cuda':
+            if DEVICE.type == 'cuda' and print_timing:
                 res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
                 #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
                 all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
@@ -225,6 +227,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.eval()
 
     with torch.no_grad():
+
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
@@ -350,6 +353,12 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
+    # RanS 28.1.21
+    # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+    if DEVICE.type == 'cuda' and args.time:
+        nvidia_smi.nvmlInit()
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+        # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
     # Tile size definition:
     TILE_SIZE = 128
@@ -475,17 +484,16 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
+    #RanS 16.2.21, use pretrained model
+    elif args.pretrain_path != '':
+        print('Loading pre-saved model...')
+        model_data_loaded = torch.load(args.pretrain_path, map_location='cpu')
+        model.load_state_dict(model_data_loaded['model_state_dict'])
+
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
-
-        # RanS 28.1.21
-        # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
-        import nvidia_smi
-        nvidia_smi.nvmlInit()
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
-        # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
     if args.experiment != 0:
         optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])

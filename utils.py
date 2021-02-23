@@ -44,7 +44,7 @@ def make_dir(dirname):
 '''
 #def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
 #RanS 9.2.21, preload slides
-def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
+def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
     """
     This function choose and returns data to be held by DataSet
     :param file_name:
@@ -53,8 +53,12 @@ def _choose_data(grid_list: str, slide: str, how_many: int, magnification: int =
     """
     #BASIC_OBJ_POWER = 20
     #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    downsample = int(magnification / desired_mag)
-    adjusted_tile_size = int(tile_size * downsample)  # RanS 22.12.20
+    #downsample = int(magnification / desired_mag)
+    downsample = magnification / desired_mag
+    adjusted_tile_size = int(tile_size * downsample)
+    downsample = int(downsample)
+    # open grid list:
+
 
     # Choose locations from the grid:
     loc_num = len(grid_list)

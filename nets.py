@@ -267,6 +267,7 @@ def ResNet_50():
     return model
 '''
 
+
 class ResNet34_GN(nn.Module):
     def __init__(self):
         super(ResNet34_GN, self).__init__()
@@ -275,8 +276,8 @@ class ResNet34_GN(nn.Module):
         # Replace all BatchNorm layers with GroupNorm:
 
         self.con_layers = resnet.ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=1000, zero_init_residual=False,
-                         groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                         norm_layer=MyGroupNorm)
+                                        groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                                        norm_layer=MyGroupNorm)
 
         self.linear_layer = nn.Linear(in_features=1000, out_features=2)
 
@@ -307,8 +308,7 @@ class ResNet50_GN(nn.Module):
         return x
 
 
-
-#RanS 14.12.20
+# RanS 14.12.20
 class net_with_3FC(nn.Module):
     def __init__(self, pretrained_model, reinit_last_layer=True):
         super(net_with_3FC, self).__init__()
@@ -346,18 +346,19 @@ class net_with_3FC(nn.Module):
             # nn.init.kaiming_normal_(self.pretrained.layer4[-1].conv3.weight, mode='fan_in', nonlinearity='relu')
         self.pretrained.fc = nn.Identity()
         self.dropout = nn.Dropout(p=0.5)
-        #self.fc = nn.Linear(num_ftrs, 2)
+        # self.fc = nn.Linear(num_ftrs, 2)
         self.fc1 = nn.Linear(num_ftrs, 512)
         self.fc2 = nn.Linear(512, 512)
         self.fc3 = nn.Linear(512, 2)
-        #nn.init.kaiming_normal_(self.fc.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+        # nn.init.kaiming_normal_(self.fc.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc1.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
         nn.init.kaiming_normal_(self.fc3.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
+
     def forward(self, x):
         x = self.pretrained(x)
         # x = self.fc(x)
-        #x = self.fc(self.dropout(x))
+        # x = self.fc(self.dropout(x))
         x = F.relu(self.fc1(self.dropout(x)))
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
@@ -365,7 +366,7 @@ class net_with_3FC(nn.Module):
         return x
 
 
-#RanS 17.12.20
+# RanS 17.12.20
 class resnet50_with_3FC(nn.Module):
     def __init__(self, pretrained=True):
         super(resnet50_with_3FC, self).__init__()
@@ -378,7 +379,7 @@ class resnet50_with_3FC(nn.Module):
         return x
 
 
-#RanS 21.12.20
+# RanS 21.12.20
 class net_with_2FC(nn.Module):
     def __init__(self, pretrained_model):
         super(net_with_2FC, self).__init__()
@@ -393,12 +394,12 @@ class net_with_2FC(nn.Module):
         nn.init.kaiming_normal_(self.fc2.weight, mode='fan_in', nonlinearity='relu')  # RanS 17.11.20, try He init
 
     def forward(self, x):
-        #old version:
+        # old version:
         '''x = self.pretrained(x)
         x = F.relu(self.fc1(self.dropout(x)))
         x = self.fc2(x)'''
 
-        #RanS 14.1.21, Nikhil's version
+        # RanS 14.1.21, Nikhil's version
         x = self.pretrained(x)
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
@@ -406,7 +407,7 @@ class net_with_2FC(nn.Module):
         return x
 
 
-#RanS 21.12.20
+# RanS 21.12.20
 class ReceptorNet_feature_extractor(nn.Module):
     def __init__(self, pretrained=True):
         super(ReceptorNet_feature_extractor, self).__init__()
@@ -417,6 +418,7 @@ class ReceptorNet_feature_extractor(nn.Module):
     def forward(self, x):
         x = self.model(x)
         return x
+
 
 ##########################################################
 
@@ -517,7 +519,7 @@ class ResNet_NO_downsample(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        #x = self.maxpool(x)
+        # x = self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)

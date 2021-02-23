@@ -188,7 +188,8 @@ class WSI_Master_Dataset(Dataset):
                 #RanS 9.2.21, preload slides
                 try:
                     image_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
-                    self.slides.append(openslide.open_slide(image_file))
+                    if sys.platform != 'win32':
+                        self.slides.append(openslide.open_slide(image_file))
                     basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
                     grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
@@ -221,15 +222,19 @@ class WSI_Master_Dataset(Dataset):
         '''basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
         grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
         image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])'''
-
+        if sys.platform == 'win32':
+            image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+            slide = openslide.open_slide(image_file)
+        else:
+            slide = self.slides[idx]
         #tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
         # RanS 9.2.21, preload slides
-        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], self.slides[idx], self.bag_size,
-                                                 self.magnification[idx],
-                                                 # self.tile_size,
-                                                 int(self.tile_size / (1 - self.scale_factor)),  # RanS 7.12.20, fix boundaries with scale
-                                                 print_timing=self.print_time,
-                                                 desired_mag=self.basic_magnification) #RanS 8.2.21
+        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], slide, self.bag_size,
+                                        self.magnification[idx],
+                                        # self.tile_size,
+                                        int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+                                        print_timing=self.print_time,
+                                        desired_mag=self.basic_magnification) #RanS 8.2.21
 
         #time1 = time.time()  # temp
         #print('time1:', str(time1 - start_getitem))  # temp
@@ -273,8 +278,6 @@ class WSI_Master_Dataset(Dataset):
 
         return X, label, time_list, self.image_file_names[idx], images
 
-
-########################################################################################################################
 
 class WSI_MILdataset(WSI_Master_Dataset):
     def __init__(self,
@@ -452,6 +455,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         if self.tiles_to_go is None:
             self.tiles_to_go = self.num_patches[self.slide_num]
             self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
+            self.current_slide = openslide.open_slide(self.current_file)
 
             self.initial_num_patches = self.num_patches[self.slide_num]
 
@@ -467,7 +471,8 @@ class Infer_Dataset(WSI_Master_Dataset):
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
         downsample = int(self.magnification[idx] / self.basic_magnification)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
-        tiles, time_list, tile_sz = _get_tiles(self.current_file,
+        #tiles, time_list, tile_sz = _get_tiles(self.current_file,
+        tiles, time_list, tile_sz = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
                                       self.print_time,
