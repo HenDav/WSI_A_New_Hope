@@ -379,9 +379,9 @@ def make_grid_2(DataSet: str = 'TCGA',
 
     slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
 
-    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
-    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage
+    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = tile_nums
+    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
+    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile) @ X' + str(desired_magnification)] = slide_usage
 
     meta_data_DF.to_excel(data_file)
 
@@ -413,7 +413,6 @@ def _legit_grid(image_file_name: str,
     col_ratio = size[1] / segMap.shape[1]
 
     # the complicated next line only rounds up the numbers
-    #adjusted_tile_at_segmap_magnification =
     tile_size_at_segmap_magnification = (int(-(-adjusted_tile_size_at_level_0 // row_ratio)), int(-(-adjusted_tile_size_at_level_0 // col_ratio)))
     # computing the compatible grid for the small segmentation map:
     idx_to_remove =[]

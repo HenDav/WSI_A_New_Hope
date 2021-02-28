@@ -54,7 +54,7 @@ class WSI_Master_Dataset(Dataset):
 
         self.DataSet = DataSet
         #self.BASIC_MAGNIFICATION = 20
-        self.basic_magnification = mag #RanS 8.2.21
+        self.basic_magnification = mag  #RanS 8.2.21
         if DataSet == 'RedSquares':
         #    self.BASIC_MAGNIFICATION = 10
             slides_data_file = 'slides_data_RedSquares.xlsx'
@@ -227,14 +227,15 @@ class WSI_Master_Dataset(Dataset):
             slide = openslide.open_slide(image_file)
         else:
             slide = self.slides[idx]
-        #tiles, time_list, tile_sz = _choose_data(grid_file, image_file, self.bag_size,
-        # RanS 9.2.21, preload slides
-        tiles, time_list, tile_sz = _choose_data(self.grid_lists[idx], slide, self.bag_size,
-                                        self.magnification[idx],
-                                        # self.tile_size,
-                                        int(self.tile_size / (1 - self.scale_factor)), # RanS 7.12.20, fix boundaries with scale
+
+        tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
+                                        slide=slide,
+                                        how_many=self.bag_size,
+                                        magnification=self.magnification[idx],
+                                        tile_size=int(self.tile_size / (1 - self.scale_factor)),  # RanS 7.12.20, fix boundaries with scale
                                         print_timing=self.print_time,
                                         desired_mag=self.basic_magnification) #RanS 8.2.21
+
 
         #time1 = time.time()  # temp
         #print('time1:', str(time1 - start_getitem))  # temp
@@ -248,14 +249,15 @@ class WSI_Master_Dataset(Dataset):
         #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         #magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
         #if magnification_relation != 1:
+        '''
         if tile_sz != self.tile_size:
-            transform = transforms.Compose([ transforms.Resize(self.tile_size), self.transform])
+            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
             transform = self.transform
-
+        '''
         start_aug = time.time()
         for i in range(self.bag_size):
-            X[i] = transform(tiles[i])
+            X[i] = self.transform(tiles[i])
 
         if self.get_images:
             images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])

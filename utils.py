@@ -20,6 +20,7 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
 from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 import nets
+from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
 
@@ -80,7 +81,7 @@ def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, mag
     return image_tiles, time_list, tile_sz
 '''
 
-def _choose_data(grid_list: str,
+def _choose_data(grid_list: list,
                  slide: openslide.OpenSlide,
                  how_many: int,
                  magnification: int,

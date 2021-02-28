@@ -40,6 +40,6 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    #utils_data_managment.make_grid_2(DataSet='TCGA', tissue_coverage=0.1, desired_magnification=10, added_extension='_coverage-0_1')
+    utils_data_managment.make_grid_2(DataSet='TCGA', tissue_coverage=0.5, desired_magnification=20, added_extension='')
 
     print('Data Preparation sequence is Done !')
