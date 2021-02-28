@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets, PreActResNets
+import nets, PreActResNets, resnet_v2
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -16,10 +16,9 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
-import nvidia_smi
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=3, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
@@ -34,15 +33,14 @@ parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty
 parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
 parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=18, type=int, help='size of batch')  # RanS 8.12.20
+parser.add_argument('--model', default='resnet_v2.PreActResNet50()', type=str, help='net to use') # RanS 15.12.20
 #parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
-parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use') # RanS 15.12.20
+#parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
-#parser.add_argument('--workers', default=1, type=int, help='# of workers per cpu') # RanS 7.12.20
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
-parser.add_argument('--pretrain_path', default='', type=str, help='path for pretrained model') # RanS 15.12.20
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -92,7 +90,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             optimizer.zero_grad()
             outputs = model(data)
-            #print(outputs.shape)
 
             loss = criterion(outputs, target)
             loss.backward()
@@ -227,7 +224,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     model.eval()
 
     with torch.no_grad():
-
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
 
@@ -353,12 +349,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 if __name__ == '__main__':
     # Device definition:
     DEVICE = utils.device_gpu_cpu()
-    # RanS 28.1.21
-    # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
-    if DEVICE.type == 'cuda' and args.time:
-        nvidia_smi.nvmlInit()
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
-        # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
     # Tile size definition:
     TILE_SIZE = 128
@@ -484,16 +474,18 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    #RanS 16.2.21, use pretrained model
-    elif args.pretrain_path != '':
-        print('Loading pre-saved model...')
-        model_data_loaded = torch.load(args.pretrain_path, map_location='cpu')
-        model.load_state_dict(model_data_loaded['model_state_dict'])
-
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
+
+        # RanS 28.1.21
+        # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
+        if args.time:
+            import nvidia_smi
+            nvidia_smi.nvmlInit()
+            handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+            # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
     if args.experiment != 0:
         optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])
