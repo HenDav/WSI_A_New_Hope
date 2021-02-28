@@ -223,7 +223,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
     for i, file in enumerate(tqdm(files)):
         #print(file)
-        filename = os.path.basename(file).split('.')[0]
+        #filename = os.path.basename(file).split('.')[0]
+        filename = '.'.join(os.path.basename(file).split('.')[:-1])
         database = meta_data_DF.loc[file, 'id']
 
         # Save the grid to file:
@@ -245,6 +246,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             obj_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
             if obj_power == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
+                print('objective power was not found')
                 tile_nums.append(0)
                 total_tiles.append(-1)
                 continue
@@ -263,7 +265,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width),
-                                     tissue_coverage= tissue_coverage)
+                                     tissue_coverage=tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
@@ -274,6 +276,10 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                 pickle.dump(legit_grid, filehandle)
         else:
             print('Grid was not computed for file {}'.format(file))
+            if ~os.path.isfile(os.path.join(ROOT_DIR, database, file)):
+                print('slide was not found')
+            if ~os.path.isfile(segmap_file):
+                print('seg map was not found')
             tile_nums.append(0)
             total_tiles.append(-1)
 
@@ -345,6 +351,7 @@ def make_grid_2(DataSet: str = 'TCGA',
             objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
             if objective_power == 'Missing Data':
                 print('Grid was not computed for file {}'.format(file))
+                print('objective power was not found')
                 tile_nums.append(0)
                 total_tiles.append(-1)
                 continue
@@ -367,6 +374,10 @@ def make_grid_2(DataSet: str = 'TCGA',
                 pickle.dump(legit_grid, filehandle)
         else:
             print('Grid was not computed for file {}'.format(file))
+            if ~os.path.isfile(os.path.join(ROOT_DIR, database, file)):
+                print('slide was not found')
+            if ~os.path.isfile(segmap_file):
+                print('seg map was not found')
             tile_nums.append(0)
             total_tiles.append(-1)
 
@@ -419,8 +430,8 @@ def _legit_grid(image_file_name: str,
         # collect the data from the segMap:
         tile = segMap[new_row : new_row + small_tile[0], new_col : new_col + small_tile[1]]
         tile_pixels = small_tile[0] * small_tile[1]
-        tissue_coverage = tile.sum() / tile_pixels / 255
-        if tissue_coverage < tissue_coverage:
+        tile_coverage = tile.sum() / tile_pixels / 255
+        if tile_coverage < tissue_coverage:
             idx_to_remove.append(idx)
 
     # We'll now remove items from the grid. starting from the end to the beginning in order to keep the indices correct:
@@ -619,9 +630,11 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         fn, data_format = os.path.splitext(os.path.basename(file))
 
         if not rewrite:
-            pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.png'))
+            #pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.png'))
+            pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg')) #RanS 24.2.21
             pic2 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
-            pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            #pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg')) #RanS 24.2.21
             if pic1 and pic2 and pic3:
                 continue
 
@@ -678,10 +691,11 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
             thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
             slide.close()
             # Saving segmentation map, segmentation image and thumbnail:
-            thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
-            thmb_seg_map.save(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
-            thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
-
+            #thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
+            thumb.save(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg'))
+            thmb_seg_map.save(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png')) #RanS 24.2.21
+            #thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
+            thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg')) #RanS 24.2.21
         else:
             print('Error: Found no slide in path {}'.format(dir))
             # TODO: implement a case for a slide that cannot be opened.
@@ -818,7 +832,9 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
 
     #RanS 30.12.20 contour color
     contour_color = np.zeros([len(contours), 3])
+    contour_color_std = np.zeros([len(contours), 3]) #RanS 24.2.21
     rgb_image = np.array(image)
+    hsv_image = np.array(image.convert('HSV')) # temp RanS 24.2.21
 
     for ii in range(len(contours)):
         contour_area[ii] = cv.contourArea(contours[ii])
@@ -826,19 +842,29 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
         #RanS 30.12.20, get contour mean color
         mask = np.zeros(seg_map.shape, np.uint8)
         cv.drawContours(mask, [contours[ii]], -1, 255, thickness=cv.FILLED)
-        contour_color[ii, :] = cv.mean(rgb_image, mask=mask)[:3]
+        #contour_color[ii, :] = cv.mean(rgb_image, mask=mask)[:3]
+        #contour_color_std[ii, :] = cv.meanStdDev(rgb_image, mask=mask)[:3] #RanS 24.2.21
+
+        #mean_col, std_col = cv.meanStdDev(rgb_image, mask=mask) #RanS 24.2.21
+        mean_col, std_col = cv.meanStdDev(hsv_image, mask=mask)  # temp RanS 24.2.21
+        contour_color[ii, :], contour_color_std[ii, :] = mean_col[:,0], std_col[:,0]
+
     contour_std = np.std(contour_color, axis=1)
 
     #temp RanS 30.12.20 - plot each contour with its mean color, std...
     temp_plot = False
     if temp_plot:
-        im1 = np.zeros(seg_map.shape)
+        #im1 = np.zeros(seg_map.shape)
         rgb_image2 = rgb_image.copy()
-        for ii in range(len(contours)):
-            rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color[ii, :], thickness=cv.FILLED)
-            im1 = cv.drawContours(im1, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
+        #for ii in range(len(contours)):
+        for ii in np.where(contour_area>10000)[0]: #temp RanS 24.2.21
+            rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color_std[ii, 1], thickness=cv.FILLED)
+            #im1 = cv.drawContours(im1, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
+            #im1 = cv.drawContours(im1, contours, contourIdx=ii, color=contour_std[ii], thickness=1)
+            #rgb_image2 = cv.drawContours(rgb_image2, contours, contourIdx=ii, color = [1,1,1], thickness=-1)
         plt.imshow(rgb_image2)
-        plt.imshow(im1)
+        #plt.imshow(rgb_image)
+        #plt.imshow(im1,alpha=0.5)
         plt.colorbar()
 
     max_contour = np.max(contour_area)
@@ -849,7 +875,8 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     seg_map_filt = cv.drawContours(seg_map_filt, small_contours, -1, (0, 0, 255), thickness=cv.FILLED) #delete the small contours
 
     #RanS 30.12.20, delete gray contours
-    gray_contours_bool = contour_std < 5
+    #gray_contours_bool = contour_std < 5
+    gray_contours_bool = contour_std < 5 & np.all(contour_color_std<25, axis=1) #RanS 24.2.21, keep tissue with fat
     gray_contours = [contours[ii] for ii in range(len(contours)) if gray_contours_bool[ii] == True]
     seg_map_filt = cv.drawContours(seg_map_filt, gray_contours, -1, (0, 0, 255), thickness=cv.FILLED)  # delete the small contours
 
