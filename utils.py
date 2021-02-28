@@ -824,6 +824,8 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
         elif DataSet == 'Breast': #temp RanS 12.1.21
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
+        elif DataSet == 'ABCTB':  # RanS 28.2.21
+            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
         else:
             ROOT_PATH = r'/home/womer/project/All Data'
 
@@ -838,6 +840,8 @@ def define_data_root(DataSet):
             ROOT_PATH = r'C:\ran_data\RedSquares'
         elif DataSet == 'Breast':
             ROOT_PATH = r'C:\ran_data\breast_dataset'
+        elif DataSet == 'ABCTB':  # RanS 28.2.21
+            ROOT_PATH = r'C:\ran_data\ABCTB\ABCTB_examples'
         else:
             print('Error - no ROOT_PATH defined')
     else: #Omer local

@@ -265,7 +265,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width),
-                                     tissue_coverage=tissue_coverage)
+                                     desired_tissue_coverage=tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
@@ -519,9 +519,12 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         # Create a dictionary to the files and id's:
         if DataSet == 'TCGA':
             id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
+        elif DataSet == 'ABCTB':
+            id_dict['patient barcode'] = os.path.basename(file)
         else:
         #elif DataSet == 'HEROHE':
-            id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
+            #id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
+            id_dict['patient barcode'] = '.'.join(os.path.basename(file).split('.')[:-1])
         #elif DataSet == 'LUNG':
             #id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
 
