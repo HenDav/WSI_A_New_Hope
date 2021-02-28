@@ -41,7 +41,7 @@ def make_dir(dirname):
             print('Creation of directory ', dirname, ' failed...')
             raise
 
-
+'''
 #def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
 #RanS 9.2.21, preload slides
 def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
@@ -59,9 +59,6 @@ def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, mag
     downsample = int(downsample)
     # open grid list:
 
-    #cancelled RanS 9.2.21, preload slides
-    '''with open(grid_file, 'rb') as filehandle:
-        grid_list = pickle.load(filehandle)'''
 
     # Choose locations from the grid:
     loc_num = len(grid_list)
@@ -81,8 +78,69 @@ def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, mag
     image_tiles, time_list, tile_sz = _get_tiles(slide, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
 
     return image_tiles, time_list, tile_sz
+'''
+
+def _choose_data(grid_list: str,
+                 slide: openslide.OpenSlide,
+                 how_many: int,
+                 magnification: int,
+                 tile_size: int = 256,
+                 print_timing: bool = False,
+                 desired_mag: int = 20):
+    """
+    This function choose and returns data to be held by DataSet.
+    The function is in the PreLoad Version. It works with slides already loaded to memory.
+
+    :param grid_list: A list of all grids for this specific slide
+    :param slide: An OpenSlide object of the slide.
+    :param how_many: how_many tiles to return from the slide.
+    :param magnification: The magnification of level 0 of the slide
+    :param tile_size: Desired tile size from the slide at the desired magnification
+    :param print_timing: Do or don't collect timing for this procedure
+    :param desired_mag: Desired Magnification of the tiles/slide.
+    :return:
+    """
+
+    desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
+
+    level, best_next_level = -1, -1
+    for index, downsample in enumerate(slide.level_downsamples):
+        if isclose(desired_downsample, downsample, rel_tol=1e-3):
+            level = index
+            level_downsample = 1
+            break
+
+        elif downsample < desired_downsample:
+            best_next_level = index
+            level_downsample = int(desired_downsample / slide.level_downsamples[best_next_level])
+
+    adjusted_tile_size = tile_size * level_downsample
+    best_slide_level = level if level > best_next_level else best_next_level
+    level_0_tile_size = int(desired_downsample) * tile_size
+
+    # Choose locations from the grid list:
+    loc_num = len(grid_list)
+    # FIXME: The problem of not enough tiles should disappear when we'll work with fixed tile locations + random vertiacl/horizontal movement
+    try:
+        idxs = sample(range(loc_num), how_many)
+    except ValueError:
+        raise ValueError('Requested more tiles than available by the grid list')
+
+    locs = [grid_list[idx] for idx in idxs]
+    #image_tiles, time_list = _get_tiles(slide, locs, adjusted_tile_size, tile_size, best_slide_level)
+
+    image_tiles, time_list = _get_tiles(slide=slide,
+                                        locations=locs,
+                                        tile_size_level_0=level_0_tile_size,
+                                        adjusted_tile_sz=adjusted_tile_size,
+                                        output_tile_sz=tile_size,
+                                        best_slide_level=best_slide_level,
+                                        print_timing=print_timing)
+
+    return image_tiles, time_list
 
 
+'''
 #def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
 #RanS 9.2.21, preload slides
 def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
@@ -179,6 +237,96 @@ def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int,
         time_list = [0]
 
     return tiles_PIL, time_list, tile_sz
+'''
+
+def _get_tiles(slide: openslide.OpenSlide,
+               locations: List[Tuple],
+               tile_size_level_0: int,
+               adjusted_tile_sz: int,
+               output_tile_sz: int,
+               best_slide_level: int,
+               print_timing: bool = False):
+    """
+    This function extract tiles from the slide.
+    :param slide: OpenSlide object containing a slide
+    :param locations: locations of te tiles to be extracted
+    :param tile_size_level_0: tile size adjusted for level 0
+    :param adjusted_tile_sz: tile size adjusted for best_level magnification
+    :param output_tile_sz: output tile size needed
+    :param best_slide_level: best slide level to get tiles from
+    :param print_timing: collect time profiling data ?
+    :return:
+    """
+
+    #RanS 20.12.20 - plot thumbnail with tile locations
+    temp = False
+    if temp:
+        from matplotlib.patches import Rectangle
+        import matplotlib.pyplot as plt
+        level_1 = slide.level_count - 5
+        ld = int(slide.level_downsamples[level_1]) #level downsample
+        thumb = (slide.read_region(location=(0, 0), level=level_1, size=slide.level_dimensions[level_1])).convert('RGB')
+        fig, ax = plt.subplots()
+        plt.imshow(thumb)
+        for idx, loc in enumerate(locations):
+            print((loc[1]/ld, loc[0]/ld))
+            rect = Rectangle((loc[1]/ld, loc[0]/ld), adjusted_tile_sz / ld, adjusted_tile_sz / ld, color='r', linewidth=3, fill=False)
+            ax.add_patch(rect)
+            #rect = Rectangle((loc[1] / ld, loc[0] / ld), tile_sz / ld, tile_sz / ld, color='g', linewidth=3, fill=False)
+            #ax.add_patch(rect)
+
+        patch1 = slide.read_region((loc[1], loc[0]), 0, (600, 600)).convert('RGB')
+        plt.figure()
+        plt.imshow(patch1)
+
+        patch2 = slide.read_region((loc[1], loc[0]), 0, (2000, 2000)).convert('RGB')
+        plt.figure()
+        plt.imshow(patch2)
+
+        plt.show()
+
+    tiles_PIL = []
+
+    start_gettiles = time.time()
+    for idx, loc in enumerate(locations):
+        try:
+            tile_shifting = sample(range(-tile_size_level_0 // 2, tile_size_level_0 // 2), 2)
+            new_loc_init = {'Top': loc[0] - tile_shifting[0],
+                            'Left': loc[1] - tile_shifting[1]}
+            new_loc_end = {'Bottom': new_loc_init['Top'] + tile_size_level_0,
+                           'Right': new_loc_init['Left'] + tile_size_level_0}
+
+            if new_loc_init['Top'] < 0:
+                new_loc_init['Top'] += abs(new_loc_init['Top'])
+            if new_loc_init['Left'] < 0:
+                new_loc_init['Left'] += abs(new_loc_init['Left'])
+            if new_loc_end['Bottom'] > slide.dimensions[1]:
+                delta_Height = new_loc_end['Bottom'] - slide.dimensions[1]
+                new_loc_init['Top'] -= delta_Height
+            if new_loc_end['Right'] > slide.dimensions[0]:
+                delta_Width = new_loc_end['Right'] - slide.dimensions[0]
+                new_loc_init['Left'] -= delta_Width
+
+            # When reading from OpenSlide the locations is as follows (col, row)
+            image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+        except:
+            print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
+            print('taking blank patch instead')
+            image = Image.fromarray(np.zeros([adjusted_tile_sz, adjusted_tile_sz, 3], dtype=np.uint8))
+
+        if adjusted_tile_sz != output_tile_sz:
+            image = image.resize((output_tile_sz, output_tile_sz))
+
+        tiles_PIL.append(image)
+
+    end_gettiles = time.time()
+
+    if print_timing:
+        time_list = [0, (end_gettiles - start_gettiles) / len(locations)]
+    else:
+        time_list = [0]
+
+    return tiles_PIL, time_list
 
 
 def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
