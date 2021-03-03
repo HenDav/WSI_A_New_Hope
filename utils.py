@@ -825,6 +825,8 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
         elif DataSet == 'Breast': #temp RanS 12.1.21
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
+        elif DataSet == 'ABCTB':
+            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
         else:
             ROOT_PATH = r'/home/womer/project/All Data'
 

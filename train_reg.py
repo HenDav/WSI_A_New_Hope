@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=4, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
@@ -84,8 +84,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
 
-            data, target = data.to(DEVICE), target.to(DEVICE)
-            target = target.squeeze()
+            data, target = data.to(DEVICE), target.to(DEVICE).squeeze(1)
             model.to(DEVICE)
 
             optimizer.zero_grad()
@@ -227,17 +226,13 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
     with torch.no_grad():
         for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
-            data, targets = data.to(device=DEVICE), targets.to(device=DEVICE)
-
+            data, targets = data.to(device=DEVICE), targets.to(device=DEVICE).squeeze(1)
             model.to(DEVICE)
 
             outputs = model(data)
-
-            # outputs = torch.nn.functional.softmax(out, dim=1)
-            targets = targets.squeeze()
             loss = criterion(outputs, targets)
-
             loss_test += loss.item()
+
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
