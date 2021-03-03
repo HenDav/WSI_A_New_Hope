@@ -33,8 +33,8 @@ parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty
 parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
 parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
 parser.add_argument('--batch_size', default=18, type=int, help='size of batch')  # RanS 8.12.20
-parser.add_argument('--model', default='resnet_v2.PreActResNet50()', type=str, help='net to use') # RanS 15.12.20
-#parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
+#parser.add_argument('--model', default='resnet_v2.PreActResNet50()', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
 #parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
@@ -96,6 +96,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.step()
 
             train_loss += loss.item()
+
+            outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
@@ -236,6 +238,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             loss = criterion(outputs, targets)
 
             loss_test += loss.item()
+            outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
@@ -386,10 +389,8 @@ if __name__ == '__main__':
 
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
-    #cpu_available = 1
-    # num_workers = cpu_available*args.workers_factor #RanS 28.1.21
-    # num_workers = args.workers  # RanS 1.2.21
     num_workers = cpu_available
+
     if sys.platform == 'win32':
         num_workers = 4  # temp RanS 2.2.21
     print('num workers = ', num_workers)
