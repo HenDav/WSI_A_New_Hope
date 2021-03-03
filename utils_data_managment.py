@@ -690,10 +690,11 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
                 thumb = Image.fromarray(thumb_arr)
 
             # RanS 22.2.21
-            if DataSet == 'ABCTB':
-                use_otsu3 = False
+            #if DataSet == 'ABCTB':
+            if DataSet == 'LUNG':
+                use_otsu3 = True #this helps avoid the grid
             else:
-                use_otsu3 = True
+                use_otsu3 = False
 
             thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
             slide.close()
