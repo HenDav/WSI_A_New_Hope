@@ -800,7 +800,6 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
         _, seg_map_HED = cv.threshold(image_HED[:, :, 0], thresh_HED[1], 255, cv.THRESH_BINARY)
         plt.imshow(seg_map_HED)
 
-
     #RanS 9.11.20 - test median pixel color to inspect segmentation
     image_array_rgb = np.array(image)
     pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
@@ -826,64 +825,14 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     #size_thresh = 10000 #RanS 9.12.20, lung cancer biopsies can be very small
     size_thresh = 5000  # RanS 9.12.20, lung cancer biopsies can be very small
     contours, _ = cv.findContours(seg_map_filt, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-    # drawContours = cv.drawContours(image_array, contours, -1, (0, 0, 255), -1)
-    # cv.imshow("Contours", drawContours)
-    # cv.waitKey()
-    small_contours = []
-    '''for contour in contours:
-        contour_area = cv.contourArea(contour)
-        if contour_area < size_thresh:
-            small_contours.append(contour)'''
-    #RanS 9.12.20, kill small contours only if much smaller than largest contour
+
     contour_area = np.zeros(len(contours))
 
     rgb_image = np.array(image)
     hsv_image = np.array(image.convert('HSV')) # temp RanS 24.2.21
 
-    '''white_mask = np.zeros(seg_map.shape, np.uint8) # temp RanS 3.3.21
-    white_mask[np.any(rgb_image < 240, axis=2)] = 255 # temp RanS 3.3.21'''
-    #ind = 0 #temp RanS 3.3.21
-    #color_var = np.zeros((10,1)) #temp RanS 3.3.21
-    #mean_hue = np.zeros((len(contours),1)) #RanS 3.3.21
     for ii in range(len(contours)):
         contour_area[ii] = cv.contourArea(contours[ii])
-
-        '''#RanS 30.12.20, get contour mean color
-        mask = np.zeros(seg_map.shape, np.uint8)
-        cv.drawContours(mask, [contours[ii]], -1, 255, thickness=cv.FILLED)
-        #contour_color[ii, :] = cv.mean(rgb_image, mask=mask)[:3]
-        #contour_color_std[ii, :] = cv.meanStdDev(rgb_image, mask=mask)[:3] #RanS 24.2.21
-
-        mean_col, std_col = cv.meanStdDev(rgb_image, mask=mask) #RanS 24.2.21
-        #mean_col, std_col = cv.meanStdDev(hsv_image, mask=mask)  # temp RanS 24.2.21
-        contour_color[ii, :], contour_color_std[ii, :] = mean_col[:,0], std_col[:,0]'''
-
-        # temp plot RanS 3.3.21
-        #hist_mask = cv.bitwise_and(white_mask, mask)
-        '''if contour_area[ii] > 50000:
-            rgb_image2 = rgb_image.copy()
-            rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color_std[ii, 2],
-                                         thickness=cv.FILLED)
-
-            plt.figure()
-            plt.imshow(rgb_image2)
-            plt.text(0,0,mean_col)
-            plt.text(2000, 0, std_col)
-            fig, ax = plt.subplots()
-            hist_item = np.zeros((3,256))
-            for i_col in range(3):
-                hist_item[i_col] = np.squeeze(cv.calcHist([hsv_image], [i_col], hist_mask, [256], [0, 255]))
-                #hist_item[i_col] = np.squeeze(cv.calcHist([rgb_image], [i_col], mask, [256], [0, 255]))
-                ax.plot(hist_item[i_col])
-            color_var[ind] = np.sum(np.max(hist_item,axis=0)-np.min(hist_item,axis=0))/contour_area[ii]
-            mean_col, std_col = cv.meanStdDev(hsv_image, mask=hist_mask)  # temp RanS 24.2.21
-            mean_hue[ind] = mean_col[0]
-            ind+=1
-            #ax.legend(['R','G','B'])
-            ax.legend(['H', 'S', 'V'])
-            print('aa')'''
-
-    #contour_std = np.std(contour_color, axis=1)
 
     #temp RanS 30.12.20 - plot each contour with its mean color, std...
     temp_plot = False
@@ -903,7 +852,6 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
         #plt.colorbar()
 
     max_contour = np.max(contour_area)
-    #small_contours_bool = (contour_area<size_thresh) & (contour_area < max_contour*0.2)
     small_contours_bool = (contour_area < size_thresh) & (contour_area < max_contour * 0.02)
     small_contours = [contours[ii] for ii in range(len(contours)) if small_contours_bool[ii]==True]
 
@@ -913,21 +861,15 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     #gray_contours_bool = contour_std < 5
 
     #RanS 3.3.21, check contour color only for large contours
-    # RanS 30.12.20 contour color
     large_contour_ind = np.where(small_contours_bool == False)[0]
-    #contour_color = np.zeros([len(large_contour_ind), 3])
     white_mask = np.zeros(seg_map.shape, np.uint8)
     white_mask[np.any(rgb_image < 240, axis=2)] = 255
     gray_contours_bool = np.zeros(len(contours), dtype=bool)
     for ii in large_contour_ind:
-        # RanS 30.12.20, get contour mean color
+        # get contour mean color
         mask = np.zeros(seg_map.shape, np.uint8)
         cv.drawContours(mask, [contours[ii]], -1, 255, thickness=cv.FILLED)
-
         contour_color, _ = cv.meanStdDev(rgb_image, mask=mask)  # RanS 24.2.21
-        #contour_color[ii, :] = mean_col[:, 0]
-
-        #contour_std = np.std(contour_color[ii, :])
         contour_std = np.std(contour_color)
         if contour_std < 5:
             hist_mask = cv.bitwise_and(white_mask, mask)
@@ -936,9 +878,6 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
             if mean_hue < 100:
                 gray_contours_bool[ii] = True
 
-    #gray_contours_bool = contour_std < 5 & np.all(contour_color_std<25, axis=1) #RanS 24.2.21, keep tissue with fat
-    #gray_contours_bool = (contour_std < 5) & (contour_color_std[:, 1] < 10)  # RanS 2.3.21, keep tissue with fat
-    #gray_contours = [contours[ii] for ii in range(len(contours)) if gray_contours_bool[ii] == True]
     gray_contours = [contours[ii] for ii in large_contour_ind if gray_contours_bool[ii] == True]
     seg_map_filt = cv.drawContours(seg_map_filt, gray_contours, -1, (0, 0, 255), thickness=cv.FILLED)  # delete the small contours
 
@@ -954,36 +893,6 @@ def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, seg_image
-
-
-'''def _make_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
-    """
-    This function creates a segmentation map for an Image
-    :param magnification:
-    :return:
-    """
-    # Converting the image from RGBA to HSV and to a numpy array (from PIL):
-    image_array = np.array(image.convert('HSV'))
-    # otsu Thresholding:
-    _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
-
-    # Smoothing the tissue segmentation imaqe:
-    size = 30 * magnification
-    kernel_smooth = np.ones((size, size), dtype=np.float32) / size ** 2
-    seg_map = cv.filter2D(seg_map, -1, kernel_smooth)
-
-    th_val = 5
-    seg_map[seg_map > th_val] = 255
-    seg_map[seg_map <= th_val] = 0
-    seg_map_PIL = Image.fromarray(seg_map)
-
-    edge_image = cv.Canny(seg_map, 1, 254)
-    # Make the edge thicker by dilating:
-    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
-    seg_image = Image.blend(image, edge_image, 0.5)
-
-    return seg_map_PIL, seg_image'''
 
 
 def TCGA_dirs_2_files():
