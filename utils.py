@@ -309,13 +309,7 @@ def _get_tiles(slide: openslide.OpenSlide,
                 new_loc_init['Left'] -= delta_Width
 
             # When reading from OpenSlide the locations is as follows (col, row)
-            #start = time.time() #temp RanS 28.2.21
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
-            #image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), 0, (1024, 1024)).convert('RGB') #temp RanS 2.3.21
-            #end = time.time()  # temp RanS 28.2.21
-            #print('tile time = ', str(end-start)) # temp RanS 28.2.21
-            #print('best_slide_level = ', str(best_slide_level))  # temp RanS 28.2.21
-            #print('adjusted_tile_sz = ', str(adjusted_tile_sz))  # temp RanS 28.2.21
         except:
             print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
             print('taking blank patch instead')
@@ -324,15 +318,9 @@ def _get_tiles(slide: openslide.OpenSlide,
         if adjusted_tile_sz != output_tile_sz:
             image = image.resize((output_tile_sz, output_tile_sz))
 
-        #start = time.time()  # temp RanS 28.2.21
-        #image = image.resize((output_tile_sz, output_tile_sz)) #temp RanS 2.3.21
-        #end = time.time()  # temp RanS 28.2.21
-        #print('resize time = ', str(end - start))  # temp RanS 28.2.21
-
         tiles_PIL.append(image)
 
     end_gettiles = time.time()
-    #print('total time = ', str(end_gettiles - start_gettiles), ' sec for ', str(len(locations)))  # temp RanS 28.2.21
 
     if print_timing:
         time_list = [0, (end_gettiles - start_gettiles) / len(locations)]
@@ -835,9 +823,9 @@ def define_data_root(DataSet):
         elif DataSet[:6] == 'CARMEL':
             N = DataSet[6:]
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
-        elif DataSet == 'Breast': #RanS 12.1.21
+        elif DataSet == 'Breast':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
-        elif DataSet == 'ABCTB':  # RanS 28.2.21
+        elif DataSet == 'ABCTB':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
             #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
         else:
