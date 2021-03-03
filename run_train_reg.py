@@ -22,7 +22,7 @@ else:
                     #'--target', 'PDL1',
                     #'--transform_type', 'bnfrs',
                     #'--transform_type', 'hedcfrs',
-                    '--batch_size', str(5),
+                    '--batch_size', str(2),
                     '--n_patches_test', '10',
                     '--n_patches_train', '10',
                     '--model', 'PreActResNets.PreActResNet50_Ron()',
@@ -32,6 +32,7 @@ else:
                     '--transform_type', 'flip',
                     #'-fast',
                     '--mag', str(10),
+                    '-time'
                     #'-im'
                     #'--balanced_sampling'
                 ])
