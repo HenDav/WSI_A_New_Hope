@@ -110,12 +110,12 @@ class WSI_Master_Dataset(Dataset):
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         # Also remove slides without grid data:
-        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)] == -1])
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == -1])
         if train_type == 'REG':
             n_minimal_patches = n_patches
         else:
             n_minimal_patches = bag_size
-        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)] < n_minimal_patches])
+        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] < n_minimal_patches])
         #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid))
 
@@ -154,7 +154,7 @@ class WSI_Master_Dataset(Dataset):
             all_image_path_names = list(self.meta_data_DF['id'])
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
-        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)])
         if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
