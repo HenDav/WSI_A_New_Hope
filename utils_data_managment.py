@@ -311,8 +311,7 @@ def make_grid_2(DataSet: str = 'TCGA',
     :param tissue_coverage: tissue percent requirement for each tile in the grid 
     :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
            the case where we want to create alternative grids and keep the grids already created
-    :param different_SegMap_file_extension: a boolean parameter defining if the SegMap root has the same extension as
-           defined by parameter "added_extension"   
+    :param different_SegMap_file_extension: a parameter defining the modified name of the SegData directory.
     :return: 
     """""
 
@@ -343,8 +342,8 @@ def make_grid_2(DataSet: str = 'TCGA',
             os.mkdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension))
         grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension, filename + '--tlsz' + str(tile_sz) + '.data')
 
-        if different_SegMap_file_extension:
-            segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + added_extension, 'SegMaps', filename + '_SegMap.png')
+        if different_SegMap_file_extension != '':
+            segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegMap_file_extension, 'SegMaps', filename + '_SegMap.png')
         else:
             segmap_file = os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
 
@@ -612,18 +611,21 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
 
 #def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
 def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = ''):
-    out_path_dataset = os.path.join(out_path, DataSet)
-    print('Making Segmentation Maps for each slide file at location: {}'.format(out_path_dataset))
+    data_path = os.path.join(ROOT_DIR, DataSet)
+    print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
+
+    out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
+    if not os.path.isdir(out_path_dataset):
+        os.mkdir(out_path_dataset)
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData'))
-    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData','Thumbs')):
-        os.mkdir(os.path.join(out_path_dataset, 'SegData','Thumbs'))
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'Thumbs')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData', 'Thumbs'))
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps'))
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegImages')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegImages'))
 
-    data_path = os.path.join(ROOT_DIR, DataSet)
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
     slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))

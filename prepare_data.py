@@ -12,7 +12,7 @@ parser.add_argument('--tile_size', type=int, default=256, help='size of tiles')
 parser.add_argument('--stats', dest='stats', action='store_true', help='need to compute statistical data?')
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
 #parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='type of dataset to use (HEROHE/TCGA/LUNG)')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='type of dataset to use (HEROHE/TCGA/LUNG)')
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
 parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
@@ -40,6 +40,14 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid_2(DataSet='TCGA', tissue_coverage=0.5, desired_magnification=20, added_extension='')
+    utils_data_managment.make_grid_2(DataSet='TCGA',
+                                     ROOT_DIR='All Data',
+                                     tile_sz=256,
+                                     tissue_coverage=0.1,
+                                     desired_magnification=10,
+                                     added_extension='_new-Cov_01',
+                                     different_SegMap_file_extension='_new')
+
+
 
     print('Data Preparation sequence is Done !')

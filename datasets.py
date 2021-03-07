@@ -51,12 +51,9 @@ class WSI_Master_Dataset(Dataset):
         print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
         # Define data root:
         self.ROOT_PATH = define_data_root(DataSet)
-
         self.DataSet = DataSet
-        #self.BASIC_MAGNIFICATION = 20
-        self.basic_magnification = mag  #RanS 8.2.21
+        self.basic_magnification = mag
         if DataSet == 'RedSquares':
-        #    self.BASIC_MAGNIFICATION = 10
             slides_data_file = 'slides_data_RedSquares.xlsx'
         else:
             slides_data_file = 'slides_data.xlsx'
@@ -64,6 +61,12 @@ class WSI_Master_Dataset(Dataset):
         assert_dataset_target(DataSet, target_kind)
 
         meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
+
+        if DataSet == 'speed_test':  # Omer speed test (7/3)
+            self.ROOT_PATH = r'/tmp/All Data/TCGA/'
+            meta_data_file = 'slides_data_test_speed.xlsx'
+            DataSet = 'TCGA'
+
         self.meta_data_DF = pd.read_excel(meta_data_file)
 
         if self.DataSet == 'Breast':
@@ -107,12 +110,12 @@ class WSI_Master_Dataset(Dataset):
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         # Also remove slides without grid data:
-        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1])
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)] == -1])
         if train_type == 'REG':
             n_minimal_patches = n_patches
         else:
             n_minimal_patches = bag_size
-        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'] < n_minimal_patches])
+        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)] < n_minimal_patches])
         #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid))
 
@@ -151,7 +154,7 @@ class WSI_Master_Dataset(Dataset):
             all_image_path_names = list(self.meta_data_DF['id'])
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
-        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.mag)])
         if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
@@ -196,7 +199,7 @@ class WSI_Master_Dataset(Dataset):
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
                 except:
-                    print('aa')
+                    print('Could not open slide')
 
         # Setting the transformation:
         self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
@@ -207,9 +210,10 @@ class WSI_Master_Dataset(Dataset):
         elif train_type == 'MIL':
             self.factor = 1
             self.real_length = self.__len__()
-        if train == False and tta:
+        if train is False and tta:
             self.factor = 4
             self.real_length = int(self.__len__() / self.factor)
+
 
     def __len__(self):
         return len(self.target) * self.factor
