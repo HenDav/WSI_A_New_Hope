@@ -309,7 +309,10 @@ def _get_tiles(slide: openslide.OpenSlide,
                 new_loc_init['Left'] -= delta_Width
 
             # When reading from OpenSlide the locations is as follows (col, row)
+            #start = time.time() #temp
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+            #end = time.time() #temp
+            #print('time:', str(end-start)) #temp
         except:
             print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
             print('taking blank patch instead')
@@ -713,7 +716,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
@@ -729,7 +732,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
@@ -759,7 +762,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
@@ -770,7 +773,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
@@ -780,7 +783,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
             transform1 = \
                 transforms.Compose([
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
@@ -792,7 +795,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
                     HEDColorJitter(sigma=0.05),
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomHorizontalFlip(),
+                    #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
                     transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
                     transforms.CenterCrop(tile_size),  # fix boundary when scaling<1

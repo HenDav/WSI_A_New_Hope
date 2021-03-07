@@ -111,7 +111,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             correct_pos += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
 
-            all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
+            #all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
 
             # RanS 28.1.21
             if DEVICE.type == 'cuda' and print_timing:
@@ -219,7 +219,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
     total_test, true_pos_test, true_neg_test = 0, 0, 0
     total_pos_test, total_neg_test = 0, 0
     true_labels_test, scores_test = np.zeros(0), np.zeros(0)
-    correct_labeling_test, loss_test = 0, 0
+    correct_labeling_test = 0
     slide_names = []
 
     model.eval()
@@ -230,8 +230,8 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             model.to(DEVICE)
 
             outputs = model(data)
-            loss = criterion(outputs, targets)
-            loss_test += loss.item()
+            #loss = criterion(outputs, targets)
+            #loss_test += loss.item()
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
@@ -384,10 +384,14 @@ if __name__ == '__main__':
 
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
-    num_workers = cpu_available
+    #num_workers = cpu_available
+    num_workers = 4 #temp RanS 4.3.21
 
     if sys.platform == 'win32':
         num_workers = 4  # temp RanS 2.2.21
+
+    #if args.dataset == 'ABCTB':
+    #    num_workers = 4  # temp RanS 3.3.21
     print('num workers = ', num_workers)
 
     # Get data:
