@@ -830,6 +830,7 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
         elif DataSet == 'ABCTB':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
+            ROOT_PATH = r'/home/womer/project/All Data'   # Omer 3/3 slide time test
             #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
         else:
             ROOT_PATH = r'/home/womer/project/All Data'
@@ -877,7 +878,7 @@ def get_breast_dir_dict():
     return dir_dict
 
 
-def assert_dataset_target(DataSet,target_kind):
+def assert_dataset_target(DataSet, target_kind):
     if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
         raise ValueError('target should be one of: PDL1, EGFR')
     elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet[:6] == 'CARMEL') or (DataSet == 'Breast')) and target_kind not in ['ER', 'PR', 'Her2']:
