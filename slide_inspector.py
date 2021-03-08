@@ -7,7 +7,6 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from utils import _choose_data
 import numpy as np
 from shutil import copyfile
-import cv2 as cv
 import argparse
 import pandas as pd
 import pickle
@@ -17,16 +16,13 @@ parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/
 parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/thumbs', type=str, help='output dir')
 
 args = parser.parse_args()
-#in_dir = r'\\gipnetappa\public\sgils\BCF scans\Carmel Slides\Batch_3\CARMEL3'
-#out_dir = r'\\gipnetappa\public\sgils\BCF scans\Carmel Slides\Batch_3\thumbs'
 in_dir = args.in_dir
 out_dir = args.out_dir
 rewrite_figs = True
 
 def slide_2_image(slide_file, ind, mag, n_legit_tiles):
     fn = os.path.basename(slide_file)[:-5]
-    seg_file = os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.png')
-    segmap_file = os.path.join(in_dir, 'SegData', 'SegMaps', fn + '_SegMap.png')
+    seg_file = os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg')
     grid_file = os.path.join(in_dir, 'Grids', fn + '--tlsz256' + '.data')
     if not os.path.isfile(seg_file) or not os.path.isfile(grid_file):
         return
@@ -41,7 +37,7 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles):
     im_low.save(os.path.join(out_dir, str(ind).zfill(4) +'_0_thumb_' + fn + '.jpg'), 'JPEG')
 
     #RanS 28.12.20 - seg image
-    copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.png'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.png'))
+    copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.jpg'))
 
     #get random patches
     fig = plt.figure()
@@ -66,7 +62,7 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles):
     #if plot_seg_map:
     #    tiles, time_list, locs = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
     #else:
-    tiles, time_list, _ = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
+    tiles, time_list = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
 
     # RanS 31.12.20
     '''if plot_seg_map:
@@ -106,7 +102,7 @@ for _, file in enumerate(tqdm(slide_files_mrxs)):
 
     if not os.path.isfile(out_path) or rewrite_figs:
         #try:
-        mag = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Manipulated Objective Power']
+        mag = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Manipulated Objective Power'].item()
         try:
             n_legit_tiles = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Legitimate tiles - 256 compatible @ X20'].values[0]
         except:

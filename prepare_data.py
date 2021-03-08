@@ -40,13 +40,13 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid_2(DataSet='TCGA',
+    '''utils_data_managment.make_grid_2(DataSet='TCGA',
                                      ROOT_DIR='All Data',
                                      tile_sz=256,
                                      tissue_coverage=0.1,
                                      desired_magnification=10,
                                      added_extension='_new-Cov_01',
-                                     different_SegMap_file_extension='_new')
+                                     different_SegMap_file_extension='_new')'''
 
 
 

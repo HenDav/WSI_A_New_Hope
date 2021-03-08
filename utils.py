@@ -103,7 +103,6 @@ def _choose_data(grid_list: list,
     """
 
     desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
-
     level, best_next_level = -1, -1
     for index, downsample in enumerate(slide.level_downsamples):
         if isclose(desired_downsample, downsample, rel_tol=1e-3):
@@ -830,7 +829,7 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
         elif DataSet == 'ABCTB':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
-            ROOT_PATH = r'/home/womer/project/All Data'   # Omer 3/3 slide time test
+            #ROOT_PATH = r'/home/womer/project/All Data'   # Omer 3/3 slide time test
             #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
         else:
             ROOT_PATH = r'/home/womer/project/All Data'

@@ -218,6 +218,9 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
     meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
     total_tiles =[]
+
+    if not os.path.isdir(os.path.join(out_path, DataSet, 'Grids')):
+        os.mkdir(os.path.join(out_path, DataSet, 'Grids'))
     print('Starting Grid production...')
     print()
 
@@ -228,10 +231,7 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
         database = meta_data_DF.loc[file, 'id']
 
         # Save the grid to file:
-        if not os.path.isdir(os.path.join(out_path, database, 'Grids')):
-            os.mkdir(os.path.join(out_path, database, 'Grids'))
         grid_file = os.path.join(out_path, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
-
         segmap_file = os.path.join(out_path, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
 
         #RanS 31.12.20 - do not overwrite files
@@ -288,8 +288,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
     slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
 
-    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X20'] = tile_nums
-    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X20'] = total_tiles
+    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_mag)] = tile_nums
+    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X'+ str(desired_mag)] = total_tiles
     meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage
 
     meta_data_DF.to_excel(data_file)
@@ -614,7 +614,8 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
     data_path = os.path.join(ROOT_DIR, DataSet)
     print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
 
-    out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
+    #out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
+    out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
     if not os.path.isdir(out_path_dataset):
         os.mkdir(out_path_dataset)
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
