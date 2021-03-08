@@ -1,5 +1,5 @@
-import utils
-import datasets
+import utils_new
+import datasets_new
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -19,18 +19,29 @@ import pandas as pd
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
-# parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
-parser.add_argument('-tt', '--transform_type', type=str, default='flip', help='keyword for transform type')
+parser.add_argument('-tt', '--transform_type', type=str, default='rvf', help='keyword for transform type')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
-parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
-parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of bags in each minibatch')
+parser.add_argument('-nb', '--num_bags', type=int, default=18, help='Number of bags in each minibatch')
 parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=1, help='Tiles Per Bag')
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
+parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
+parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
+
+#parser.add_argument('--batch_size', default=18, type=int, help='size of batch')  # RanS 8.12.20
+#parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
+#parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
 
 args = parser.parse_args()
 
@@ -280,7 +291,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     if args.images:
         image_writer.close()
 
-#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, image_writer, DEVICE, epoch: int):
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
     test_loss, total_test = 0, 0
     correct_labeling_test = 0
@@ -350,101 +360,83 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
 
 if __name__ == '__main__':
     # Device definition:
-    DEVICE = utils.device_gpu_cpu()
+    DEVICE = utils_new.device_gpu_cpu()
+
+    # Get number of available CPUs:
+    cpu_available = utils_new.get_cpu()
+
     # Data type definition:
     DATA_TYPE = 'WSI'
 
     # Tile size definition:
     TILE_SIZE = 256
-    TILES_PER_BAG = args.tiles_per_bag
+    #TILES_PER_BAG = args.tiles_per_bag
     num_bags = args.num_bags
 
     if sys.platform == 'linux':
         TILE_SIZE = 256
-        TILES_PER_BAG = args.tiles_per_bag
+        #TILES_PER_BAG = args.tiles_per_bag
         # data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transform_type=args.transform_type,
-                                                     tile_size=TILE_SIZE,
-                                                     tiles_per_bag=TILES_PER_BAG,
-                                                     num_bags=num_bags,
-                                                     DX=args.dx,
-                                                     DataSet_name=args.dataset,
-                                                     Receptor=args.target,
-                                                     MultiSlide=True)
+        args.output_dir, experiment = utils_new.run_data(test_fold=args.test_fold,
+                                                         transform_type=args.transform_type,
+                                                         tile_size=TILE_SIZE,
+                                                         tiles_per_bag=args.tiles_per_bag,
+                                                         num_bags=num_bags,
+                                                         DX=args.dx,
+                                                         DataSet_name=args.dataset,
+                                                         Receptor=args.target,
+                                                         MultiSlide=True)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE,\
-        TILES_PER_BAG, args.num_bags, args.dx, args.dataset, args.target, is_MultiSlide, model_name = utils.run_data(experiment=args.experiment)
+        args.tiles_per_bag, args.num_bags, args.dx, args.dataset, args.target, is_MultiSlide, args.model = utils_new.run_data(experiment=args.experiment)
 
         experiment = args.experiment
 
-    # Get number of available CPUs:
-    cpu_available = utils.get_cpu()
-
     # Get data:
-    train_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                         tile_size=TILE_SIZE,
-                                         bag_size=TILES_PER_BAG,
-                                         target_kind=args.target,
-                                         test_fold=args.test_fold,
-                                         train=True,
-                                         print_timing=args.time,
-                                         transform_type=args.transform_type,
-                                         DX=args.dx,
-                                         get_images=args.images)
+    train_dset = datasets_new.WSI_MILdataset(DataSet=args.dataset,
+                                             tile_size=TILE_SIZE,
+                                             bag_size=args.tiles_per_bag,
+                                             target_kind=args.target,
+                                             test_fold=args.test_fold,
+                                             train=True,
+                                             print_timing=args.time,
+                                             transform_type=args.transform_type,
+                                             DX=args.dx,
+                                             get_images=args.images,
+                                             desired_slide_magnification=10)
 
-    test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
-                                        tile_size=TILE_SIZE,
-                                        bag_size=TILES_PER_BAG,
-                                        target_kind=args.target,
-                                        test_fold=args.test_fold,
-                                        train=False,
-                                        print_timing=False,
-                                        transform_type='none',
-                                        DX=args.dx,
-                                        get_images=args.images)
+    test_dset = datasets_new.WSI_MILdataset(DataSet=args.dataset,
+                                            tile_size=TILE_SIZE,
+                                            bag_size=args.tiles_per_bag,
+                                            target_kind=args.target,
+                                            test_fold=args.test_fold,
+                                            train=False,
+                                            print_timing=False,
+                                            transform_type='none',
+                                            DX=args.dx,
+                                            get_images=args.images,
+                                            desired_slide_magnification=10)
 
 
     train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     if args.tiles_per_bag == 1:
+        # In case there is only 1 tile per bag than were working in the REG paradigm and NOT MIL.
+        # In that case we'll test each slide by itself.
         test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
     else:
         test_loader = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
-    utils.run_data(experiment=experiment, transformation_string=transformation_string)
+    utils_new.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    if args.experiment != 0:
-        model = eval(model_name)
-    else:
-        model = ResNet50_GatedAttention_MultiBag(num_bags=args.num_bags,
-                                                 tiles=args.tiles_per_bag)
+    model = eval(args.model)
 
-    '''
-    model_basic = ResNet34_GN_GatedAttention()
-    model_params = sum(p.numel() for p in model.parameters())
-    model_basic_params = sum(p.numel() for p in model_basic.parameters())
-    print('basic: {}. Multi: {}'.format(model_basic_params, model_params))
-    '''
-
-    '''
-    counter = 0
-    for module in model.modules():
-        if isinstance(module, nn.BatchNorm2d):
-            setattr(model, module, nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine))
-            #module = nn.GroupNorm(num_groups=32, num_channels=module.num_features, affine=module.affine)
-            counter += 1
-            #module.momentum = 0.01
-            # module.track_running_stats = False
-    print('Updated {} model variables'.format(counter))
-    '''
-
-    utils.run_data(experiment=experiment, model=model.model_name)
+    utils_new.run_data(experiment=experiment, model=model.model_name)
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -462,7 +454,7 @@ if __name__ == '__main__':
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=5e-5)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
@@ -474,6 +466,6 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
-    #criterion = nn.CrossEntropyLoss()
-    # simple_train(model, train_loader, test_loader)
+    criterion = nn.CrossEntropyLoss()
+
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

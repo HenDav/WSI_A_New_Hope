@@ -18,12 +18,13 @@ import pandas as pd
 from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=4, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+#parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='test_speed', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')  # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
@@ -213,13 +214,12 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_writer.close()
 
 
-#def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, eval_mode: bool = False):
 def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
 
     total_test, true_pos_test, true_neg_test = 0, 0, 0
     total_pos_test, total_neg_test = 0, 0
     true_labels_test, scores_test = np.zeros(0), np.zeros(0)
-    correct_labeling_test, loss_test = 0, 0
+    correct_labeling_test = 0
     slide_names = []
 
     model.eval()
@@ -230,8 +230,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             model.to(DEVICE)
 
             outputs = model(data)
-            loss = criterion(outputs, targets)
-            loss_test += loss.item()
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)

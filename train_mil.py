@@ -32,6 +32,7 @@ parser.add_argument('-im', dest='images', action='store_true', help='save data i
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 
 
+
 args = parser.parse_args()
 
 """
