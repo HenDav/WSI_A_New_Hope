@@ -272,42 +272,28 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
-            #plot grid on thumbnail - RanS 9.3.21
+            #plot grid on thumbnail
             thumb_file = os.path.join(out_path, database, 'SegData', 'Thumbs', filename + '_thumb.jpg')
             if os.path.isfile(thumb_file):
                 thumb = np.array(Image.open(thumb_file))
                 slide = openslide.OpenSlide(os.path.join(out_path, database, file))
                 thumb_downsample = slide.dimensions[0] / thumb.shape[1] #shape is transposed
-                #patch_size_thumb = int(converted_tile_size / thumb_downsample)
                 patch_size_thumb = converted_tile_size / thumb_downsample
-                #mask = np.zeros_like(thumb)
 
                 fig, ax = plt.subplots()
                 figManager = plt.get_current_fig_manager()
                 figManager.window.showMaximized()
                 ax.imshow(thumb)
 
-                #for patch in legit_grid:
                 for patch in out_grid:
-                    #if patch in out_grid:
-                    #xy = (np.array(patch[::-1]) / thumb_downsample).astype(int)
                     xy = (np.array(patch[::-1]) / thumb_downsample)
-                    #rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='g', facecolor='none', alpha=0.2)
                     rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='r', alpha=0.2)
-                    #cv.rectangle(thumb, xy, xy+patch_size_thumb, 'r', -1)
-                    #mask[xy[1]:xy[1] + patch_size_thumb, xy[0]:xy[0] + patch_size_thumb, :] = [255, 0, 0]
-                    #sub_img = img[xy[1]:xy[1] + patch_size_thumb, xy[0]:xy[0] + patch_size_thumb]
-                    #white_rect = np.ones(sub_img.shape, dtype=np.uint8) * 255
                     ax.add_patch(rect)
-                #grid_image = cv.addWeighted(thumb, 0.5, mask, 0.5, 1.0)
-                #grid_image.save(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'))
                 plt.axis('off')
                 plt.savefig(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'),
                             bbox_inches='tight', pad_inches=0, dpi=400)
                 plt.close(fig)
 
-            #file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
-            #grid_file = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
             with open(grid_file, 'wb') as filehandle:
                 # store the data as binary data stream
                 pickle.dump(legit_grid, filehandle)
