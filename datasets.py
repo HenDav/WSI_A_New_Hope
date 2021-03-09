@@ -68,8 +68,8 @@ class WSI_Master_Dataset(Dataset):
 
         meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
 
-
         self.meta_data_DF = pd.read_excel(meta_data_file)
+        #print('meta_data_file:', meta_data_file)  # temp RanS 9.3.21
 
         if self.DataSet == 'Breast':
             dir_dict = get_breast_dir_dict()

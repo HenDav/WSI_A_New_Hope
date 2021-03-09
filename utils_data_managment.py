@@ -18,9 +18,10 @@ from typing import List, Tuple
 import openslide
 import glob
 import sys
-import cv2 as cv
 import matplotlib.pyplot as plt
 from shutil import copy2
+import matplotlib.patches as patches
+import cv2 as cv
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -221,6 +222,8 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
     if not os.path.isdir(os.path.join(out_path, DataSet, 'Grids')):
         os.mkdir(os.path.join(out_path, DataSet, 'Grids'))
+    if not os.path.isdir(os.path.join(out_path, DataSet, 'SegData', 'GridImages')):
+        os.mkdir(os.path.join(out_path, DataSet, 'SegData', 'GridImages'))
     print('Starting Grid production...')
     print()
 
@@ -261,13 +264,47 @@ def make_grid(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_sz: int 
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
             #legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
-            legit_grid = _legit_grid(segmap_file,
+            legit_grid, out_grid = _legit_grid(segmap_file,
                                      basic_grid,
                                      converted_tile_size,
                                      (height, width),
                                      desired_tissue_coverage=tissue_coverage)
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
+
+            #plot grid on thumbnail - RanS 9.3.21
+            thumb_file = os.path.join(out_path, database, 'SegData', 'Thumbs', filename + '_thumb.jpg')
+            if os.path.isfile(thumb_file):
+                thumb = np.array(Image.open(thumb_file))
+                slide = openslide.OpenSlide(os.path.join(out_path, database, file))
+                thumb_downsample = slide.dimensions[0] / thumb.shape[1] #shape is transposed
+                #patch_size_thumb = int(converted_tile_size / thumb_downsample)
+                patch_size_thumb = converted_tile_size / thumb_downsample
+                #mask = np.zeros_like(thumb)
+
+                fig, ax = plt.subplots()
+                figManager = plt.get_current_fig_manager()
+                figManager.window.showMaximized()
+                ax.imshow(thumb)
+
+                #for patch in legit_grid:
+                for patch in out_grid:
+                    #if patch in out_grid:
+                    #xy = (np.array(patch[::-1]) / thumb_downsample).astype(int)
+                    xy = (np.array(patch[::-1]) / thumb_downsample)
+                    #rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='g', facecolor='none', alpha=0.2)
+                    rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='r', alpha=0.2)
+                    #cv.rectangle(thumb, xy, xy+patch_size_thumb, 'r', -1)
+                    #mask[xy[1]:xy[1] + patch_size_thumb, xy[0]:xy[0] + patch_size_thumb, :] = [255, 0, 0]
+                    #sub_img = img[xy[1]:xy[1] + patch_size_thumb, xy[0]:xy[0] + patch_size_thumb]
+                    #white_rect = np.ones(sub_img.shape, dtype=np.uint8) * 255
+                    ax.add_patch(rect)
+                #grid_image = cv.addWeighted(thumb, 0.5, mask, 0.5, 1.0)
+                #grid_image.save(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'))
+                plt.axis('off')
+                plt.savefig(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'),
+                            bbox_inches='tight', pad_inches=0, dpi=400)
+                plt.close(fig)
 
             #file_name = os.path.join(ROOT_DIR, database, 'Grids', file.split('.')[0] + '--tlsz' + str(tile_sz) + '.data')
             #grid_file = os.path.join(ROOT_DIR, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
@@ -364,7 +401,7 @@ def make_grid_2(DataSet: str = 'TCGA',
             total_tiles.append((len(basic_grid)))
 
             # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            legit_grid = _legit_grid(segmap_file,
+            legit_grid,_ = _legit_grid(segmap_file,
                                      basic_grid,
                                      adjusted_tile_size_at_level_0,
                                      (height, width),
@@ -412,7 +449,7 @@ def _legit_grid(image_file_name: str,
     :param tissue_coverage: Coverage of tissue to make the slide legitimate
     :return:
     """
-
+    out_grid = []
     # Check if coverage is a number in the range (0, 1]
     if not (desired_tissue_coverage > 0 and desired_tissue_coverage <= 1):
         raise ValueError('Coverage Parameter should be in the range (0,1]')
@@ -439,9 +476,10 @@ def _legit_grid(image_file_name: str,
 
     # We'll now remove items from the grid. starting from the end to the beginning in order to keep the indices correct:
     for idx in reversed(idx_to_remove):
-        grid.pop(idx)
+        #grid.pop(idx)
+        out_grid.append(grid.pop(idx))
 
-    return grid
+    return grid, out_grid
 
 
 def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out_path: str = ''):
