@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from torch.multiprocessing import Pool
 import openslide #RanS 9.2.21, preload slides
 from tqdm import tqdm
+from math import isclose
 
 
 MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
@@ -462,8 +463,9 @@ class Infer_Dataset(WSI_Master_Dataset):
         start_getitem = time.time()
         if self.tiles_to_go is None:
             self.tiles_to_go = self.num_patches[self.slide_num]
-            self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
-            self.current_slide = openslide.open_slide(self.current_file)
+            '''self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
+            self.current_slide = openslide.open_slide(self.current_file)'''
+            self.current_slide = self.slides[idx]
 
             self.initial_num_patches = self.num_patches[self.slide_num]
 
@@ -476,28 +478,56 @@ class Infer_Dataset(WSI_Master_Dataset):
         else:
             self.tiles_to_go -= self.tiles_per_iter
 
+        '''
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
         downsample = int(self.magnification[idx] / self.basic_magnification)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
-        #tiles, time_list, tile_sz = _get_tiles(self.current_file,
+        
         tiles, time_list, tile_sz = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
                                       self.print_time,
-                                      downsample)
+                                      downsample)'''
 
+        ##########
+        desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
+        level, best_next_level = -1, -1
+        for index, downsample in enumerate(self.current_slide.level_downsamples):
+            if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                level = index
+                level_downsample = 1
+                break
+
+            elif downsample < desired_downsample:
+                best_next_level = index
+                level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
+
+        adjusted_tile_size = self.tile_size * level_downsample
+        best_slide_level = level if level > best_next_level else best_next_level
+        level_0_tile_size = int(desired_downsample) * self.tile_size
+
+
+        tiles, time_list = _get_tiles(slide=self.current_slide,
+                                      locations=self.slide_grids[idx],
+                                      tile_size_level_0=level_0_tile_size,
+                                      adjusted_tile_sz=adjusted_tile_size,
+                                      output_tile_sz=self.tile_size,
+                                      best_slide_level=best_slide_level)
+
+        ########
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 
         #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
         #if downsample != 1:
+        '''
         if tile_sz != self.tile_size:
             transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
         else:
-            transform = self.transform
+            transform = self.transform'''
 
         start_aug = time.time()
         for i in range(len(tiles)):
-            X[i] = transform(tiles[i])
+            X[i] = self.transform(tiles[i])
 
         aug_time = time.time() - start_aug
         total_time = time.time() - start_getitem
@@ -516,19 +546,12 @@ class Infer_Dataset(WSI_Master_Dataset):
             trans = transforms.Compose(
                 [transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
             #if magnification_relation != 1:
-            if tile_sz != self.tile_size:
-                trans = transforms.Compose([transforms.Resize(self.tile_size), trans])
+
+            '''if tile_sz != self.tile_size:
+                trans = transforms.Compose([transforms.Resize(self.tile_size), trans])'''
+
             for i in range(self.tiles_per_iter):
                 images[i] = trans(tiles[i])
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
-        return X, label, time_list, last_batch, self.initial_num_patches, self.current_file
-
-
-
-
-
-
-
-
-
+        return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename

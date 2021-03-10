@@ -499,7 +499,6 @@ def make_grid(DataSet: str = 'TCGA',
             # create a list with number of tiles in each file
             tile_nums.append(len(legit_grid))
 
-            # TODO: Check this part (till with open...)
             # Plot grid on thumbnail
             thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs', filename + '_thumb.jpg')
             if os.path.isfile(thumb_file):
