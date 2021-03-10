@@ -220,7 +220,7 @@ def make_grid(DataSet: str = 'HEROHE',
 
     meta_data_DF = pd.read_excel(data_file)
     files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
-    objective_power = list(meta_data_DF['Manipulated Objective Power'])
+    # objective_power = list(meta_data_DF['Manipulated Objective Power'])
     meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
     total_tiles =[]
@@ -286,13 +286,11 @@ def make_grid(DataSet: str = 'HEROHE',
                 patch_size_thumb = converted_tile_size / thumb_downsample
 
                 fig, ax = plt.subplots()
-                figManager = plt.get_current_fig_manager()
-                figManager.window.showMaximized()
                 ax.imshow(thumb)
 
                 for patch in out_grid:
                     xy = (np.array(patch[::-1]) / thumb_downsample)
-                    rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='r', alpha=0.2)
+                    rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='g', alpha=0.5)
                     ax.add_patch(rect)
                 plt.axis('off')
                 plt.savefig(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'),

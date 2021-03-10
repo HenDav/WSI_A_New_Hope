@@ -14,13 +14,15 @@ import pickle
 parser = argparse.ArgumentParser(description='Slide inspector')
 parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/CARMEL4', type=str, help='input dir')
 parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/thumbs', type=str, help='output dir')
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 
 args = parser.parse_args()
 in_dir = args.in_dir
 out_dir = args.out_dir
 rewrite_figs = True
 
-def slide_2_image(slide_file, ind, mag, n_legit_tiles):
+
+def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag):
     fn = os.path.basename(slide_file)[:-5]
     seg_file = os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg')
     grid_file = os.path.join(in_dir, 'Grids', fn + '--tlsz256' + '.data')
@@ -36,49 +38,32 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles):
     im_low = (img.read_region(location=(loc_x, loc_y), level=level_1, size=(size_x_low, size_y_low))).convert('RGB')
     im_low.save(os.path.join(out_dir, str(ind).zfill(4) +'_0_thumb_' + fn + '.jpg'), 'JPEG')
 
-    #RanS 28.12.20 - seg image
-    copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.jpg'))
+    #seg image
+    #copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.jpg'))
+    # RanS 10.3.21 - grid image
+    copyfile(os.path.join(in_dir, 'SegData', 'GridImages', fn + '_GridImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_GridImage_' + fn + '.jpg'))
 
     #get random patches
     fig = plt.figure()
     fig.set_size_inches(32, 18)
-    #grid_shape = (2, 4)
-    #grid_shape = (8, 16)
     grid_shape = (4, 8)
     n_patches = int(np.prod(grid_shape))
     grid = ImageGrid(fig, 111, nrows_ncols=grid_shape, axes_pad=0)
-    w, h = img.level_dimensions[0]
-    #patch_size = 1024
     patch_size = 256
 
     n_patches = np.minimum(n_patches, n_legit_tiles)
 
     #plot_seg_map = False
     slide = openslide.open_slide(slide_file)
-    desired_mag = 10 #RanS 15.2.21
     with open(grid_file, 'rb') as filehandle:
         grid_list = pickle.load(filehandle)
 
-    #if plot_seg_map:
-    #    tiles, time_list, locs = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
-    #else:
     tiles, time_list = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
-
-    # RanS 31.12.20
-    '''if plot_seg_map:
-        segmap = cv.imread(segmap_file)
-        fig2 = plt.figure()
-        fig2.set_size_inches(32, 18)
-        grid2 = ImageGrid(fig2, 111, nrows_ncols=grid_shape, axes_pad=0)
-        objective_pwr = 20
-        locs_segmap = np.array(locs)/objective_pwr'''
 
     for ii in range(n_patches):
         grid[ii].imshow(tiles[ii])
         grid[ii].set_yticklabels([])
         grid[ii].set_xticklabels([])
-        '''if plot_seg_map:
-            grid2[ii].imshow(segmap[int(locs_segmap[ii, 0]):int(locs_segmap[ii, 0]+patch_size/objective_pwr), int(locs_segmap[ii, 1]):int(locs_segmap[ii, 1]+patch_size/objective_pwr), :])'''
 
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, str(ind).zfill(4) +'_2_patches_' + fn + '.jpg'))
@@ -99,19 +84,15 @@ for _, file in enumerate(tqdm(slide_files_mrxs)):
     fn = os.path.basename(file)[:-5]
     out_path = os.path.join(out_dir, fn + '.jpg')
 
-
     if not os.path.isfile(out_path) or rewrite_figs:
-        #try:
         mag = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Manipulated Objective Power'].item()
         try:
-            n_legit_tiles = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn, 'Legitimate tiles - 256 compatible @ X20'].values[0]
+            n_legit_tiles = meta_data_DF.loc[meta_data_DF['patient barcode'] == fn,
+                                             'Legitimate tiles - 256 compatible @ X' + str(args.mag)].values[0]
         except:
             print('fn:', fn)
             n_legit_tiles = -1
-        #print('n_legit_tiles:', str(n_legit_tiles))
-        slide_2_image(file, ind, mag, n_legit_tiles)
-        #except:
-        #    print('failed on slide ', fn)
+        slide_2_image(file, ind, mag, n_legit_tiles, args.mag)
     ind += 1
 
 print('finished')
