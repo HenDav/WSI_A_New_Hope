@@ -852,14 +852,11 @@ class MIL_PreActResNet50_Ron_MultiBag(nn.Module):
             first_tile_idx = i * self.tiles
             a = A[:, first_tile_idx : first_tile_idx + self.tiles]
             a = F.softmax(a, dim=1)
-            print('a:', a.shape, a)
 
             h = H[first_tile_idx : first_tile_idx + self.tiles, :]
             m = torch.mm(a, h)
-            print('h', h.shape)
-            print('m', m.shape)
             M = torch.cat((M, m))
-            print(i, A_after_sftmx.shape, a.shape)
+
             A_after_sftmx = torch.cat((A_after_sftmx, a))
 
         '''
