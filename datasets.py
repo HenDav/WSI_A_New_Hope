@@ -466,7 +466,7 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.tiles_to_go = self.num_patches[self.slide_num]
             '''self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
             self.current_slide = openslide.open_slide(self.current_file)'''
-            self.current_slide = self.slides[idx]
+            self.current_slide = self.slides[self.slide_num]
 
             self.initial_num_patches = self.num_patches[self.slide_num]
 
