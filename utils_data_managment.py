@@ -485,87 +485,6 @@ def make_grid(DataSet: str = 'TCGA',
             tile_nums.append(tile_nums1)
             total_tiles.append(total_tiles1)
 
-        '''tile_nums, total_tiles = zip(*pool.map(partial(_make_grid_for_image,
-                                                  meta_data_DF=meta_data_DF,
-                                                  ROOT_DIR=ROOT_DIR,
-                                                  added_extension=added_extension,
-                                                  DataSet=DataSet,
-                                                  different_SegData_path_extension=different_SegData_path_extension,
-                                                  tissue_coverage=tissue_coverage,
-                                                  tile_sz=tile_sz,
-                                                  desired_magnification=desired_magnification),
-                                          files))'''
-
-    '''for _, file in enumerate(tqdm(files)):
-        #filename = os.path.basename(file).split('.')[0]
-        #######################################################################
-        filename = '.'.join(os.path.basename(file).split('.')[:-1])
-        database = meta_data_DF.loc[file, 'id']
-
-        
-
-        grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension, filename + '--tlsz' + str(tile_sz) + '.data')
-
-        segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'SegMaps', filename + '_SegMap.png')
-
-        if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
-            height = int(meta_data_DF.loc[file, 'Height'])
-            width  = int(meta_data_DF.loc[file, 'Width'])
-
-            objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
-            if objective_power == 'Missing Data':
-                print('Grid was not computed for file {}'.format(file))
-                print('objective power was not found')
-                tile_nums.append(0)
-                total_tiles.append(-1)
-                continue
-
-            adjusted_tile_size_at_level_0 = int(tile_sz * (int(objective_power) / desired_magnification))
-            basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in range(0, width, adjusted_tile_size_at_level_0)]
-            total_tiles.append((len(basic_grid)))
-
-            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            legit_grid, out_grid = _legit_grid(segmap_file,
-                                               basic_grid,
-                                               adjusted_tile_size_at_level_0,
-                                               (height, width),
-                                               desired_tissue_coverage=tissue_coverage)
-            # create a list with number of tiles in each file
-            tile_nums.append(len(legit_grid))
-
-            # Plot grid on thumbnail
-            thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs', filename + '_thumb.jpg')
-            if os.path.isfile(thumb_file):
-                thumb = np.array(Image.open(thumb_file))
-                slide = openslide.OpenSlide(os.path.join(ROOT_DIR, database, file))
-                thumb_downsample = slide.dimensions[0] / thumb.shape[1] #shape is transposed
-                patch_size_thumb = adjusted_tile_size_at_level_0 / thumb_downsample
-
-                fig, ax = plt.subplots()
-                ax.imshow(thumb)
-
-                for patch in out_grid:
-                    xy = (np.array(patch[::-1]) / thumb_downsample)
-                    rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='g', alpha=0.5)
-                    ax.add_patch(rect)
-                plt.axis('off')
-                plt.savefig(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension, 'GridImages_' + str(tissue_coverage).replace('.', '_'), filename + '_GridImage.jpg'),
-                            bbox_inches='tight', pad_inches=0, dpi=400)
-                plt.close(fig)
-
-            with open(grid_file, 'wb') as filehandle:
-                # store the data as binary data stream
-                pickle.dump(legit_grid, filehandle)
-        else:
-            print('Grid was not computed for file {}'.format(file))
-            if ~os.path.isfile(os.path.join(ROOT_DIR, database, file)):
-                print('slide was not found')
-            if ~os.path.isfile(segmap_file):
-                print('seg map was not found')
-            tile_nums.append(0)
-            total_tiles.append(-1)
-    #######################################################################'''
-
     # Adding the number of tiles to the excel file:
     #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
 
@@ -618,7 +537,13 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         # Plot grid on thumbnail
         thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
                                   filename + '_thumb.jpg')
-        if os.path.isfile(thumb_file):
+                                  # filename + '_thumb.png') #temp
+
+        grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
+                                       'GridImages_' + str(tissue_coverage).replace('.', '_'),
+                                        filename + '_GridImage.jpg')
+        #RanS 10.3.21, do not rewrite
+        if os.path.isfile(thumb_file) and not os.path.isfile(grid_image_file):
             thumb = np.array(Image.open(thumb_file))
             slide = openslide.OpenSlide(os.path.join(ROOT_DIR, database, file))
             thumb_downsample = slide.dimensions[0] / thumb.shape[1]  # shape is transposed
@@ -633,9 +558,7 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
                                          facecolor='g', alpha=0.5)
                 ax.add_patch(rect)
             plt.axis('off')
-            plt.savefig(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                                     'GridImages_' + str(tissue_coverage).replace('.', '_'),
-                                     filename + '_GridImage.jpg'),
+            plt.savefig(grid_image_file,
                         bbox_inches='tight', pad_inches=0, dpi=400)
             plt.close(fig)
 

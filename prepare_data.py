@@ -19,15 +19,11 @@ parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tis
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
 parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 15.2.21
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
-parser.add_argument('--multi', action='store_true', help='multiprocess') #RanS 10.3.21
 parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
 args = parser.parse_args()
 
-if args.multi:
-    num_workers = get_cpu()
-else:
-    num_workers = 1
+num_workers = get_cpu()
 
 if __name__ =='__main__':
 

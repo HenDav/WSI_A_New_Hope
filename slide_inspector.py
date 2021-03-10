@@ -36,7 +36,9 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag):
     size_x_low = int(int(img.properties['openslide.bounds-width']) / (2 ** level_1))
     size_y_low = int(int(img.properties['openslide.bounds-height']) / (2 ** level_1))
     im_low = (img.read_region(location=(loc_x, loc_y), level=level_1, size=(size_x_low, size_y_low))).convert('RGB')
-    im_low.save(os.path.join(out_dir, str(ind).zfill(4) +'_0_thumb_' + fn + '.jpg'), 'JPEG')
+    #im_low.save(os.path.join(out_dir, str(ind).zfill(4) +'_0_thumb_' + fn + '.jpg'), 'JPEG')
+
+    copyfile(os.path.join(in_dir, 'SegData', 'Thumbs', fn + '_thumb.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_0_thumb_' + fn + '.jpg'))
 
     #seg image
     #copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.jpg'))
