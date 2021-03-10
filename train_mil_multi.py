@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets_mil import ResNet50_GatedAttention_MultiBag, ResNet50_GN_GatedAttention_MultiBag_2
+import nets_mil
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -33,7 +33,7 @@ parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=1, help='Tiles 
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
+parser.add_argument('--model', default='nets_mil.MIL_PreActResNet50_GatedAttention_Ron()', type=str, help='net to use') # RanS 15.12.20
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
@@ -116,25 +116,25 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                           'random Slides index': slides_idx_other}
             slide_random_list.append(slide_dict)
             '''
-
+            '''
             if e == 0:
                 data_dict = { 'File Name':  image_file,
                               'Target': target.cpu().detach().numpy()
                               }
                 data_list.append(data_dict)
-
+            '''
             '''this_num_bags, _, _, _, _ = Data.shape
             data = torch.reshape(Data, (this_num_bags * TILES_PER_BAG, 3, TILE_SIZE, TILE_SIZE))'''
-            target = target.squeeze(1)
-            data, target = data.to(DEVICE), target.to(DEVICE)
+            data, target = data.to(DEVICE), target.to(DEVICE).squeeze(1)
 
             optimizer.zero_grad()
             model.to(DEVICE)
 
-            scores, pred, _ = model(data)
+            #scores, pred, _ = model(data)  # Omer 9/3
+            scores = model(data)
             #print('Weights shape: {}. Weights: {}'.format(weights.shape, weights))
 
-            scores = torch.clamp(scores, min=1e-5, max=1. - 1e-5)
+            #scores = torch.clamp(scores, min=1e-5, max=1. - 1e-5)  # Omer 9/3
             target_diag = torch.diag(target)
             '''neg_log_likelihood = -1. * (target * torch.log(scores) + (1. - target) * torch.log(1. - scores))  # negative log bernoulli'''
             neg_log_likelihood = -1. * (

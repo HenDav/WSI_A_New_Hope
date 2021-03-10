@@ -6,10 +6,10 @@ import torchvision.models as models
 import os
 import PreActResNets
 
-#THIS_FILE = os.path.realpath(__file__).split('/')[-1].split('.')[0] + '.'
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 
 
+'''
 class Flatten(nn.Module):
     """
     This class flattens an array to a vector
@@ -18,7 +18,7 @@ class Flatten(nn.Module):
     def forward(self, x):
         N, C, H, W = x.size()  # read in N, C, H, W
         return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
-
+'''
 
 class MyGroupNorm(nn.Module):
     def __init__(self, num_channels):
@@ -443,9 +443,9 @@ class ResNet50_GatedAttention(nn.Module):
     """
 
 
-class ResNet50_GatedAttention_Ron(nn.Module):
+class MIL_PreActResNet50_GatedAttention_Ron(nn.Module):
     def __init__(self):
-        super(ResNet50_GatedAttention_Ron, self).__init__()
+        super(MIL_PreActResNet50_GatedAttention_Ron, self).__init__()
         self.M = 500
         self.L = 128
         self.K = 1  # in the paper referred a 1.
@@ -454,7 +454,10 @@ class ResNet50_GatedAttention_Ron(nn.Module):
         self.part_1 = False
         self.part_2 = False
 
-        self.feature_extractor_ResNet50 = PreActResNet50()
+        self.model_name = THIS_FILE + 'MIL_PreActResNet50_GatedAttention_Ron()'
+
+        #self.feature_extractor_ResNet50 = PreActResNet50()
+        self.feature_extractor = PreActResNets.MIL_PreActResNet50_Ron()
 
         self.attention_V = nn.Sequential(
             nn.Linear(self.M, self.L),
@@ -469,15 +472,18 @@ class ResNet50_GatedAttention_Ron(nn.Module):
         self.attention_weights = nn.Linear(self.L, self.K)
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.M * self.K, 1),
-            nn.Sigmoid()
+            #nn.Linear(self.M * self.K, 1),
+            nn.Linear(self.M * self.K, 2),
+            #nn.Sigmoid()
         )
 
     def forward(self, x, H=None, A=None):
         if not self.infer:
+            num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = x.squeeze(0)
             # In case we are training the model we'll use bags that contains only part of the tiles.
-            H = self.feature_extractor_ResNet50(x)
+            #H = self.feature_extractor_ResNet50(x)
+            H = self.feature_extractor(x)
 
             A_V = self.attention_V(H)  # NxL
             A_U = self.attention_U(H)  # NxL
@@ -487,14 +493,22 @@ class ResNet50_GatedAttention_Ron(nn.Module):
 
             M = torch.mm(A, H)  # KxM
 
+            '''
             # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
             # probability that the input belong to class 1/TRUE (and not 0/FALSE)
             Y_prob = self.classifier(M)
 
             # The following line just turns probability to class.
             Y_class = torch.ge(Y_prob, 0.5).float()
-
             return Y_prob, Y_class, A
+            '''
+
+            # The output of this net is a 2 score vector (one for each class)
+            out = self.classifier(M)
+
+            return out
+
+
 
 class ResNet50_2(nn.Module):
     def __init__(self):
@@ -755,6 +769,115 @@ class ResNet50_GN_GatedAttention(nn.Module):
 
                 Y_class = torch.ge(Y_prob, 0.5).float()
                 return Y_prob, Y_class, A
+
+
+
+class MIL_PreActResNet50_Ron_MultiBag(nn.Module):
+    def __init__(self,
+                 num_bags: int = 2,
+                 tiles: int = 10):
+        super(MIL_PreActResNet50_Ron_MultiBag, self).__init__()
+
+        self.model_name = THIS_FILE + 'MIL_PreActResNet50_Ron_MultiBag()'
+        print('Using model {}'.format(self.model_name))
+
+        #self.num_bags = num_bags
+        self.tiles = tiles
+        self.M = 500
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        self.feat_ext_part1 = PreActResNets.MIL_PreActResNet50_Ron()
+
+        #self.linear_1 = nn.Linear(in_features=1000, out_features=self.M)
+
+        self.attention_V = nn.Sequential(
+            nn.Linear(self.M, self.L),
+            nn.Tanh()
+        )
+
+        self.attention_U = nn.Sequential(
+            nn.Linear(self.M, self.L),
+            nn.Sigmoid()
+        )
+
+        self.attention_weights = nn.Linear(self.L, self.K)
+
+        self.classifier = nn.Sequential(
+            # nn.Linear(self.M * self.K, 1),
+            # nn.Sigmoid()
+            nn.Linear(self.M * self.K, 2),
+        )
+
+
+    def forward(self, x):
+        num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+
+        x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+
+        H = self.feat_ext_part1(x)
+
+
+        A_V = self.attention_V(H)  # NxL
+        A_U = self.attention_U(H)  # NxL
+        A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+        A = torch.transpose(A, 1, 0)  # KxN
+        A = F.softmax(A, dim=1)  # softmax over N
+
+        if torch.cuda.is_available():
+            M = torch.zeros(0).cuda()
+            A_after_sftmx = torch.zeros(0).cuda()
+        else:
+            M = torch.zeros(0)
+            A_after_sftmx = torch.zeros(0)
+
+        # The following if statement is needed in cases where the accuracy checking is done in a 1 bag per minibatch mode
+        if num_of_bags == 1 and not self.training:
+            A = F.softmax(A, dim=1)
+            M = torch.mm(A, H)
+            '''
+            Y_prob = self.class_2(self.class_1(M))  #self.class_10(M)
+
+            Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
+            Y_class_1D = Y_class[:, 0]
+            
+            return Y_prob, Y_class_1D, A
+            '''
+            out = self.classifier(M)
+
+            return out
+
+
+        for i in range(num_of_bags):
+            first_tile_idx = i * self.tiles
+            a = A[:, first_tile_idx : first_tile_idx + self.tiles]
+            a = F.softmax(a, dim=1)
+            print('a:', a.shape, a)
+
+            h = H[first_tile_idx : first_tile_idx + self.tiles, :]
+            m = torch.mm(a, h)
+            print('h', h.shape)
+            print('m', m.shape)
+            M = torch.cat((M, m))
+            print(i, A_after_sftmx.shape, a.shape)
+            A_after_sftmx = torch.cat((A_after_sftmx, a))
+
+        '''
+        # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
+        # probability that the input belong to class 1/TRUE (and not 0/FALSE)
+        """Y_prob = self.class_2(self.class_1(M))
+        Y_class = torch.ge(Y_prob, 0.5).float()"""
+
+        Y_prob = self.class_2(self.class_1(M))  # self.class_10(M)
+
+        Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
+        Y_class_1D = Y_class[:, 0]
+        return Y_prob, Y_class_1D, A_after_sftmx
+        '''
+
+
+        out = self.classifier(M)
+        return out
 
 
 class ResNet50_GatedAttention_MultiBag(nn.Module):

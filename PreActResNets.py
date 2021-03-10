@@ -282,3 +282,9 @@ def PreActResNet50_Ron():
     print(model.model_name)
     return model
 
+def MIL_PreActResNet50_Ron():
+    model = PreActResNet_Ron(PreActBottleneck_Ron, [3, 4, 6, 3], num_classes=500)
+    model.model_name = THIS_FILE + 'PreActResNet50_Ron()'
+    print(model.model_name)
+    return model
+
