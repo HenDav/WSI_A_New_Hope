@@ -422,7 +422,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                 if num_tiles <= self.all_tissue_tiles[slide_num]:
                     self.num_patches.append(num_tiles)
                 else:
-                    self.num_patches.append(self.all_tissue_tiles[slide_num])
+                    #self.num_patches.append(self.all_tissue_tiles[slide_num])
+                    self.num_patches.append(int(self.all_tissue_tiles[slide_num])) #RanS 10.3.21
                     print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num], num_tiles))
 
                 self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
@@ -483,7 +484,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         downsample = int(self.magnification[idx] / self.basic_magnification)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
         
-        tiles, time_list, tile_sz = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
+        tiles, time_list = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
                                       self.print_time,

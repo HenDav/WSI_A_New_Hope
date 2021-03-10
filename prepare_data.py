@@ -2,6 +2,7 @@ import utils_data_managment
 import argparse
 import os
 import glob
+from utils import get_cpu
 
 parser = argparse.ArgumentParser(description='Data preparation script')
 
@@ -18,9 +19,15 @@ parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tis
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
 parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 15.2.21
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
-parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file anf Grids path')
+parser.add_argument('--multi', action='store_true', help='multiprocess') #RanS 10.3.21
+parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
 args = parser.parse_args()
+
+if args.multi:
+    num_workers = get_cpu()
+else:
+    num_workers = 1
 
 if __name__ =='__main__':
 
@@ -42,7 +49,8 @@ if __name__ =='__main__':
                                        tissue_coverage=args.tissue_coverage,
                                        desired_magnification=args.mag,
                                        added_extension=args.added_extension,
-                                       different_SegData_path_extension=args.SegData_path)
+                                       different_SegData_path_extension=args.SegData_path,
+                                       num_workers=num_workers)
     if args.stats:
         utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:
@@ -50,13 +58,13 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid(DataSet='TCGA',
+    '''utils_data_managment.make_grid(DataSet='TCGA',
                                    ROOT_DIR='All Data',
                                    tile_sz=256,
                                    tissue_coverage=0.3,
                                    desired_magnification=10,
                                    added_extension='_new-Cov_03',
-                                   different_SegData_path_extension='')
+                                   different_SegData_path_extension='')'''
 
 
 
