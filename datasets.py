@@ -426,7 +426,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                     self.num_patches.append(int(self.all_tissue_tiles[slide_num])) #RanS 10.3.21
                     print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num], num_tiles))
 
-                self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
+                #self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
+                self.magnification.extend([self.all_magnifications[slide_num]]) #RanS 11.3.21
 
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
                 grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',
@@ -466,9 +467,32 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.tiles_to_go = self.num_patches[self.slide_num]
             '''self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
             self.current_slide = openslide.open_slide(self.current_file)'''
-            self.current_slide = self.slides[self.slide_num]
+
+            if sys.platform == 'win32':
+                image_file = os.path.join(self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
+                self.current_slide = openslide.open_slide(image_file)
+            else:
+                self.current_slide = self.slides[self.slide_num]
 
             self.initial_num_patches = self.num_patches[self.slide_num]
+
+            #RanS 11.3.21
+            desired_downsample = self.magnification[self.slide_num] / self.basic_magnification
+
+            level, best_next_level = -1, -1
+            for index, downsample in enumerate(self.current_slide.level_downsamples):
+                if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                    level = index
+                    level_downsample = 1
+                    break
+
+                elif downsample < desired_downsample:
+                    best_next_level = index
+                    level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
+
+            self.adjusted_tile_size = self.tile_size * level_downsample
+            self.best_slide_level = level if level > best_next_level else best_next_level
+            self.level_0_tile_size = int(desired_downsample) * self.tile_size
 
         label = [1] if self.target[self.slide_num] == 'Positive' else [0]
         label = torch.LongTensor(label)
@@ -490,8 +514,10 @@ class Infer_Dataset(WSI_Master_Dataset):
                                       self.print_time,
                                       downsample)'''
 
-        ##########
-        desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
+        #desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
+        #RanS 11.3.21
+        '''desired_downsample = self.magnification[self.slide_num] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
+
         level, best_next_level = -1, -1
         for index, downsample in enumerate(self.current_slide.level_downsamples):
             if isclose(desired_downsample, downsample, rel_tol=1e-3):
@@ -505,26 +531,17 @@ class Infer_Dataset(WSI_Master_Dataset):
 
         adjusted_tile_size = self.tile_size * level_downsample
         best_slide_level = level if level > best_next_level else best_next_level
-        level_0_tile_size = int(desired_downsample) * self.tile_size
+        level_0_tile_size = int(desired_downsample) * self.tile_size'''
 
 
         tiles, time_list = _get_tiles(slide=self.current_slide,
                                       locations=self.slide_grids[idx],
-                                      tile_size_level_0=level_0_tile_size,
-                                      adjusted_tile_sz=adjusted_tile_size,
+                                      tile_size_level_0=self.level_0_tile_size,
+                                      adjusted_tile_sz=self.adjusted_tile_size,
                                       output_tile_sz=self.tile_size,
-                                      best_slide_level=best_slide_level)
+                                      best_slide_level=self.best_slide_level)
 
-        ########
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
-
-        #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
-        #if downsample != 1:
-        '''
-        if tile_sz != self.tile_size:
-            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-        else:
-            transform = self.transform'''
 
         start_aug = time.time()
         for i in range(len(tiles)):
