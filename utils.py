@@ -833,7 +833,8 @@ def define_data_root(DataSet):
             #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
             #ROOT_PATH = r'/test/temp_home_run_test'  # temp RanS 2.3.21
         else:
-            ROOT_PATH = r'/home/womer/project/All Data'
+            # ROOT_PATH = r'/home/womer/project/All Data'
+            ROOT_PATH = r'/mnt/hdd/All_Data'  # Run from local files
 
     elif sys.platform == 'win32': #Ran local
         if DataSet == 'HEROHE':

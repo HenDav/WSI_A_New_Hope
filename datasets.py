@@ -61,12 +61,14 @@ class WSI_Master_Dataset(Dataset):
 
         assert_dataset_target(DataSet, target_kind)
 
+        '''
         if DataSet == 'test_speed':  # Omer speed test (7/3)
             self.ROOT_PATH = r'/test/All Data/'
             slides_data_file = 'slides_data_test_speed.xlsx'
             DataSet = 'TCGA'
             self.DataSet = 'TCGA'
-
+        '''
+        print('Root Path is: {}', self.ROOT_PATH)
         meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
 
         self.meta_data_DF = pd.read_excel(meta_data_file)

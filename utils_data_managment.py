@@ -24,6 +24,7 @@ import matplotlib.patches as patches
 import cv2 as cv
 import multiprocessing
 from functools import partial
+from datetime import date
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -449,16 +450,20 @@ def make_grid(DataSet: str = 'TCGA',
     if added_extension != '':
         copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
 
-    data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
+    slides_data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
 
     if DataSet == 'RedSquares':
-        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
+        slides_data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
 
-    meta_data_DF = pd.read_excel(data_file)
-    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
+    slides_meta_data_DF = pd.read_excel(slides_data_file)
+    files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
+
+    meta_data_DF = pd.DataFrame(files, columns=['file'])
+
+    slides_meta_data_DF.set_index('file', inplace=True)
     meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
-    total_tiles =[]
+    total_tiles = []
 
     # Save the grid to file:
     if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension)):
@@ -473,15 +478,15 @@ def make_grid(DataSet: str = 'TCGA',
 
     with multiprocessing.Pool(num_workers) as pool:
         for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
-                                                  meta_data_DF=meta_data_DF,
-                                                  ROOT_DIR=ROOT_DIR,
-                                                  added_extension=added_extension,
-                                                  DataSet=DataSet,
-                                                  different_SegData_path_extension=different_SegData_path_extension,
-                                                  tissue_coverage=tissue_coverage,
-                                                  tile_sz=tile_sz,
-                                                  desired_magnification=desired_magnification),
-                                          files), total=len(files)):
+                                                                         meta_data_DF=slides_meta_data_DF,
+                                                                         ROOT_DIR=ROOT_DIR,
+                                                                         added_extension=added_extension,
+                                                                         DataSet=DataSet,
+                                                                         different_SegData_path_extension=different_SegData_path_extension,
+                                                                         tissue_coverage=tissue_coverage,
+                                                                         tile_sz=tile_sz,
+                                                                         desired_magnification=desired_magnification),
+                                                                 files), total=len(files)):
             tile_nums.append(tile_nums1)
             total_tiles.append(total_tiles1)
 
@@ -494,7 +499,16 @@ def make_grid(DataSet: str = 'TCGA',
     meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
     meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile) @ X' + str(desired_magnification)] = slide_usage
 
-    meta_data_DF.to_excel(data_file)
+    meta_data_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx'))
+
+    # Save Grids creation MetaData to file
+    grid_productoin_meta_data_dict = {'Creation Date': str(date.today()),
+                                      'Tissue Coverage': tissue_coverage,
+                                      'Segmantation Path': os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension)
+                                      }
+
+    grid_production_DF = pd.DataFrame([grid_productoin_meta_data_dict]).transpose()
+    grid_production_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'production_meta_data.xlsx'))
 
     print('Finished Grid production phase !')
 
