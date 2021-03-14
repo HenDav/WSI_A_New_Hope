@@ -19,7 +19,7 @@ parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1300], 
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
-parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -82,6 +82,10 @@ for counter in range(len(args.from_epoch)):
     model.eval()
     models.append(model)
 
+############################################
+if sys.platform=='win32':
+    args.target = 'Her2' #temp for debug RanS 11.3.21
+############################################
 
 
 TILE_SIZE = 128
@@ -118,7 +122,7 @@ total_pos, total_neg = 0, 0
 correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, num_patches, file_name) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, _, _) in enumerate(tqdm(inf_loader)):
         if new_slide:
             scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             target_current = target
@@ -133,6 +137,7 @@ with torch.no_grad():
             model.to(DEVICE)
 
             scores = model(data)
+            scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
 
             scores_0[index] = np.concatenate((scores_0[index], scores[:, 0].cpu().detach().numpy()))
             scores_1[index] = np.concatenate((scores_1[index], scores[:, 1].cpu().detach().numpy()))
@@ -146,7 +151,7 @@ with torch.no_grad():
             if target == 1:
                 total_pos += 1
             else:
-                total_neg +=1
+                total_neg += 1
 
             for model_num in range(NUM_MODELS):
                 current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num]))
@@ -167,7 +172,7 @@ with torch.no_grad():
 for model_num in range(NUM_MODELS):
     if different_experiments:
         output_dir = Output_Dirs[model_num]
-    fpr_train, tpr_train, _ = roc_curve(all_targets, all_scores[:, model_num])
+    fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
     if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
@@ -175,7 +180,7 @@ for model_num in range(NUM_MODELS):
 
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
-    inference_data = [fpr_train, tpr_train, all_labels[:, model_num], all_targets, all_scores[:, model_num],
+    inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset), np.squeeze(patch_scores[:, model_num,:])]
 
     with open(file_name, 'wb') as filehandle:

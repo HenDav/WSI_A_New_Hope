@@ -4,11 +4,12 @@ infer = True
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
-                    '--folds', '123456',
+                    #'--folds', '123456',
+                    '--folds', '2',
                     '--dataset', 'Breast',
-                    '--num_tiles', '20',
+                    '--num_tiles', '30',
                     '-ex', '38',
-                    '--from_epoch', '1080'
+                    '--from_epoch', '1080',
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',
