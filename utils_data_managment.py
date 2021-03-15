@@ -802,13 +802,12 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     print('{} data file \'{}\''.format(messege_prefix, data_file))
 
 
-#def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
 def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = ''):
     data_path = os.path.join(ROOT_DIR, DataSet)
     print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
 
-    #out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
-    out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
+    out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
+    #out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
     if not os.path.isdir(out_path_dataset):
         os.mkdir(out_path_dataset)
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
@@ -819,6 +818,14 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps'))
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegImages')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegImages'))
+    # Copy Code files into the segmentation directory:
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'Code')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData', 'Code'))
+        # Get all .py files in the code path:
+        code_files_path = os.path.join(out_path_dataset, 'SegData', 'Code')
+        py_files = glob.glob('*.py')
+        for _, file in enumerate(py_files):
+            copy2(file, code_files_path)
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
