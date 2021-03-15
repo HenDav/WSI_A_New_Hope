@@ -347,7 +347,7 @@ if __name__ == '__main__':
     DEVICE = utils.device_gpu_cpu()
 
     # Tile size definition:
-    TILE_SIZE = 128
+    TILE_SIZE = 256
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -451,7 +451,7 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.basic_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
-        utils.save_code_files(args)
+        utils.save_code_files(args, train_dset)
 
     epoch = args.epochs
     from_epoch = args.from_epoch

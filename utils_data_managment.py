@@ -551,7 +551,7 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         # Plot grid on thumbnail
         thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
                                   filename + '_thumb.jpg')
-                                  # filename + '_thumb.png') #temp
+                                  #filename + '_thumb.png') #temp
 
         grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
                                        'GridImages_' + str(tissue_coverage).replace('.', '_'),

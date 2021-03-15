@@ -68,11 +68,15 @@ class WSI_Master_Dataset(Dataset):
             DataSet = 'TCGA'
             self.DataSet = 'TCGA'
         '''
-        print('Root Path is: {}', self.ROOT_PATH)
-        meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
+        print('Root Path for train data is: ', self.ROOT_PATH)
+        slide_meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
+        slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
 
-        self.meta_data_DF = pd.read_excel(meta_data_file)
-        #print('meta_data_file:', meta_data_file)  # temp RanS 9.3.21
+        grid_meta_data_file = os.path.join(self.ROOT_PATH, self.DataSet, 'Grids/Grid_data.xlsx')
+        grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
+
+        self.meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
+                                          **grid_meta_data_DF.set_index('file').to_dict()})
 
         if self.DataSet == 'Breast':
             dir_dict = get_breast_dir_dict()
@@ -80,6 +84,7 @@ class WSI_Master_Dataset(Dataset):
         else:
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
             self.meta_data_DF.reset_index(inplace=True)
+            self.meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
 
         # RanS 12.1.21, this slide is buggy, avoid it
         self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'ER status'] = 'Missing Data'
