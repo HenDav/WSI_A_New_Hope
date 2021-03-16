@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 import pickle
 from cycler import cycler
 import numpy as np
+import pandas as pd
 
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
@@ -49,10 +50,11 @@ inference_files['TCGA_ER_fold1_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_g
 inference_files['TCGA_ER_fold1_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1440-Folds_[1]-Tiles_500.data'
 inference_files['TCGA_ER_fold1_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1420-Folds_[1]-Tiles_500.data' '''
 
-inference_files['exp175_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp175\Inference\Model_Epoch_740-Folds_[1]-Tiles_500.data'
-inference_files['exp175_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp175\Inference\Model_Epoch_760-Folds_[1]-Tiles_500.data'
-inference_files['exp175_epoch760_test_10'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp175\Inference\Model_Epoch_760-Folds_[1]-Tiles_10.data'
-inference_files['exp175_epoch760_test_50'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp175\Inference\Model_Epoch_760-Folds_[1]-Tiles_50.data'
+#inference_files['exp177_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\with Grids\Model_Epoch_740-Folds_[1]-Tiles_500.data'
+#inference_files['exp177_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\with Grids\Model_Epoch_760-Folds_[1]-Tiles_500.data'
+inference_files['exp177_epoch740_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_740-Folds_[1]-Tiles_100.data'
+inference_files['exp177_epoch760_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_760-Folds_[1]-Tiles_100.data'
+inference_files['rons_epoch1467_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\inference\ron_model_fold1_epoch1467_on_our_dataset_150321.data'
 
 
 infer_type = 'REG'
@@ -86,6 +88,10 @@ for ind, key in enumerate(inference_files.keys()):
 
     if infer_type == 'REG':
         fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides, patch_scores = inference_data
+        save_csv = True
+        if save_csv:
+            patch_scores_df = pd.DataFrame(patch_scores)
+            patch_scores_df.to_csv(key + '_patch_scores.csv')
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
         #temp fix RanS 4.2.21

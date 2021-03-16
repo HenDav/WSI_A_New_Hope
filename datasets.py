@@ -58,6 +58,7 @@ class WSI_Master_Dataset(Dataset):
             slides_data_file = 'slides_data_RedSquares.xlsx'
         else:
             slides_data_file = 'slides_data.xlsx'
+            #slides_data_file = 'slides_data_07-03-2021.xlsx' #temp RanS 14.3.21
 
         assert_dataset_target(DataSet, target_kind)
 
@@ -114,11 +115,13 @@ class WSI_Master_Dataset(Dataset):
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == -1])
+        #slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X20'] == -1]) #temp RanS 14.3.21
         if train_type == 'REG':
             n_minimal_patches = n_patches
         else:
             n_minimal_patches = bag_size
         slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] < n_minimal_patches])
+        #slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20'] < n_minimal_patches]) #temp RanS 14.3.21
         #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid))
 
@@ -158,6 +161,7 @@ class WSI_Master_Dataset(Dataset):
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)])
+        #all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X20']) #temp RanS 14.3.21
         if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
@@ -198,6 +202,8 @@ class WSI_Master_Dataset(Dataset):
                         self.slides.append(openslide.open_slide(image_file))
                     basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
                     grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids_old1',basic_file_name + '--tlsz' + str(self.tile_size) + '.data') #temp RanS 14.3.21
+
                     with open(grid_file, 'rb') as filehandle:
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
@@ -430,8 +436,9 @@ class Infer_Dataset(WSI_Master_Dataset):
                 self.magnification.extend([self.all_magnifications[slide_num]]) #RanS 11.3.21
 
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',
-                                         basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                #grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids_old1',basic_file_name + '--tlsz' + str(self.tile_size) + '.data') #temp RanS 14.3.21
+
 
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_patches[-1])
 
