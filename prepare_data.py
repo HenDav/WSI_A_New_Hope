@@ -57,11 +57,10 @@ if __name__ =='__main__':
     '''utils_data_managment.make_grid(DataSet='TCGA',
                                    ROOT_DIR='All Data',
                                    tile_sz=256,
-                                   tissue_coverage=0.3,
+                                   tissue_coverage=0.5,
                                    desired_magnification=10,
-                                   added_extension='_new-Cov_03',
+                                   added_extension='_new-Cov_05',
                                    different_SegData_path_extension='')'''
-
 
 
     print('Data Preparation sequence is Done !')

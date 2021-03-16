@@ -24,6 +24,7 @@ import matplotlib.patches as patches
 import cv2 as cv
 import multiprocessing
 from functools import partial
+from datetime import date
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -449,16 +450,20 @@ def make_grid(DataSet: str = 'TCGA',
     if added_extension != '':
         copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
 
-    data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
+    slides_data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
 
     if DataSet == 'RedSquares':
-        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
+        slides_data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
 
-    meta_data_DF = pd.read_excel(data_file)
-    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
+    slides_meta_data_DF = pd.read_excel(slides_data_file)
+    files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
+
+    meta_data_DF = pd.DataFrame(files, columns=['file'])
+
+    slides_meta_data_DF.set_index('file', inplace=True)
     meta_data_DF.set_index('file', inplace=True)
     tile_nums = []
-    total_tiles =[]
+    total_tiles = []
 
     # Save the grid to file:
     if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension)):
@@ -473,15 +478,15 @@ def make_grid(DataSet: str = 'TCGA',
 
     with multiprocessing.Pool(num_workers) as pool:
         for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
-                                                  meta_data_DF=meta_data_DF,
-                                                  ROOT_DIR=ROOT_DIR,
-                                                  added_extension=added_extension,
-                                                  DataSet=DataSet,
-                                                  different_SegData_path_extension=different_SegData_path_extension,
-                                                  tissue_coverage=tissue_coverage,
-                                                  tile_sz=tile_sz,
-                                                  desired_magnification=desired_magnification),
-                                          files), total=len(files)):
+                                                                         meta_data_DF=slides_meta_data_DF,
+                                                                         ROOT_DIR=ROOT_DIR,
+                                                                         added_extension=added_extension,
+                                                                         DataSet=DataSet,
+                                                                         different_SegData_path_extension=different_SegData_path_extension,
+                                                                         tissue_coverage=tissue_coverage,
+                                                                         tile_sz=tile_sz,
+                                                                         desired_magnification=desired_magnification),
+                                                                 files), total=len(files)):
             tile_nums.append(tile_nums1)
             total_tiles.append(total_tiles1)
 
@@ -494,7 +499,16 @@ def make_grid(DataSet: str = 'TCGA',
     meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
     meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile) @ X' + str(desired_magnification)] = slide_usage
 
-    meta_data_DF.to_excel(data_file)
+    meta_data_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx'))
+
+    # Save Grids creation MetaData to file
+    grid_productoin_meta_data_dict = {'Creation Date': str(date.today()),
+                                      'Tissue Coverage': tissue_coverage,
+                                      'Segmantation Path': os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension)
+                                      }
+
+    grid_production_DF = pd.DataFrame([grid_productoin_meta_data_dict]).transpose()
+    grid_production_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'production_meta_data.xlsx'))
 
     print('Finished Grid production phase !')
 
@@ -537,7 +551,7 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         # Plot grid on thumbnail
         thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
                                   filename + '_thumb.jpg')
-                                  # filename + '_thumb.png') #temp
+                                  #filename + '_thumb.png') #temp
 
         grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
                                        'GridImages_' + str(tissue_coverage).replace('.', '_'),
@@ -788,13 +802,12 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     print('{} data file \'{}\''.format(messege_prefix, data_file))
 
 
-#def make_segmentations(data_path: str = 'All Data/TCGA/', rewrite: bool = False, magnification: int = 1):
 def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = ''):
     data_path = os.path.join(ROOT_DIR, DataSet)
     print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
 
-    #out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
-    out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
+    out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
+    #out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
     if not os.path.isdir(out_path_dataset):
         os.mkdir(out_path_dataset)
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
@@ -805,6 +818,14 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegMaps'))
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegImages')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegImages'))
+    # Copy Code files into the segmentation directory:
+    if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'Code')):
+        os.mkdir(os.path.join(out_path_dataset, 'SegData', 'Code'))
+        # Get all .py files in the code path:
+        code_files_path = os.path.join(out_path_dataset, 'SegData', 'Code')
+        py_files = glob.glob('*.py')
+        for _, file in enumerate(py_files):
+            copy2(file, code_files_path)
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))

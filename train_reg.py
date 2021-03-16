@@ -23,8 +23,8 @@ parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-#parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-ds', '--dataset', type=str, default='test_speed', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+#parser.add_argument('-ds', '--dataset', type=str, default='test_speed', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')  # RanS 7.12.20
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
@@ -347,7 +347,7 @@ if __name__ == '__main__':
     DEVICE = utils.device_gpu_cpu()
 
     # Tile size definition:
-    TILE_SIZE = 128
+    TILE_SIZE = 256
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -383,10 +383,10 @@ if __name__ == '__main__':
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     num_workers = cpu_available
-    #num_workers = 4 #temp RanS 8.3.21
 
     if sys.platform == 'win32':
         num_workers = 4  # temp RanS 2.2.21
+
     print('num workers = ', num_workers)
 
     # Get data:
@@ -451,7 +451,7 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.basic_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
-        utils.save_code_files(args)
+        utils.save_code_files(args, train_dset)
 
     epoch = args.epochs
     from_epoch = args.from_epoch

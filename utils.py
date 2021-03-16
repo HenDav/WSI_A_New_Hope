@@ -23,7 +23,7 @@ import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
-
+from datetime import date
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -414,10 +414,6 @@ def get_cpu():
     return cpu
 
 
-'''def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
-             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
-             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
-             MultiSlide: bool = False):'''
 def run_data(experiment: str = None,
              test_fold: int = 1,
              transform_type: str = 'none',
@@ -470,6 +466,7 @@ def run_data(experiment: str = None,
             DataSet_name = [DataSet_name]
 
         run_dict = {'Experiment': experiment,
+                    'Start Date': str(date.today()),
                     'Test Fold': test_fold,
                     'Transformations': transform_type,
                     'Tile Size': tile_size,
@@ -834,8 +831,8 @@ def define_data_root(DataSet):
             #ROOT_PATH = r'/test/temp_home_run_test'  # temp RanS 2.3.21
             #ROOT_PATH = r'/mnt/hdd/All_Data/temp_home_run_test'  # temp RanS 2.3.21
         else:
-            #ROOT_PATH = r'/home/womer/project/All Data'
-            ROOT_PATH = r'/mnt/hdd/All_Data' #RanS 14.3.21
+            # ROOT_PATH = r'/home/womer/project/All Data'
+            ROOT_PATH = r'/mnt/hdd/All_Data'  # Run from local files
 
     elif sys.platform == 'win32': #Ran local
         if DataSet == 'HEROHE':
@@ -987,7 +984,7 @@ def get_model(model_name, saved_model_path='none'):
     return model
 
 
-def save_code_files(args: argsNamespace):
+def save_code_files(args: argsNamespace, train_DataSet):
     """
     This function saves the code files and argparse data to a Code directory within the run path.
     :param args: argsparse Namespace of the run.
@@ -996,11 +993,22 @@ def save_code_files(args: argsNamespace):
     code_files_path = os.path.join(args.output_dir, 'Code')
     args.run_file = os.path.basename(__file__)
     args_dict = vars(args)
-    args_DF = pd.DataFrame([args_dict]).transpose()
+
+    # Add Grid Data:
+    grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids/production_meta_data.xlsx')
+    if os.path.isfile(grid_meta_data_file):
+        grid_data_DF = pd.read_excel(grid_meta_data_file)
+        grid_dict = grid_data_DF.to_dict()
+        data_dict = {**args_dict, **grid_dict}
+    else:
+        data_dict = args_dict
+
+    data_DF = pd.DataFrame([data_dict]).transpose()
+
     if not os.path.isdir(args.output_dir):
         os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
-    args_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
+    data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
     # Get all .py files in the code path:
     py_files = glob.glob('*.py')
     for _, file in enumerate(py_files):
