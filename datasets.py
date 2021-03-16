@@ -121,13 +121,17 @@ class WSI_Master_Dataset(Dataset):
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == -1])
+        # Remove slides with 0 tiles:
+        slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == 0])
+
         if train_type == 'REG':
             n_minimal_patches = n_patches
         else:
-            n_minimal_patches = bag_size
+            n_minimal_patches = self.bag_size
+
         slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] < n_minimal_patches])
         #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
-        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid))
+        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid - slides_with_0_tiles))
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if DataSet == 'Breast':
@@ -426,7 +430,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         ind = 0
         for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
-                if num_tiles <= self.all_tissue_tiles[slide_num]:
+                if num_tiles <= self.all_tissue_tiles[slide_num] and self.all_tissue_tiles[slide_num] > 0:
                     self.num_patches.append(num_tiles)
                 else:
                     #self.num_patches.append(self.all_tissue_tiles[slide_num])
