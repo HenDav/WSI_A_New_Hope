@@ -16,9 +16,25 @@ ax1.set_prop_cycle(custom_cycler)
 
 inference_files = {}
 
-inference_files['1'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
-inference_files['2'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
+inference_files['1400/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_10.data'
+inference_files['1400/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_50.data'
+inference_files['1400/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_500.data'
 
+inference_files['1405/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_10.data'
+inference_files['1405/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_50.data'
+inference_files['1405/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_500.data'
+
+inference_files['1415/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_10.data'
+inference_files['1415/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_50.data'
+inference_files['1415/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_500.data'
+
+inference_files['1420/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
+inference_files['1420/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_50.data'
+inference_files['1420/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_500.data'
+
+inference_files['1425/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
+inference_files['1425/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_50.data'
+inference_files['1425/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_500.data'
 
 
 infer_type = 'REG'

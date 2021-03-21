@@ -54,7 +54,7 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
-    utils_data_managment.make_grid(DataSet='TCGA',
+    utils_data_managment.make_grid(DataSet='HEROHE',
                                    ROOT_DIR='All Data',
                                    tile_sz=128,
                                    tissue_coverage=0.5,

@@ -24,9 +24,9 @@ from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
 from datetime import date
+import platform
 
 Image.MAX_IMAGE_PIXELS = None
-
 
 
 def chunks(list: List, length: int):
@@ -42,44 +42,6 @@ def make_dir(dirname):
             print('Creation of directory ', dirname, ' failed...')
             raise
 
-'''
-#def _choose_data(grid_file: str, image_file: str, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
-#RanS 9.2.21, preload slides
-def _choose_data(grid_list: list, slide: openslide.OpenSlide, how_many: int, magnification: int = 20, tile_size: int = 256, print_timing: bool = False, desired_mag: int = 20):
-    """
-    This function choose and returns data to be held by DataSet
-    :param file_name:
-    :param how_many: how_many describes how many tiles to pick from the whole image
-    :return:
-    """
-    #BASIC_OBJ_POWER = 20
-    #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    #downsample = int(magnification / desired_mag)
-    downsample = magnification / desired_mag
-    adjusted_tile_size = int(tile_size * downsample)
-    downsample = int(downsample)
-    # open grid list:
-
-
-    # Choose locations from the grid:
-    loc_num = len(grid_list)
-
-    #print grid issues, RanS 4.1.21
-    try:
-        idxs = sample(range(loc_num), how_many)
-    except:
-        #print('image_file:', image_file) #cancelled RanS 9.2.21, preload slides
-        print('how_many:', str(how_many))
-        print('loc_num:', str(loc_num))
-
-    locs = [grid_list[idx] for idx in idxs]
-
-    #image_tiles, time_list, tile_sz = _get_tiles(image_file, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
-    #RanS 9.2.21, preload slides
-    image_tiles, time_list, tile_sz = _get_tiles(slide, locs, adjusted_tile_size, print_timing=print_timing, downsample=downsample)
-
-    return image_tiles, time_list, tile_sz
-'''
 
 def _choose_data(grid_list: list,
                  slide: openslide.OpenSlide,
@@ -103,6 +65,7 @@ def _choose_data(grid_list: list,
     """
 
     desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
+
     level, best_next_level = -1, -1
     for index, downsample in enumerate(slide.level_downsamples):
         if isclose(desired_downsample, downsample, rel_tol=1e-3):
@@ -127,8 +90,6 @@ def _choose_data(grid_list: list,
         raise ValueError('Requested more tiles than available by the grid list')
 
     locs = [grid_list[idx] for idx in idxs]
-    #image_tiles, time_list = _get_tiles(slide, locs, adjusted_tile_size, tile_size, best_slide_level)
-
     image_tiles, time_list = _get_tiles(slide=slide,
                                         locations=locs,
                                         tile_size_level_0=level_0_tile_size,
@@ -139,105 +100,6 @@ def _choose_data(grid_list: list,
 
     return image_tiles, time_list
 
-
-'''
-#def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
-#RanS 9.2.21, preload slides
-def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-
-    # open the .svs file:
-    #RanS 9.2.21, preload slides
-    img = slide
-
-    tiles_num = len(locations)
-
-    #RanS 9.2.21 - use level1 if applicable
-    level1_downsample = int(img.level_downsamples[1])
-    if downsample>=level1_downsample:
-        level = 1
-        tile_sz = int(tile_sz / level1_downsample)
-    else:
-        level = 0
-    #RanS 20.12.20 - plot thumbnail with tile locations
-    temp = False
-    if temp:
-        from matplotlib.patches import Rectangle
-        import matplotlib.pyplot as plt
-        level_1 = img.level_count - 5
-        ld = int(img.level_downsamples[level_1]) #level downsample
-        thumb = (img.read_region(location=(0, 0), level=level_1, size=img.level_dimensions[level_1])).convert('RGB')
-        fig, ax = plt.subplots()
-        plt.imshow(thumb)
-        for idx, loc in enumerate(locations):
-            print((loc[1]/ld, loc[0]/ld))
-            rect = Rectangle((loc[1]/ld, loc[0]/ld), tile_sz / ld, tile_sz / ld, color='r', linewidth=3, fill=False)
-            ax.add_patch(rect)
-            #rect = Rectangle((loc[1] / ld, loc[0] / ld), tile_sz / ld, tile_sz / ld, color='g', linewidth=3, fill=False)
-            #ax.add_patch(rect)
-
-        patch1 = img.read_region((loc[1], loc[0]), 0, (600, 600)).convert('RGB')
-        plt.figure()
-        plt.imshow(patch1)
-
-        patch2 = img.read_region((loc[1], loc[0]), 0, (2000, 2000)).convert('RGB')
-        plt.figure()
-        plt.imshow(patch2)
-
-        plt.show()
-
-    tiles_PIL = []
-
-    start_gettiles = time.time()
-    for idx, loc in enumerate(locations):
-        try:
-            # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-            #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-
-            # Shift each tile by half the size of the original tile size (in each dimension).
-            # There is a need to check the validity of the tile location within the slide and correct it's coordinates if needed
-
-            tile_shifting = sample(range(-tile_sz//2, tile_sz//2), 2)
-            new_loc_init = {'Top': loc[0] - tile_shifting[0],
-                            'Left': loc[1] - tile_shifting[1]}
-            new_loc_end = {'Bottom': new_loc_init['Top'] + tile_sz,
-                           'Right': new_loc_init['Left'] + tile_sz}
-
-            if new_loc_init['Top'] < 0:
-                new_loc_init['Top'] += abs(new_loc_init['Top'])
-            if new_loc_init['Left'] < 0:
-                new_loc_init['Left'] += abs(new_loc_init['Left'])
-            if new_loc_end['Bottom'] > slide.dimensions[1]:
-                delta_Height = new_loc_end['Bottom'] - slide.dimensions[1]
-                new_loc_init['Top'] -= delta_Height
-            if new_loc_end['Right'] > slide.dimensions[0]:
-                delta_Width = new_loc_end['Right'] - slide.dimensions[0]
-                new_loc_init['Left'] -= delta_Width
-
-            # image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
-            image = img.read_region((new_loc_init['Left'], new_loc_init['Top']), level, (tile_sz, tile_sz)).convert('RGB')
-        except:
-            print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
-            print('taking blank patch instead')
-            image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
-        tiles_PIL.append(image)
-
-    end_gettiles = time.time()
-
-
-    if print_timing:
-        time_list = [0, (end_gettiles - start_gettiles) / tiles_num]
-    else:
-        time_list = [0]
-
-    return tiles_PIL, time_list, tile_sz
-'''
 
 def _get_tiles(slide: openslide.OpenSlide,
                locations: List[Tuple],
@@ -286,7 +148,6 @@ def _get_tiles(slide: openslide.OpenSlide,
         plt.show()
 
     tiles_PIL = []
-
     start_gettiles = time.time()
     for idx, loc in enumerate(locations):
         try:
@@ -308,10 +169,7 @@ def _get_tiles(slide: openslide.OpenSlide,
                 new_loc_init['Left'] -= delta_Width
 
             # When reading from OpenSlide the locations is as follows (col, row)
-            #start = time.time() #temp
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
-            #end = time.time() #temp
-            #print('time:', str(end-start)) #temp
         except:
             print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
             print('taking blank patch instead')
@@ -414,6 +272,10 @@ def get_cpu():
     return cpu
 
 
+'''def run_data(experiment: str = None, test_fold: int = 1, transform_type: str = 'none', tile_size: int = 256,
+             tiles_per_bag: int = 50, num_bags: int = 1, DX: bool = False, DataSet: str = 'TCGA',
+             epoch: int = None, model: str = None, transformation_string: str = None, Receptor: str = None,
+             MultiSlide: bool = False):'''
 def run_data(experiment: str = None,
              test_fold: int = 1,
              transform_type: str = 'none',
@@ -677,7 +539,17 @@ class HEDColorJitter:
         return x2
 
 
-def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=0.1):
+def define_transformations(transform_type, train, tile_size, color_param=0.1):
+
+    MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
+            'HEROHE': [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255],
+            'Ron': [0.8998, 0.8253, 0.9357]
+            }
+
+    STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255],
+           'HEROHE': [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255],
+           'Ron': [0.1125, 0.1751, 0.0787]
+           }
 
     # Setting the transformation:
     if transform_type == 'aug_receptornet':
@@ -724,7 +596,7 @@ def define_transformations(transform_type, train, MEAN, STD, tile_size, c_param=
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
                     #transforms.ColorJitter(brightness=(1-c_param*1, 1+c_param*1), contrast=(1-c_param*2, 1+c_param*2),  # RanS 2.12.20
                     #                       saturation=c_param, hue=(-c_param, c_param)),
-                    transforms.ColorJitter(brightness=c_param, contrast=c_param * 2, saturation=c_param, hue=c_param),
+                    transforms.ColorJitter(brightness=color_param, contrast=color_param * 2, saturation=color_param, hue=color_param),
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
                     MyGaussianNoiseTransform(sigma=(0, 0.05)),  #RanS 23.12.20
                     transforms.RandomVerticalFlip(),
@@ -824,15 +696,11 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
         elif DataSet == 'Breast':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
-        elif DataSet == 'ABCTB':
-            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
-            #ROOT_PATH = r'/home/womer/project/All Data'   # Omer 3/3 slide time test
-            #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
-            #ROOT_PATH = r'/test/temp_home_run_test'  # temp RanS 2.3.21
-            #ROOT_PATH = r'/mnt/hdd/All_Data/temp_home_run_test'  # temp RanS 2.3.21
         else:
-            # ROOT_PATH = r'/home/womer/project/All Data'
-            ROOT_PATH = r'/mnt/hdd/All_Data'  # Run from local files
+            if platform.node() == 'gipdeep3':
+                ROOT_PATH = r'/mnt/hdd/All_Data'  # Run from local files
+            else:
+                ROOT_PATH = r'/home/womer/project/All Data'
 
     elif sys.platform == 'win32': #Ran local
         if DataSet == 'HEROHE':
@@ -845,8 +713,6 @@ def define_data_root(DataSet):
             ROOT_PATH = r'C:\ran_data\RedSquares'
         elif DataSet == 'Breast':
             ROOT_PATH = r'C:\ran_data\breast_dataset'
-        elif DataSet == 'ABCTB':  # RanS 28.2.21
-            ROOT_PATH = r'C:\ran_data\ABCTB\ABCTB_examples'
         else:
             print('Error - no ROOT_PATH defined')
     else: #Omer local
@@ -857,33 +723,79 @@ def define_data_root(DataSet):
 
     return ROOT_PATH
 
-#RanS 10.1.21
-def get_breast_dir_dict():
+
+def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
-    if sys.platform == 'linux':  # GIPdeep
-        #dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG'
-        for ii in np.arange(1, 4):
-            dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
-        dir_dict['HEROHE'] = r'/home/womer/project/All Data'
-        dir_dict['TCGA'] = r'/home/womer/project/All Data'
+    if Dataset == 'Breast':
+        if sys.platform == 'linux':  # GIPdeep
+            for ii in np.arange(1, 4):
+                dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
 
-    elif sys.platform == 'win32': #Ran local
-        dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
-        dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            if platform.node() == 'gipdeep3':  # Run from local files
+                dir_dict['TCGA'] = r'/mnt/hdd/All_Data/TCGA'
+                dir_dict['HEROHE'] = r'/mnt/hdd/All_Data/HEROHE'
+            else:
+                dir_dict['TCGA'] = r'/home/womer/project/All Data/TCGA'
+                dir_dict['HEROHE'] = r'/home/womer/project/All Data/HEROHE'
 
-    else: #Omer local
-        dir_dict['TCGA'] = r'All Data'
-        dir_dict['HEROHE'] = r'All Data'
+        elif sys.platform == 'win32':  #Ran local
+            dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
+
+        elif sys.platform == 'darwin':   #Omer local
+            dir_dict['TCGA'] = r'All Data/TCGA'
+            dir_dict['HEROHE'] = r'All Data/HEROHE'
+
+        else:
+            raise Exception('Unrecognized platform')
+
+    elif Dataset == 'TCGA':
+        if sys.platform == 'linux':  # GIPdeep
+            if platform.node() == 'gipdeep3':  # Run from local files
+                dir_dict['TCGA'] = r'/mnt/hdd/All_Data/TCGA'
+            else:  # Run from netapp
+                dir_dict['TCGA'] = r'/home/womer/project/All Data/TCGA'
+
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['TCGA'] = r'All Data/TCGA'
+
+        else:
+            raise Exception('Unrecognized platform')
+
+    elif Dataset == 'HEROHE':
+        if sys.platform == 'linux':  # GIPdeep
+            if platform.node() == 'gipdeep3':  # Run from local files
+                dir_dict['HEROHE'] = r'/mnt/hdd/All_Data/HEROHE'
+            else:  # Run from netapp
+                dir_dict['HEROHE'] = r'/home/womer/project/All Data/HEROHE'
+
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
+
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['HEROHE'] = r'All Data/HEROHE'
+
+        else:
+            raise Exception('Unrecognized platform')
+
+
     return dir_dict
 
 
 def assert_dataset_target(DataSet, target_kind):
     if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-        raise ValueError('target should be one of: PDL1, EGFR')
-    elif ((DataSet == 'HEROHE') or (DataSet == 'TCGA') or (DataSet[:6] == 'CARMEL') or (DataSet == 'Breast')) and target_kind not in ['ER', 'PR', 'Her2']:
+        raise ValueError('For LUNG DataSet, target should be one of: PDL1, EGFR')
+    elif DataSet == 'HEROHE' and target_kind != 'Her2':
+        raise ValueError('for HEROHE DataSet, target should be Her2')
+    elif (DataSet == 'TCGA' or DataSet[:6] == 'CARMEL' or DataSet == 'Breast') and target_kind not in ['ER', 'PR', 'Her2']:
         raise ValueError('target should be one of: ER, PR, Her2')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
+    elif DataSet == 'Breast' and target_kind != 'Her2':
+        raise ValueError('HEROHE is part of DataSet Breast so target must be Her2 ')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
