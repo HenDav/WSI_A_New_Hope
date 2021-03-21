@@ -16,7 +16,7 @@ from collections import OrderedDict
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
-parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1400, 1405, 1420, 1415, 1420, 1425], help='Use this epoch models for inference')
+parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1395, 1390], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')

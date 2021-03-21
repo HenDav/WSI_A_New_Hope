@@ -95,7 +95,7 @@ for ind, key in enumerate(inference_files.keys()):
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
         #temp fix RanS 4.2.21
-        if patch_scores.ndim==3:
+        if patch_scores.ndim == 3:
             patch_scores = np.squeeze(patch_scores[:, ind,:])
         # all_scores = np.max(patch_scores, axis=1) #maxpool - temp! RanS 20.1.21
         #slide_score_std = np.nanstd(patch_scores, axis=1)

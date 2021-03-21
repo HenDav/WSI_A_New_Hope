@@ -5,30 +5,16 @@ import pickle
 from random import sample
 import torch
 from torchvision import transforms
-import sys
 import time
 from torch.utils.data import Dataset
 from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks
 from utils import HEDColorJitter, define_transformations, define_data_root, assert_dataset_target
-from utils import show_patches_and_transformations, get_breast_dir_dict
-import matplotlib.pyplot as plt
-from torch.multiprocessing import Pool
+from utils import show_patches_and_transformations, get_datasets_dir_dict
 import openslide
 from tqdm import tqdm
+import sys
 from math import isclose
-#import scipy.io as sio #temp RanS 17.3.21
-
-
-MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
-        'HEROHE': [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255],
-        'Ron': [0.8998, 0.8253, 0.9357]
-        }
-
-STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255],
-       'HEROHE': [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255],
-       'Ron': [0.1125, 0.1751, 0.0787]
-       }
 
 
 class WSI_Master_Dataset(Dataset):
@@ -45,65 +31,22 @@ class WSI_Master_Dataset(Dataset):
                  DX: bool = False,
                  get_images: bool = False,
                  train_type: str = 'MASTER',
-                 c_param: float = 0.1,
-                 n_patches: int = 50,
-                 tta: bool = False,
-                 mag: int = 20):
+                 color_param: float = 0.1,
+                 n_tiles: int = 10,
+                 test_time_augmentation: bool = False,
+                 desired_slide_magnification: int = 20,
+                 slide_repetitions: int = 1):
 
-        print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
-        # Define data root:
-        self.ROOT_PATH = define_data_root(DataSet)
-        self.DataSet = DataSet
-        self.basic_magnification = mag
-        if DataSet == 'RedSquares':
-            slides_data_file = 'slides_data_RedSquares.xlsx'
-        else:
-            slides_data_file = 'slides_data.xlsx'
-
+        # Check if the target receptor is available for the requested train DataSet:
         assert_dataset_target(DataSet, target_kind)
 
-        '''
-        if DataSet == 'test_speed':  # Omer speed test (7/3)
-            self.ROOT_PATH = r'/test/All Data/'
-            slides_data_file = 'slides_data_test_speed.xlsx'
-            DataSet = 'TCGA'
-            self.DataSet = 'TCGA'
-        '''
-        print('Root Path for train data is: ', self.ROOT_PATH)
-        slide_meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
-        slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
+        print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
 
-        grid_meta_data_file = os.path.join(self.ROOT_PATH, self.DataSet, 'Grids', 'Grid_data.xlsx')
-        grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
-        # TODO RanS 17.3.21 - support multiple grid_data files in case of breast dataset
+        # Define data root:
+        self.ROOT_PATH = define_data_root(DataSet)
 
-        self.meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
-                                          **grid_meta_data_DF.set_index('file').to_dict()})
-
-        if self.DataSet == 'Breast':
-            dir_dict = get_breast_dir_dict()
-        #if self.DataSet != 'ALL':
-        else:
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['id'] == self.DataSet]
-            self.meta_data_DF.reset_index(inplace=True)
-            self.meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
-
-        # RanS 12.1.21, this slide is buggy, avoid it
-        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'ER status'] = 'Missing Data'
-        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'PR status'] = 'Missing Data'
-        self.meta_data_DF.loc[self.meta_data_DF['file'] == '18-1241_1_1_a.mrxs', 'Her2 status'] = 'Missing Data'
-        self.meta_data_DF.reset_index(inplace=True)
-
-        # for lung, take only origin:lung
-        if self.DataSet == 'LUNG':
-            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
-            #self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Diagnosis'] == 'adenocarcinoma']
-            #RanS 2.1.21, this slide is buggy, avoid it
-            self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'PDL1 status'] = 'Missing Data'
-            self.meta_data_DF.loc[self.meta_data_DF['file'] == '2019-27925.mrxs', 'EGFR status'] = 'Missing Data'
-            self.meta_data_DF.reset_index(inplace=True)
-
-        # self.meta_data_DF.set_index('id')
+        self.DataSet = DataSet
+        self.desired_magnification = desired_slide_magnification
         self.tile_size = tile_size
         self.target_kind = target_kind
         self.test_fold = test_fold
@@ -113,44 +56,69 @@ class WSI_Master_Dataset(Dataset):
         self.DX = DX
         self.get_images = get_images
         self.train_type = train_type
-        self.c_param = c_param
+        self.color_param = color_param
+
+        # Get DataSets location:
+        dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
+        print('Train Data will be taken from these locations:')
+        print(dir_dict)
+        locations_list = []
+
+        for _, key in enumerate(dir_dict):
+            locations_list.append(dir_dict[key])
+            slide_meta_data_file = os.path.join(dir_dict[key], 'slides_data_' + key + '.xlsx')
+            grid_meta_data_file = os.path.join(dir_dict[key], 'Grids/Grid_data.xlsx')
+
+            slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
+            grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
+            meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
+                                         **grid_meta_data_DF.set_index('file').to_dict()})
+
+            self.meta_data_DF = meta_data_DF if not hasattr(self, 'meta_data_DF') else self.meta_data_DF.append(
+                meta_data_DF)
+        self.meta_data_DF.reset_index(inplace=True)
+        self.meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
+
+        if self.DataSet == 'LUNG':
+            # for lung, take only origin: lung
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
-        # We'll use only the valid slides - the ones with a Negative or Positive label.
+        # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
         # Let's compute which slides are these:
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         # Also remove slides without grid data:
-        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == -1])
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == -1])
         # Remove slides with 0 tiles:
-        slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == 0])
+        slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == 0])
 
-        #temp RanS 17.3.21, remove slides like ron
-        '''if sys.platform=='win32':
-            removed_slides_df = pd.read_excel(r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\rons_removed_slides - test.xlsx')
-        else:
-            removed_slides_df = pd.read_excel(r'/home/rschley/All_Data/rons_removed_slides.xlsx')
-        rons_missing_slides = set(self.meta_data_DF.index[self.meta_data_DF['file'].isin(removed_slides_df['file'])])
-        mat_dir = '/home/rschley/tcga_mat_files' '''
-
+        # Define number of tiles to be used
         if train_type == 'REG':
-            n_minimal_patches = n_patches
+            n_minimal_tiles = n_tiles
         else:
-            n_minimal_patches = self.bag_size
+            n_minimal_tiles = self.bag_size
 
-        slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] < n_minimal_patches])
-        #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
-        valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid - slides_with_0_tiles))
-        #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid - slides_with_0_tiles - rons_missing_slides)) #temp RanS 17.3.21
+        slides_with_few_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] < n_minimal_tiles])
+        # FIXME: find a way to use slides with less than the minimal amount of slides. and than delete the following if.
+        if len(slides_with_few_tiles) > 0:
+            print(
+                '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
+                .format(len(slides_with_few_tiles), n_minimal_tiles))
+        valid_slide_indices = np.array(
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles))
 
-        # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
-        if DataSet == 'Breast':
+        # The train set should be a combination of all sets except the test set and validation set:
+        if self.DataSet == 'Breast':
             fold_column_name = 'test fold idx breast'
         else:
             fold_column_name = 'test fold idx'
 
-        if self.train_type == 'REG' or train_type == 'MIL':
+        if self.train_type in ['REG', 'MIL']:
             if self.train:
                 folds = list(self.meta_data_DF[fold_column_name].unique())
                 folds.remove(self.test_fold)
@@ -164,7 +132,7 @@ class WSI_Master_Dataset(Dataset):
         elif self.train_type == 'Infer':
             folds = infer_folds
         else:
-            raise ValueError('train_type is not defined')
+            raise ValueError('Variable train_type is not defined')
 
         self.folds = folds
 
@@ -173,20 +141,22 @@ class WSI_Master_Dataset(Dataset):
 
         all_image_file_names = list(self.meta_data_DF['file'])
 
-        if DataSet == 'Breast':
+        '''if DataSet == 'Breast':
             all_image_path_names = [os.path.join(dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
         else:
-            all_image_path_names = list(self.meta_data_DF['id'])
+            all_image_path_names = list(self.meta_data_DF['id'])'''
+
+        all_image_ids = list(self.meta_data_DF['id'])
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
-        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(
+            self.desired_magnification)])
         if self.DataSet != 'TCGA':
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
 
         all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
-        #all_magnifications = list(self.meta_data_DF['Objective Power'])
 
         if train_type == 'Infer':
             self.valid_slide_indices = valid_slide_indices
@@ -201,70 +171,67 @@ class WSI_Master_Dataset(Dataset):
         self.tissue_tiles = []
         self.target = []
         self.magnification = []
-        self.slides = [] #RanS 9.2.21, preload slides
-        self.grid_lists = [] #RanS 9.2.21, preload slides
+        self.slides = []
+        self.grid_lists = []
 
         for _, index in enumerate(tqdm(valid_slide_indices)):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
                 self.image_file_names.append(all_image_file_names[index])
-                self.image_path_names.append(all_image_path_names[index])
+                # self.image_path_names.append(all_image_path_names[index])
+                self.image_path_names.append(dir_dict[all_image_ids[index]])
                 self.in_fold.append(all_in_fold[index])
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
 
-                #RanS 9.2.21, preload slides
+                # Preload slides - improves speed during training.
                 try:
-                    image_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], self.image_file_names[-1])
-                    if sys.platform != 'win32':
-                        self.slides.append(openslide.open_slide(image_file))
-                    basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
-                    grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    # image_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], all_image_file_names[index])
+                    image_file = os.path.join(dir_dict[all_image_ids[index]], all_image_file_names[index])
+                    self.slides.append(openslide.open_slide(image_file))
+                    basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
+                    # grid_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    grid_file = os.path.join(dir_dict[all_image_ids[index]], 'Grids',
+                                             basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
-                        #temp RanS 17.3.21
-                        '''temp_rons_grid = True
-                        if temp_rons_grid:
-                            mat_name = os.path.join(mat_dir, os.path.basename(image_file)[:-4] + '.mat')
-                            try:
-                                valids = sio.loadmat(mat_name)
-                            except:
-                                print('no mat file')
-                                continue
-                            if valids['i'].size == 0:
-                                continue
-                            self.grid_lists.append(np.concatenate((valids['j'], valids['i']), axis=1))
-
-                        else:'''
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
-                except:
-                    print('Could not open slide')
+                except FileNotFoundError:
+                    raise FileNotFoundError(
+                        'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
 
         # Setting the transformation:
-        self.transform, self.scale_factor = define_transformations(transform_type, self.train, MEAN, STD, self.tile_size, self.c_param)
+        self.transform, self.scale_factor = define_transformations(transform_type, self.train, self.tile_size,
+                                                                   self.color_param)
+
 
         if train_type == 'REG':
-            self.factor = n_patches
+            self.factor = n_tiles
             self.real_length = int(self.__len__() / self.factor)
         elif train_type == 'MIL':
             self.factor = 1
             self.real_length = self.__len__()
-        if train is False and tta:
+        if train is False and test_time_augmentation:
             self.factor = 4
             self.real_length = int(self.__len__() / self.factor)
 
 
+        '''if train_type == 'REG':
+            self.factor = n_tiles
+        elif train_type == 'MIL':
+            self.factor = slide_repetitions
+        
+        if train is False and test_time_augmentation:
+            self.factor = 4
+
+        self.real_length = int(self.__len__() / self.factor)'''
+
     def __len__(self):
         return len(self.target) * self.factor
-
 
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
-        #cancelled RanS 9.2.21, preload slides
-        '''basic_file_name = '.'.join(self.image_file_names[idx].split('.')[:-1])
-        grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-        image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])'''
         if sys.platform == 'win32':
             image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
             slide = openslide.open_slide(image_file)
@@ -272,16 +239,13 @@ class WSI_Master_Dataset(Dataset):
             slide = self.slides[idx]
 
         tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
-                                        slide=slide,
+                                        slide=self.slides[idx],
                                         how_many=self.bag_size,
                                         magnification=self.magnification[idx],
-                                        tile_size=int(self.tile_size / (1 - self.scale_factor)),  # RanS 7.12.20, fix boundaries with scale
+                                        tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                        # Fix boundaries with scale
                                         print_timing=self.print_time,
-                                        desired_mag=self.basic_magnification) #RanS 8.2.21
-
-
-        #time1 = time.time()  # temp
-        #print('time1:', str(time1 - start_getitem))  # temp
+                                        desired_mag=self.desired_magnification)
 
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
@@ -289,22 +253,13 @@ class WSI_Master_Dataset(Dataset):
         # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
 
-        #magnification_relation = self.magnification[idx] // self.BASIC_MAGNIFICATION
-        #magnification_relation = self.magnification[idx] / self.BASIC_MAGNIFICATION
-        #if magnification_relation != 1:
-        '''
-        if tile_sz != self.tile_size:
-            transform = transforms.Compose([transforms.Resize(self.tile_size), self.transform])
-        else:
-            transform = self.transform
-        '''
         start_aug = time.time()
         for i in range(self.bag_size):
             X[i] = self.transform(tiles[i])
 
         if self.get_images:
             images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
-            trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
+            trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])
             for i in range(self.bag_size):
                 images[i] = trans(tiles[i])
         else:
@@ -317,18 +272,21 @@ class WSI_Master_Dataset(Dataset):
         else:
             time_list = [0]
 
+        # TODO: check what this function does
         debug_patches_and_transformations = False
-        if debug_patches_and_transformations:
+        if debug_patches_and_transformations and images != 0:
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
         return X, label, time_list, self.image_file_names[idx], images
 
 
+########################################################################################################################
+
 class WSI_MILdataset(WSI_Master_Dataset):
     def __init__(self,
                  DataSet: str = 'TCGA',
                  tile_size: int = 256,
-                 bag_size: int = 50,
+                 bag_size: int = 10,
                  target_kind: str = 'ER',
                  test_fold: int = 1,
                  train: bool = True,
@@ -336,9 +294,10 @@ class WSI_MILdataset(WSI_Master_Dataset):
                  transform_type: str = 'flip',
                  DX: bool = False,
                  get_images: bool = False,
-                 c_param: float = 0.1,
-                 tta: bool = False,
-                 mag: int = 20
+                 color_param: float = 0.1,
+                 test_time_augmentation: bool = False,
+                 desired_slide_magnification: int = 20,
+                 slide_repetitions: int = 1
                  ):
         super(WSI_MILdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -351,22 +310,24 @@ class WSI_MILdataset(WSI_Master_Dataset):
                                              DX=DX,
                                              get_images=get_images,
                                              train_type='MIL',
-                                             c_param=c_param,
-                                             tta=tta,
-                                             mag=mag)
+                                             color_param=color_param,
+                                             test_time_augmentation=test_time_augmentation,
+                                             desired_slide_magnification=desired_slide_magnification,
+                                             slide_repetitions=slide_repetitions)
 
         print(
-            'Initiation of WSI({}) {} {} DataSet for {} is Complete. {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
-            .format(self.train_type,
-                    'Train' if self.train else 'Test',
-                    self.DataSet,
-                    self.target_kind,
-                    self.real_length,
-                    self.tile_size,
-                    self.bag_size,
-                    'Without' if transform_type == 'none' else 'With',
-                    self.test_fold,
-                    'ON' if self.DX else 'OFF'))
+            'Initiation of WSI({}) {} {} DataSet for {} is Complete. Magnification is X{}, {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
+                .format(self.train_type,
+                        'Train' if self.train else 'Test',
+                        self.DataSet,
+                        self.target_kind,
+                        self.desired_magnification,
+                        self.real_length,
+                        self.tile_size,
+                        self.bag_size,
+                        'Without' if transform_type == 'none' else 'With',
+                        self.test_fold,
+                        'ON' if self.DX else 'OFF'))
 
 
 class WSI_REGdataset(WSI_Master_Dataset):
@@ -378,11 +339,11 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  train: bool = True,
                  print_timing: bool = False,
                  transform_type: str = 'flip',
-                 DX : bool = False,
+                 DX: bool = False,
                  get_images: bool = False,
-                 c_param: float = 0.1,
-                 n_patches: int = 50,
-                 mag: int = 20
+                 color_param: float = 0.1,
+                 n_tiles: int = 10,
+                 desired_slide_magnification: int = 20
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -395,9 +356,9 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              DX=DX,
                                              get_images=get_images,
                                              train_type='REG',
-                                             c_param=c_param,
-                                             n_patches=n_patches,
-                                             mag=mag)
+                                             color_param=color_param,
+                                             n_tiles=n_tiles,
+                                             desired_slide_magnification=desired_slide_magnification)
 
         print(
             'Initiation of WSI({}) {} {} DataSet for {} is Complete. Magnification is X{}, {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
@@ -405,14 +366,13 @@ class WSI_REGdataset(WSI_Master_Dataset):
                         'Train' if self.train else 'Test',
                         self.DataSet,
                         self.target_kind,
-                        self.basic_magnification,
+                        self.desired_magnification,
                         self.real_length,
                         self.tile_size,
                         self.bag_size,
                         'Without' if transform_type == 'none' else 'With',
                         self.test_fold,
                         'ON' if self.DX else 'OFF'))
-
 
     def __getitem__(self, idx):
         X, label, time_list, image_file_names, images = super(WSI_REGdataset, self).__getitem__(idx=idx)
@@ -430,7 +390,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                  folds: List = [1],
                  num_tiles: int = 500,
                  dx: bool = False,
-                 mag: int = 20
+                 desired_slide_magnification: int = 20
                  ):
         super(Infer_Dataset, self).__init__(DataSet=DataSet,
                                             tile_size=tile_size,
@@ -444,32 +404,32 @@ class Infer_Dataset(WSI_Master_Dataset):
                                             DX=dx,
                                             get_images=False,
                                             train_type='Infer',
-                                            mag=mag)
+                                            desired_slide_magnification=desired_slide_magnification)
 
         self.tiles_per_iter = tiles_per_iter
         self.folds = folds
         self.magnification = []
-        self.num_patches = []
+        self.num_tiles = []
         self.slide_grids = []
 
         ind = 0
         for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
                 if num_tiles <= self.all_tissue_tiles[slide_num] and self.all_tissue_tiles[slide_num] > 0:
-                    self.num_patches.append(num_tiles)
+                    self.num_tiles.append(num_tiles)
                 else:
-                    #self.num_patches.append(self.all_tissue_tiles[slide_num])
-                    self.num_patches.append(int(self.all_tissue_tiles[slide_num])) #RanS 10.3.21
-                    print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num], num_tiles))
+                    # self.num_patches.append(self.all_tissue_tiles[slide_num])
+                    self.num_tiles.append(int(self.all_tissue_tiles[slide_num]))  # RanS 10.3.21
+                    print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num],
+                                                                             num_tiles))
 
-                #self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
-                self.magnification.extend([self.all_magnifications[slide_num]]) #RanS 11.3.21
+                # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
+                self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
 
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[ind], 'Grids',
-                                         basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                grid_file = os.path.join(self.image_path_names[ind], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
 
-                which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_patches[-1])
+                which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
 
                 with open(grid_file, 'rb') as filehandle:
                     grid_list = pickle.load(filehandle)
@@ -477,7 +437,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
                 self.slide_grids.extend(chosen_locations_chunks)
 
-                ind += 1 #RanS 29.1.21
+                ind += 1  # RanS 29.1.21
 
         # The following properties will be used in the __getitem__ function
         self.tiles_to_go = None
@@ -495,12 +455,12 @@ class Infer_Dataset(WSI_Master_Dataset):
                         self.__len__()))
 
     def __len__(self):
-        return int(np.ceil(np.array(self.num_patches)/self.tiles_per_iter).sum())
+        return int(np.ceil(np.array(self.num_tiles) / self.tiles_per_iter).sum())
 
     def __getitem__(self, idx):
         start_getitem = time.time()
         if self.tiles_to_go is None:
-            self.tiles_to_go = self.num_patches[self.slide_num]
+            self.tiles_to_go = self.num_tiles[self.slide_num]
             '''self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
             self.current_slide = openslide.open_slide(self.current_file)'''
 
@@ -510,10 +470,10 @@ class Infer_Dataset(WSI_Master_Dataset):
             else:
                 self.current_slide = self.slides[self.slide_num]
 
-            self.initial_num_patches = self.num_patches[self.slide_num]
+            self.initial_num_patches = self.num_tiles[self.slide_num]
 
-            #RanS 11.3.21
-            desired_downsample = self.magnification[self.slide_num] / self.basic_magnification
+            # RanS 11.3.21
+            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
             level, best_next_level = -1, -1
             for index, downsample in enumerate(self.current_slide.level_downsamples):
@@ -543,15 +503,15 @@ class Infer_Dataset(WSI_Master_Dataset):
         #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
         downsample = int(self.magnification[idx] / self.basic_magnification)
         adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
-        
+
         tiles, time_list = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
                                       self.slide_grids[idx],
                                       adjusted_tile_size,
                                       self.print_time,
                                       downsample)'''
 
-        #desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
-        #RanS 11.3.21
+        # desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
+        # RanS 11.3.21
         '''desired_downsample = self.magnification[self.slide_num] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
 
         level, best_next_level = -1, -1
@@ -568,7 +528,6 @@ class Infer_Dataset(WSI_Master_Dataset):
         adjusted_tile_size = self.tile_size * level_downsample
         best_slide_level = level if level > best_next_level else best_next_level
         level_0_tile_size = int(desired_downsample) * self.tile_size'''
-
 
         tiles, time_list = _get_tiles(slide=self.current_slide,
                                       locations=self.slide_grids[idx],
@@ -599,10 +558,6 @@ class Infer_Dataset(WSI_Master_Dataset):
             images = torch.zeros_like(X)
             trans = transforms.Compose(
                 [transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
-            #if magnification_relation != 1:
-
-            '''if tile_sz != self.tile_size:
-                trans = transforms.Compose([transforms.Resize(self.tile_size), trans])'''
 
             for i in range(self.tiles_per_iter):
                 images[i] = trans(tiles[i])

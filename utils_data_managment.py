@@ -448,12 +448,9 @@ def make_grid(DataSet: str = 'TCGA',
 
     # Create alternative slides_data file (if needed):
     if added_extension != '':
-        copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
+        copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
 
-    slides_data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
-
-    if DataSet == 'RedSquares':
-        slides_data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
+    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
 
     slides_meta_data_DF = pd.read_excel(slides_data_file)
     files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
