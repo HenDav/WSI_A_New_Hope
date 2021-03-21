@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 import pickle
 from cycler import cycler
 import numpy as np
+import pandas as pd
 
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
@@ -16,25 +17,9 @@ ax1.set_prop_cycle(custom_cycler)
 
 inference_files = {}
 
-inference_files['1400/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_10.data'
-inference_files['1400/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_50.data'
-inference_files['1400/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1400-Folds_[1]-Tiles_500.data'
+inference_files['1'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
+inference_files['2'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
 
-inference_files['1405/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_10.data'
-inference_files['1405/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_50.data'
-inference_files['1405/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1405-Folds_[1]-Tiles_500.data'
-
-inference_files['1415/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_10.data'
-inference_files['1415/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_50.data'
-inference_files['1415/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1415-Folds_[1]-Tiles_500.data'
-
-inference_files['1420/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
-inference_files['1420/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_50.data'
-inference_files['1420/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1420-Folds_[1]-Tiles_500.data'
-
-inference_files['1425/10 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
-inference_files['1425/50 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_50.data'
-inference_files['1425/500 tiles'] = 'Data from gipdeep/runs/241/Inference/Model_Epoch_1425-Folds_[1]-Tiles_500.data'
 
 
 infer_type = 'REG'
@@ -68,10 +53,14 @@ for ind, key in enumerate(inference_files.keys()):
 
     if infer_type == 'REG':
         fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides, patch_scores = inference_data
+        save_csv = True
+        if save_csv:
+            patch_scores_df = pd.DataFrame(patch_scores)
+            patch_scores_df.to_csv(key + '_patch_scores.csv')
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
         #temp fix RanS 4.2.21
-        if patch_scores.ndim==3:
+        if patch_scores.ndim == 3:
             patch_scores = np.squeeze(patch_scores[:, ind,:])
         # all_scores = np.max(patch_scores, axis=1) #maxpool - temp! RanS 20.1.21
         #slide_score_std = np.nanstd(patch_scores, axis=1)

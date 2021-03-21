@@ -11,6 +11,8 @@ import sys
 import argparse
 from tqdm import tqdm
 import pickle
+import resnet_v2
+from collections import OrderedDict
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 #parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
@@ -20,6 +22,7 @@ parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of 
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed path of rons model') #RanS 16.3.21 r'/home/rschley/Pathnet/results/fold_1_ER_large/checkpoint/ckpt_epoch_1467.pth'
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
@@ -82,11 +85,23 @@ for counter in range(len(args.from_epoch)):
     model.eval()
     models.append(model)
 
-############################################
-if sys.platform=='win32':
-    args.target = 'Her2' #temp for debug RanS 11.3.21
-############################################
+#RanS 16.3.21, support ron's model as well
+if args.model_path != '':
+    args.from_epoch.append('rons_model')
+    model = resnet_v2.PreActResNet50()
+    model_data_loaded = torch.load(os.path.join(args.model_path), map_location='cpu')
 
+    try:
+        model.load_state_dict(model_data_loaded['net'])
+    except:
+        state_dict = model_data_loaded['net']
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:]  # remove 'module.' of dataparallel
+            new_state_dict[name] = v
+        model.load_state_dict(new_state_dict)
+    model.eval()
+    models.append(model)
 
 TILE_SIZE = 128
 tiles_per_iter = 20
