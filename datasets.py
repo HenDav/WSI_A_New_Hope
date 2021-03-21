@@ -14,9 +14,10 @@ from utils import HEDColorJitter, define_transformations, define_data_root, asse
 from utils import show_patches_and_transformations, get_breast_dir_dict
 import matplotlib.pyplot as plt
 from torch.multiprocessing import Pool
-import openslide #RanS 9.2.21, preload slides
+import openslide
 from tqdm import tqdm
 from math import isclose
+#import scipy.io as sio #temp RanS 17.3.21
 
 
 MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
@@ -72,8 +73,9 @@ class WSI_Master_Dataset(Dataset):
         slide_meta_data_file = os.path.join(self.ROOT_PATH, slides_data_file)
         slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
 
-        grid_meta_data_file = os.path.join(self.ROOT_PATH, self.DataSet, 'Grids/Grid_data.xlsx')
+        grid_meta_data_file = os.path.join(self.ROOT_PATH, self.DataSet, 'Grids', 'Grid_data.xlsx')
         grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
+        # TODO RanS 17.3.21 - support multiple grid_data files in case of breast dataset
 
         self.meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
                                           **grid_meta_data_DF.set_index('file').to_dict()})
@@ -124,6 +126,14 @@ class WSI_Master_Dataset(Dataset):
         # Remove slides with 0 tiles:
         slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] == 0])
 
+        #temp RanS 17.3.21, remove slides like ron
+        '''if sys.platform=='win32':
+            removed_slides_df = pd.read_excel(r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\rons_removed_slides - test.xlsx')
+        else:
+            removed_slides_df = pd.read_excel(r'/home/rschley/All_Data/rons_removed_slides.xlsx')
+        rons_missing_slides = set(self.meta_data_DF.index[self.meta_data_DF['file'].isin(removed_slides_df['file'])])
+        mat_dir = '/home/rschley/tcga_mat_files' '''
+
         if train_type == 'REG':
             n_minimal_patches = n_patches
         else:
@@ -132,6 +142,7 @@ class WSI_Master_Dataset(Dataset):
         slides_with_small_grid = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.basic_magnification)] < n_minimal_patches])
         #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid))
         valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid - slides_with_0_tiles))
+        #valid_slide_indices = np.array(list(set(valid_slide_indices) - slides_without_grid - slides_with_small_grid - slides_with_0_tiles - rons_missing_slides)) #temp RanS 17.3.21
 
         # BUT...we want the train set to be a combination of all sets except the train set....Let's compute it:
         if DataSet == 'Breast':
@@ -210,6 +221,20 @@ class WSI_Master_Dataset(Dataset):
                     basic_file_name = '.'.join(self.image_file_names[-1].split('.')[:-1])
                     grid_file = os.path.join(self.ROOT_PATH, self.image_path_names[-1], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
+                        #temp RanS 17.3.21
+                        '''temp_rons_grid = True
+                        if temp_rons_grid:
+                            mat_name = os.path.join(mat_dir, os.path.basename(image_file)[:-4] + '.mat')
+                            try:
+                                valids = sio.loadmat(mat_name)
+                            except:
+                                print('no mat file')
+                                continue
+                            if valids['i'].size == 0:
+                                continue
+                            self.grid_lists.append(np.concatenate((valids['j'], valids['i']), axis=1))
+
+                        else:'''
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
                 except:
@@ -480,7 +505,7 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.current_slide = openslide.open_slide(self.current_file)'''
 
             if sys.platform == 'win32':
-                image_file = os.path.join(self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
+                image_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
                 self.current_slide = openslide.open_slide(image_file)
             else:
                 self.current_slide = self.slides[self.slide_num]

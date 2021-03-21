@@ -140,105 +140,6 @@ def _choose_data(grid_list: list,
     return image_tiles, time_list
 
 
-'''
-#def _get_tiles(file_name: str, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
-#RanS 9.2.21, preload slides
-def _get_tiles(slide: openslide.OpenSlide, locations: List[Tuple], tile_sz: int, print_timing: bool = False, downsample: int = -1):
-    """
-    This function returns an array of tiles
-    :param file_name:
-    :param locations:
-    :param tile_sz:
-    :return:
-    """
-
-    # open the .svs file:
-    #RanS 9.2.21, preload slides
-    img = slide
-
-    tiles_num = len(locations)
-
-    #RanS 9.2.21 - use level1 if applicable
-    level1_downsample = int(img.level_downsamples[1])
-    if downsample>=level1_downsample:
-        level = 1
-        tile_sz = int(tile_sz / level1_downsample)
-    else:
-        level = 0
-    #RanS 20.12.20 - plot thumbnail with tile locations
-    temp = False
-    if temp:
-        from matplotlib.patches import Rectangle
-        import matplotlib.pyplot as plt
-        level_1 = img.level_count - 5
-        ld = int(img.level_downsamples[level_1]) #level downsample
-        thumb = (img.read_region(location=(0, 0), level=level_1, size=img.level_dimensions[level_1])).convert('RGB')
-        fig, ax = plt.subplots()
-        plt.imshow(thumb)
-        for idx, loc in enumerate(locations):
-            print((loc[1]/ld, loc[0]/ld))
-            rect = Rectangle((loc[1]/ld, loc[0]/ld), tile_sz / ld, tile_sz / ld, color='r', linewidth=3, fill=False)
-            ax.add_patch(rect)
-            #rect = Rectangle((loc[1] / ld, loc[0] / ld), tile_sz / ld, tile_sz / ld, color='g', linewidth=3, fill=False)
-            #ax.add_patch(rect)
-
-        patch1 = img.read_region((loc[1], loc[0]), 0, (600, 600)).convert('RGB')
-        plt.figure()
-        plt.imshow(patch1)
-
-        patch2 = img.read_region((loc[1], loc[0]), 0, (2000, 2000)).convert('RGB')
-        plt.figure()
-        plt.imshow(patch2)
-
-        plt.show()
-
-    tiles_PIL = []
-
-    start_gettiles = time.time()
-    for idx, loc in enumerate(locations):
-        try:
-            # When reading from OpenSlide the locations is as follows (col, row) which is opposite of what we did
-            #image = img.read_region((loc[1], loc[0]), 0, (tile_sz, tile_sz)).convert('RGB')
-
-            # Shift each tile by half the size of the original tile size (in each dimension).
-            # There is a need to check the validity of the tile location within the slide and correct it's coordinates if needed
-
-            tile_shifting = sample(range(-tile_sz//2, tile_sz//2), 2)
-            new_loc_init = {'Top': loc[0] - tile_shifting[0],
-                            'Left': loc[1] - tile_shifting[1]}
-            new_loc_end = {'Bottom': new_loc_init['Top'] + tile_sz,
-                           'Right': new_loc_init['Left'] + tile_sz}
-
-            if new_loc_init['Top'] < 0:
-                new_loc_init['Top'] += abs(new_loc_init['Top'])
-            if new_loc_init['Left'] < 0:
-                new_loc_init['Left'] += abs(new_loc_init['Left'])
-            if new_loc_end['Bottom'] > slide.dimensions[1]:
-                delta_Height = new_loc_end['Bottom'] - slide.dimensions[1]
-                new_loc_init['Top'] -= delta_Height
-            if new_loc_end['Right'] > slide.dimensions[0]:
-                delta_Width = new_loc_end['Right'] - slide.dimensions[0]
-                new_loc_init['Left'] -= delta_Width
-
-            # image = img.read_region((loc[1], loc[0]), level, (tile_sz, tile_sz)).convert('RGB') #RanS 9.2.21
-            image = img.read_region((new_loc_init['Left'], new_loc_init['Top']), level, (tile_sz, tile_sz)).convert('RGB')
-        except:
-            print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0])) # debug errors in reading slides
-            print('taking blank patch instead')
-            image = Image.fromarray(np.zeros([tile_sz, tile_sz, 3], dtype=np.uint8))
-        tiles_PIL.append(image)
-
-    end_gettiles = time.time()
-
-
-    if print_timing:
-        time_list = [0, (end_gettiles - start_gettiles) / tiles_num]
-    else:
-        time_list = [0]
-
-    return tiles_PIL, time_list, tile_sz
-'''
-
 def _get_tiles(slide: openslide.OpenSlide,
                locations: List[Tuple],
                tile_size_level_0: int,
@@ -824,8 +725,8 @@ def define_data_root(DataSet):
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
         elif DataSet == 'Breast':
             ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
-        elif DataSet == 'ABCTB':
-            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
+        #elif DataSet == 'ABCTB':
+            #ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
             #ROOT_PATH = r'/home/womer/project/All Data'   # Omer 3/3 slide time test
             #ROOT_PATH = r'/home/rschley/All_Data/temp_ABCTB/temp_home_run_test' #temp RanS 2.3.21
             #ROOT_PATH = r'/test/temp_home_run_test'  # temp RanS 2.3.21

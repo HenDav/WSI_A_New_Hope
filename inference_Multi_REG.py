@@ -15,7 +15,6 @@ import resnet_v2
 from collections import OrderedDict
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
-#parser.add_argument('-ex', '--experiment', type=int, default=79, help='Use models from this experiment') #temp RanS 1.2.21
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
 parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1400, 1405, 1420, 1415, 1420, 1425], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
@@ -129,6 +128,7 @@ NUM_SLIDES = len(inf_dset.valid_slide_indices)
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
+all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
 patch_scores[:] = np.nan
 slide_num = 0
 
@@ -137,7 +137,7 @@ total_pos, total_neg = 0, 0
 correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, _, _) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, _, slide_file) in enumerate(tqdm(inf_loader)):
         if new_slide:
             scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             target_current = target
@@ -152,6 +152,9 @@ with torch.no_grad():
             model.to(DEVICE)
 
             scores = model(data)
+            #print('socres:', str(scores)) #temp
+            #print('socres.dtype:', str(scores.dtype)) #temp
+
             scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
 
             scores_0[index] = np.concatenate((scores_0[index], scores[:, 0].cpu().detach().numpy()))
@@ -176,6 +179,7 @@ with torch.no_grad():
                 patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
+                all_slide_names[slide_num] = os.path.basename(slide_file[0])
 
                 if target == 1 and predicted == 1:
                     correct_pos[model_num] += 1
@@ -197,7 +201,8 @@ for model_num in range(NUM_MODELS):
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
-                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset), np.squeeze(patch_scores[:, model_num,:])]
+                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),
+                      np.squeeze(patch_scores[:, model_num,:]), all_slide_names]
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)

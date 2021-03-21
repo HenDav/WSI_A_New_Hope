@@ -50,11 +50,9 @@ inference_files['TCGA_ER_fold1_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_g
 inference_files['TCGA_ER_fold1_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1440-Folds_[1]-Tiles_500.data'
 inference_files['TCGA_ER_fold1_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1420-Folds_[1]-Tiles_500.data' '''
 
-#inference_files['exp177_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\with Grids\Model_Epoch_740-Folds_[1]-Tiles_500.data'
-#inference_files['exp177_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\with Grids\Model_Epoch_760-Folds_[1]-Tiles_500.data'
-inference_files['exp177_epoch740_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_740-Folds_[1]-Tiles_100.data'
-inference_files['exp177_epoch760_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_760-Folds_[1]-Tiles_100.data'
-inference_files['rons_epoch1467_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\inference\ron_model_fold1_epoch1467_on_our_dataset_150321.data'
+inference_files['exp177_epoch740_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\our_slides_comparison_180321\Model_Epoch_740-Folds_[1]-Tiles_100.data'
+inference_files['exp177_epoch760_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\our_slides_comparison_180321\Model_Epoch_760-Folds_[1]-Tiles_100.data'
+inference_files['rons_epoch1467_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\inference\our_slides_comparison_180321\Model_Epoch_rons_model-Folds_[1]-Tiles_100.data'
 
 
 infer_type = 'REG'
@@ -87,10 +85,12 @@ for ind, key in enumerate(inference_files.keys()):
         inference_data = pickle.load(filehandle)
 
     if infer_type == 'REG':
-        fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides, patch_scores = inference_data
-        save_csv = True
+        fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+        num_slides, patch_scores, all_slide_names = inference_data
+        save_csv = False
         if save_csv:
             patch_scores_df = pd.DataFrame(patch_scores)
+            patch_scores_df.insert(0, "slide_name", all_slide_names)
             patch_scores_df.to_csv(key + '_patch_scores.csv')
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
@@ -111,9 +111,17 @@ for ind, key in enumerate(inference_files.keys()):
         # plt.hist([conf_wrong, conf_correct])
         # plt.legend(['confidence - wrong predictions','confidence - correct predictions'])
 
+        #results per patient RanS 18.3.21
+        patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
+        patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
+        patient_mean_score_df = patch_df.groupby('patient').mean()
+        roc_auc_patient = roc_auc_score(patient_mean_score_df['targets'], patient_mean_score_df['scores'])
+        fpr_patient, tpr_patient, thresholds_patient = roc_curve(patient_mean_score_df['targets'],
+                                                                 patient_mean_score_df['scores'])
+
         test_n_patches = False
         if test_n_patches:
-            n_list = np.arange(1, 500, 1)
+            n_list = np.arange(1, 100, 1)
             auc_n = np.zeros(n_list.shape)
             for ind, n in enumerate(n_list):
                 auc_n[ind] = auc_for_n_patches(patch_scores, n, all_targets)
@@ -121,7 +129,7 @@ for ind, key in enumerate(inference_files.keys()):
             plt.xlabel('# of patches')
             plt.ylabel('test AUC score')
             plt.ylim([0,1])
-            plt.xlim([1, 500])
+            plt.xlim([1, 100])
 
     elif infer_type == 'MIL':
         roc_auc1, roc_auc_err, acc, acc_err, bacc, bacc_err, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, num_slides = inference_data
@@ -137,8 +145,10 @@ for ind, key in enumerate(inference_files.keys()):
     print('balanced_acc:', balanced_acc)
     print('np.sum(all_labels):', np.sum(all_labels))
 
-    plt.plot(fpr, tpr)
-    legend_labels.append(key + ' (AUC=' + str(round(roc_auc[-1], 2)) +')')
+    #plt.plot(fpr, tpr)
+    #legend_labels.append(key + ' (AUC=' + str(round(roc_auc[-1], 2)) +')')
+    plt.plot(fpr_patient, tpr_patient)
+    legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 2)) + ')')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.legend(legend_labels)

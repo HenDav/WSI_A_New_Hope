@@ -385,7 +385,7 @@ if __name__ == '__main__':
     num_workers = cpu_available
 
     if sys.platform == 'win32':
-        num_workers = 4  # temp RanS 2.2.21
+        num_workers = 4
 
     print('num workers = ', num_workers)
 
