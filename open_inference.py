@@ -17,8 +17,14 @@ ax1.set_prop_cycle(custom_cycler)
 
 inference_files = {}
 
-inference_files['1'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
-inference_files['2'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
+inference_files['1420_10'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1420-Folds_[1]-Tiles_10.data'
+inference_files['1425_10'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1425-Folds_[1]-Tiles_10.data'
+
+inference_files['1390_10'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1390-Folds_[1]-Tiles_10.data'
+inference_files['1395_10'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1395-Folds_[1]-Tiles_10.data'
+
+inference_files['1390_50'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1390-Folds_[1]-Tiles_50.data'
+inference_files['1395_50'] = 'runs/Exp_241-ER-TestFold_1/Inference/Model_Epoch_1395-Folds_[1]-Tiles_50.data'
 
 
 
