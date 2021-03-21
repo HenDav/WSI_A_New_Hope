@@ -734,6 +734,7 @@ def get_datasets_dir_dict(Dataset: str):
             if platform.node() == 'gipdeep3':  # Run from local files
                 dir_dict['TCGA'] = r'/mnt/hdd/All_Data/TCGA'
                 dir_dict['HEROHE'] = r'/mnt/hdd/All_Data/HEROHE'
+                dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
             else:
                 dir_dict['TCGA'] = r'/home/womer/project/All Data/TCGA'
                 dir_dict['HEROHE'] = r'/home/womer/project/All Data/HEROHE'
@@ -778,9 +779,11 @@ def get_datasets_dir_dict(Dataset: str):
         elif sys.platform == 'darwin':  # Omer local
             dir_dict['HEROHE'] = r'All Data/HEROHE'
 
+    elif Dataset == 'ABCTB':
+        if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
+            dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
         else:
-            raise Exception('Unrecognized platform')
-
+            raise Exception('ABCTB can be used only on gipdeep3')
 
     return dir_dict
 
