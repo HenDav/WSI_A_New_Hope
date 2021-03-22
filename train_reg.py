@@ -347,7 +347,7 @@ if __name__ == '__main__':
     DEVICE = utils.device_gpu_cpu()
 
     # Tile size definition:
-    TILE_SIZE = 256
+    TILE_SIZE = 128
 
     if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
@@ -397,10 +397,10 @@ if __name__ == '__main__':
                                          train=True,
                                          print_timing=args.time,
                                          transform_type=args.transform_type,
-                                         n_patches=args.n_patches_train,
-                                         c_param=args.c_param,
+                                         n_tiles=args.n_patches_train,
+                                         color_param=args.c_param,
                                          get_images=args.images,
-                                         mag=args.mag
+                                         desired_slide_magnification=args.mag
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -409,9 +409,9 @@ if __name__ == '__main__':
                                         train=False,
                                         print_timing=False,
                                         transform_type='none',
-                                        n_patches=args.n_patches_test,
+                                        n_tiles=args.n_patches_test,
                                         get_images=args.images,
-                                        mag=args.mag
+                                        desired_slide_magnification=args.mag
                                         )
     sampler = None
     do_shuffle = True
@@ -448,7 +448,7 @@ if __name__ == '__main__':
     if args.experiment == 0:
         utils.run_data(experiment=experiment, model=model.model_name)
         utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
-        utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.basic_magnification)
+        utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
         utils.save_code_files(args, train_dset)
