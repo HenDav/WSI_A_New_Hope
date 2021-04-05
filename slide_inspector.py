@@ -12,8 +12,8 @@ import pandas as pd
 import pickle
 
 parser = argparse.ArgumentParser(description='Slide inspector')
-parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/CARMEL4', type=str, help='input dir')
-parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_4/thumbs', type=str, help='output dir')
+parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_5/CARMEL5', type=str, help='input dir')
+parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_5/thumbs', type=str, help='output dir')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 
 args = parser.parse_args()
@@ -43,7 +43,7 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag):
     #seg image
     #copyfile(os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_SegImage_' + fn + '.jpg'))
     # RanS 10.3.21 - grid image
-    copyfile(os.path.join(in_dir, 'SegData', 'GridImages', fn + '_GridImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_GridImage_' + fn + '.jpg'))
+    copyfile(os.path.join(in_dir, 'SegData', 'GridImages_0_3', fn + '_GridImage.jpg'), os.path.join(out_dir, str(ind).zfill(4) + '_1_GridImage_' + fn + '.jpg'))
 
     #get random patches
     fig = plt.figure()
@@ -59,6 +59,9 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag):
     slide = openslide.open_slide(slide_file)
     with open(grid_file, 'rb') as filehandle:
         grid_list = pickle.load(filehandle)
+
+    if n_patches == -1:
+        print('no valid patches found for slide ', fn)
 
     tiles, time_list = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
 
@@ -77,8 +80,17 @@ if not os.path.isdir(out_dir):
 
 slide_files_mrxs = np.sort(glob.glob(os.path.join(in_dir, '*.mrxs')))
 
-meta_data_file = os.path.join(os.path.dirname(in_dir), 'slides_data.xlsx')
-meta_data_DF = pd.read_excel(meta_data_file)
+#meta_data_file = os.path.join(os.path.dirname(in_dir), 'slides_data.xlsx')
+dataset = os.path.basename(in_dir)
+slide_meta_data_file = os.path.join(in_dir, 'slides_data_' + dataset + '.xlsx') #RanS 24.3.21
+grid_meta_data_file = os.path.join(in_dir, 'Grids', 'Grid_data.xlsx')
+slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
+grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
+meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
+                             **grid_meta_data_DF.set_index('file').to_dict()})
+
+
+#meta_data_DF = pd.read_excel(meta_data_file)
 all_magnifications = list(meta_data_DF['Manipulated Objective Power'])
 
 ind = 0

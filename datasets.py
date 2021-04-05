@@ -9,7 +9,7 @@ import time
 from torch.utils.data import Dataset
 from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks
-from utils import HEDColorJitter, define_transformations, define_data_root, assert_dataset_target
+from utils import HEDColorJitter, define_transformations, assert_dataset_target
 from utils import show_patches_and_transformations, get_datasets_dir_dict
 import openslide
 from tqdm import tqdm
@@ -43,7 +43,7 @@ class WSI_Master_Dataset(Dataset):
         print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
 
         # Define data root:
-        self.ROOT_PATH = define_data_root(DataSet)
+        #self.ROOT_PATH = define_data_root(DataSet)
 
         self.DataSet = DataSet
         self.desired_magnification = desired_slide_magnification
@@ -67,7 +67,8 @@ class WSI_Master_Dataset(Dataset):
         for _, key in enumerate(dir_dict):
             locations_list.append(dir_dict[key])
             slide_meta_data_file = os.path.join(dir_dict[key], 'slides_data_' + key + '.xlsx')
-            grid_meta_data_file = os.path.join(dir_dict[key], 'Grids/Grid_data.xlsx')
+            grid_meta_data_file = os.path.join(dir_dict[key], 'Grids', 'Grid_data.xlsx')
+
 
             slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
             grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
@@ -204,7 +205,6 @@ class WSI_Master_Dataset(Dataset):
         self.transform, self.scale_factor = define_transformations(transform_type, self.train, self.tile_size,
                                                                    self.color_param)
 
-
         if train_type == 'REG':
             self.factor = n_tiles
             self.real_length = int(self.__len__() / self.factor)
@@ -214,17 +214,6 @@ class WSI_Master_Dataset(Dataset):
         if train is False and test_time_augmentation:
             self.factor = 4
             self.real_length = int(self.__len__() / self.factor)
-
-
-        '''if train_type == 'REG':
-            self.factor = n_tiles
-        elif train_type == 'MIL':
-            self.factor = slide_repetitions
-        
-        if train is False and test_time_augmentation:
-            self.factor = 4
-
-        self.real_length = int(self.__len__() / self.factor)'''
 
     def __len__(self):
         return len(self.target) * self.factor

@@ -682,48 +682,6 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
     return transform, scale_factor
 
 
-def define_data_root(DataSet):
-    # Define data root:
-    if sys.platform == 'linux': #GIPdeep
-        if DataSet == 'LUNG':
-            ROOT_PATH = r'/home/rschley/All_Data/LUNG'
-        elif DataSet[:6] == 'CARMEL':
-            N = DataSet[6:]
-            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + N
-        elif DataSet == 'Breast':
-            ROOT_PATH = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides'
-        else:
-            if platform.node() == 'gipdeep3':
-                ROOT_PATH = r'/mnt/hdd/All_Data'  # Run from local files
-            else:
-                ROOT_PATH = r'/home/womer/project/All Data'
-
-        #RanS TODO - add abctb: ROOT_PATH = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB'
-
-    elif sys.platform == 'win32': #Ran local
-        if DataSet == 'HEROHE':
-            ROOT_PATH = r'C:\ran_data\HEROHE_examples'
-        elif DataSet == 'TCGA':
-            ROOT_PATH = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
-        elif DataSet == 'LUNG':
-            ROOT_PATH = r'C:\ran_data\Lung_examples'
-        elif DataSet == 'RedSquares':
-            ROOT_PATH = r'C:\ran_data\RedSquares'
-        elif DataSet == 'Breast':
-            ROOT_PATH = r'C:\ran_data\breast_dataset'
-        elif DataSet == 'ABCTB':  # RanS 28.2.21
-            ROOT_PATH = r'C:\ran_data\ABCTB\ABCTB_examples'
-        else:
-            print('Error - no ROOT_PATH defined')
-    else: #Omer local
-        if DataSet == 'LUNG':
-            ROOT_PATH = 'All Data/LUNG'
-        else:
-            ROOT_PATH = r'All Data'
-
-    return ROOT_PATH
-
-
 def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
     if Dataset == 'Breast':
@@ -782,8 +740,15 @@ def get_datasets_dir_dict(Dataset: str):
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
             dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
+            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/same_slide_mrxs_50test_temp'  # temp RanS 5.4.21
         else:
             raise Exception('ABCTB can be used only on gipdeep3')
+
+    elif Dataset == 'SHEBA':
+        if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
+            dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA' #TODO: move to local
+        else:
+            dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
 
     return dir_dict
 
@@ -799,6 +764,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('target should be: RedSquares')
     elif DataSet == 'Breast' and target_kind != 'Her2':
         raise ValueError('HEROHE is part of DataSet Breast so target must be Her2 ')
+    elif DataSet == 'SHEBA' and target_kind != 'Onco':
+        raise ValueError('for SHEBA DataSet, target should be Onco')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
@@ -910,7 +877,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
     args_dict = vars(args)
 
     # Add Grid Data:
-    grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids/production_meta_data.xlsx')
+    grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids', 'production_meta_data.xlsx')
     if os.path.isfile(grid_meta_data_file):
         grid_data_DF = pd.read_excel(grid_meta_data_file)
         grid_dict = grid_data_DF.to_dict()

@@ -1,9 +1,9 @@
 import subprocess
 
 subprocess.run(['python', 'prepare_data.py',
-                    #'--segmentation',
+                    '--segmentation',
                     #'--data_collection',
-                    '--grid',
+                    #'--grid',
                     #'--stats',
                     #'--data_folder', r'C:\ran_data\TCGA',
                     #'--data_root', r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat',
@@ -23,7 +23,6 @@ subprocess.run(['python', 'prepare_data.py',
                     '--dataset', 'ABCTB',
                     '--tissue_coverage', '0.3',
                     '--mag', '10',
-                    '--multi'
                     #'--data_folder', r'C:\ran_data\gip-main_examples\Leukemia',
                     #'--data_folder', r'C:\ran_data\ABCTB',
                 ])

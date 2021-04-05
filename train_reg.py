@@ -383,6 +383,7 @@ if __name__ == '__main__':
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     num_workers = cpu_available
+    #num_workers = 4 #temp RanS 24.3.21
 
     if sys.platform == 'win32':
         num_workers = 4

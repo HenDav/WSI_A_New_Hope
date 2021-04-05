@@ -34,7 +34,10 @@ if __name__ =='__main__':
     if args.data_collection:
         utils_data_managment.make_slides_xl_file(DataSet=args.dataset, ROOT_DIR=args.data_root, out_path=out_path)
     if args.segmentation:
-        utils_data_managment.make_segmentations(DataSet=args.dataset, ROOT_DIR=args.data_root, out_path=out_path)
+        utils_data_managment.make_segmentations(DataSet=args.dataset,
+                                                ROOT_DIR=args.data_root,
+                                                out_path=out_path,
+                                                num_workers=num_workers)
     if args.grid:
         '''utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size,
                                        tissue_coverage=args.tissue_coverage, desired_mag=args.mag, out_path=out_path)'''
@@ -53,14 +56,5 @@ if __name__ =='__main__':
         utils_data_managment.make_tiles_hard_copy(tile_size=args.tile_size)
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
-
-    utils_data_managment.make_grid(DataSet='HEROHE',
-                                   ROOT_DIR='All Data',
-                                   tile_sz=128,
-                                   tissue_coverage=0.5,
-                                   desired_magnification=10,
-                                   added_extension='_new-Cov_05',
-                                   different_SegData_path_extension='')
-
 
     print('Data Preparation sequence is Done !')

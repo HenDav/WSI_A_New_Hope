@@ -41,11 +41,6 @@ def check_level1_mag():
         if l1[ind]!=4:
             print('file:', file)
             print('l1:', l1[ind])
-    #print(l1)
-    '''if np.all(l1 == 4):
-        print('all downsamples are 4!')
-    else:
-        print(l1[l1!=4])'''
 
 
 def herohe_slides2images():
@@ -474,7 +469,8 @@ def make_grid(DataSet: str = 'TCGA',
     print()
 
     with multiprocessing.Pool(num_workers) as pool:
-        for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
+        #for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
+        for tile_nums1, total_tiles1 in tqdm(pool.imap(partial(_make_grid_for_image,
                                                                          meta_data_DF=slides_meta_data_DF,
                                                                          ROOT_DIR=ROOT_DIR,
                                                                          added_extension=added_extension,
@@ -523,7 +519,10 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         height = int(meta_data_DF.loc[file, 'Height'])
         width = int(meta_data_DF.loc[file, 'Width'])
 
-        objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
+        if database == 'SHEBA':
+            objective_power = 40 #temp RanS 25.3.21
+        else:
+            objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
         if objective_power == 'Missing Data':
             print('Grid was not computed for file {}'.format(file))
             print('objective power was not found')
@@ -646,30 +645,34 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     :return:
     """
 
-    #ROOT_DIR = 'All Data'
-    #if DataSet == 'LUNG':
-    #    ROOT_DIR = r'/home/rschley/All_Data/LUNG'#os.path.join('All Data', 'LUNG')
-    #TODO RanS 9.11.20 - add "breast" subfolder to root_dir and move HEROHE and TCGA into there
-    SLIDES_DATA_FILE = 'slides_data.xlsx'
+    SLIDES_DATA_FILE = 'slides_data_' + DataSet + '.xlsx'
     META_DATA_FILE = {}
     META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['LUNG'] = 'LISTA COMPLETA pdl1 - Gil - V3.xlsx'
     META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
+    META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
 
     #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
-    data_file = os.path.join(out_path, SLIDES_DATA_FILE) #RanS 15.2.21
+    data_file = os.path.join(out_path, DataSet, SLIDES_DATA_FILE) #RanS 15.2.21
     new_file = False if os.path.isfile(data_file) else True
 
-    meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet]))
-    # meta_data_DF = pd.read_excel(os.path.join(root_dir, 'TCGA_BRCA.xlsx'))
+    if DataSet[:6]=='CARMEL':
+        DataSet_key = 'CARMEL'
+    else:
+        DataSet_key = DataSet
+
+    #meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet_key]))
+    meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
     if DataSet == 'LUNG':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
-    elif DataSet == 'CARMEL':
-        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str) #RanS 16.12.20
+    elif DataSet[:6] == 'CARMEL':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
     elif DataSet == 'ABCTB':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Image File'].astype(str) #RanS 16.12.20
+    elif DataSet == 'SHEBA':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Code'].astype(str)  # RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -689,10 +692,11 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     slide_files_svs = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.ndpi'))
     slide_files_mrxs = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.mrxs'))
-    slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs
-    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
-    mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x'}
-    date_dict = {'.svs': 'aperio.Date', '.ndpi': 'tiff.DateTime', '.mrxs': 'mirax.GENERAL.SLIDE_CREATIONDATETIME'}
+    slide_files_tiff = glob.glob(os.path.join(ROOT_DIR, DataSet, '*.tiff'))
+    slides = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_tiff
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power', 'tiff': 'tiff.Software'} #RanS 25.3.21, dummy for TIFF
+    mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x', 'tiff': 'openslide.mpp-x'}
+    date_dict = {'.svs': 'aperio.Date', '.ndpi': 'tiff.DateTime', '.mrxs': 'mirax.GENERAL.SLIDE_CREATIONDATETIME', 'tiff': 'philips.DICOM_ACQUISITION_DATETIME'}
 
     #RanS 9.11.20
     '''if meta_data_DF.columns.__contains__('Test_fold_idx'):
@@ -799,12 +803,12 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     print('{} data file \'{}\''.format(messege_prefix, data_file))
 
 
-def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = ''):
+def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrite: bool = False, magnification: int = 1, out_path: str = 'All Data', num_workers: int = 1):
     data_path = os.path.join(ROOT_DIR, DataSet)
     print('Making Segmentation Maps for each slide file at location: {}'.format(data_path))
 
-    out_path_dataset = os.path.join(ROOT_DIR, DataSet, out_path)
-    #out_path_dataset = os.path.join(out_path, DataSet) #RanS 8.3.21
+    out_path_dataset = os.path.join(out_path, DataSet)
+
     if not os.path.isdir(out_path_dataset):
         os.mkdir(out_path_dataset)
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData')):
@@ -816,6 +820,7 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'SegImages')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'SegImages'))
     # Copy Code files into the segmentation directory:
+    #if False: #temp RanS 25.3.21, no permission for some reason
     if not os.path.isdir(os.path.join(out_path_dataset, 'SegData', 'Code')):
         os.mkdir(os.path.join(out_path_dataset, 'SegData', 'Code'))
         # Get all .py files in the code path:
@@ -828,97 +833,124 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
     slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))
     slide_files_jpg = glob.glob(os.path.join(data_path, '*.jpg'))
-    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_jpg
-    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power'}
+    slide_files_tiff = glob.glob(os.path.join(data_path, '*.tiff'))
+    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_jpg + slide_files_tiff
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power', 'tiff': 'tiff.Software'} #RanS 25.3.21, dummy for tiff
 
     error_list = []
-    for idx, file in enumerate(tqdm(slide_files)):
 
-        fn, data_format = os.path.splitext(os.path.basename(file))
+    with multiprocessing.Pool(num_workers) as pool:
+        #for error1 in tqdm(pool.imap_unordered(partial(_make_segmentation_for_image,
+        for error1 in tqdm(pool.imap(partial(_make_segmentation_for_image,
+                                                       DataSet=DataSet,
+                                                       magnification=magnification,
+                                                       mag_dict=mag_dict,
+                                                       rewrite=rewrite,
+                                                       out_path_dataset=out_path_dataset),
+                                                slide_files), total=len(slide_files)):
+            error_list.append(error1)
 
-        if not rewrite:
-            #pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.png'))
-            pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg')) #RanS 24.2.21
-            pic2 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
-            #pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
-            pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg')) #RanS 24.2.21
-            if pic1 and pic2 and pic3:
-                continue
+    if len(error_list) != 0:
+        # Saving all error data to excel file:
+        error_DF = pd.DataFrame(error_list)
+        error_DF.to_excel(os.path.join(out_path, 'Segmentation_Errors.xlsx'))
+        print('Segmentation Process finished WITH EXCEPTIONS!!!!')
+        print('Check "Segmenatation_Errors.xlsx" file for details...')
+    else:
+        print('Segmentation Process finished without exceptions!')
 
-        slide = None
-        try:
-            slide = openslide.open_slide(file)
-        except:
-            print('Cannot open slide at location: {}'.format(file))
 
-        if slide is not None:
-            # Get a thumbnail image to create the segmentation for:
-            if file.split('/')[-1][-3:] != 'jpg':
-                try:
-                    #objective_pwr = int(float(slide.properties['aperio.AppMag']))
-                    objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
-                except KeyError:
-                    print('Couldn\'t find Magnification - Segmentation Map was not Created')
-                    continue
-            else:
-                objective_pwr = 20
+def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_dict, magnification):
+    fn, data_format = os.path.splitext(os.path.basename(file))
 
-            height = slide.dimensions[1]
-            width = slide.dimensions[0]
+    if not rewrite:
+        # pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.png'))
+        pic1 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg'))  # RanS 24.2.21
+        pic2 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))
+        # pic3 = os.path.exists(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
+        pic3 = os.path.exists(
+            os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg'))  # RanS 24.2.21
+        if pic1 and pic2 and pic3:
+            return []
+
+    slide = None
+    try:
+        slide = openslide.open_slide(file)
+    except:
+        print('Cannot open slide at location: {}'.format(file))
+
+    if slide is not None:
+        # Get a thumbnail image to create the segmentation for:
+        if file.split('/')[-1][-3:] != 'jpg':
             try:
-                try:
-                    thumb = slide.get_thumbnail((width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
-                except:   # RanS 2.12.20, out of memory on my laptop
-                    thumb = slide.get_thumbnail((width / (8*objective_pwr / magnification), height / (8*objective_pwr / magnification)))
-            except openslide.lowlevel.OpenSlideError as err:
+                if DataSet == 'SHEBA':
+                    objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
+                else:
+                    objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
+            except KeyError as err:
                 error_dict = {}
                 e = sys.exc_info()
                 error_dict['File'] = file
                 error_dict['Error'] = err
                 error_dict['Error Details 1'] = e[0]
                 error_dict['Error Details 2'] = e[1]
-                error_list.append(error_dict)
                 print('Exception for file {}'.format(file))
-                continue
+                print('Couldn\'t find Magnification - Segmentation Map was not Created')
+                return error_dict
 
-            # ignore black background regions at jpg images by turning them white
-            if DataSet == 'RedSquares':
-                thumb_arr = np.array(thumb)
-                thumb_arr_equal1 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 1])
-                thumb_arr_equal2 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 2])
-                thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
-                thumb = Image.fromarray(thumb_arr)
-
-            # RanS 22.2.21
-            #if DataSet == 'ABCTB':
-            if DataSet == 'LUNG':
-                use_otsu3 = True #this helps avoid the grid
-            else:
-                use_otsu3 = False
-
-            thmb_seg_map, thmb_seg_image = _make_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
-            slide.close()
-            # Saving segmentation map, segmentation image and thumbnail:
-            #thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
-            thumb.save(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg'))
-            thmb_seg_map.save(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png')) #RanS 24.2.21
-            #thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
-            thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg')) #RanS 24.2.21
         else:
-            print('Error: Found no slide in path {}'.format(dir))
-            # TODO: implement a case for a slide that cannot be opened.
-            continue
+            objective_pwr = 20
 
+        height = slide.dimensions[1]
+        width = slide.dimensions[0]
+        try:
+            try:
+                thumb = slide.get_thumbnail(
+                    (width / (objective_pwr / magnification), height / (objective_pwr / magnification)))
+            except:  # RanS 2.12.20, out of memory on my laptop
+                thumb = slide.get_thumbnail(
+                    (width / (8 * objective_pwr / magnification), height / (8 * objective_pwr / magnification)))
+        except openslide.lowlevel.OpenSlideError as err:
+            error_dict = {}
+            e = sys.exc_info()
+            error_dict['File'] = file
+            error_dict['Error'] = err
+            error_dict['Error Details 1'] = e[0]
+            error_dict['Error Details 2'] = e[1]
+            print('Exception for file {}'.format(file))
+            return error_dict
 
-    if len(error_list) != 0:
-        # Saving all error data to excel file:
-        error_DF = pd.DataFrame(error_list)
-        error_DF.to_excel(os.path.join('All Data', 'Segmentation_Errors.xlsx'))
-        print('Segmentation Process finished WITH EXCEPTIONS!!!!')
-        print('Check "Segmenatation_Errors.xlsx" file for details...')
+        # ignore black background regions at jpg images by turning them white
+        if DataSet == 'RedSquares':
+            thumb_arr = np.array(thumb)
+            thumb_arr_equal1 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 1])
+            thumb_arr_equal2 = np.equal(thumb_arr[:, :, 0], thumb_arr[:, :, 2])
+            thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
+            thumb = Image.fromarray(thumb_arr)
+
+        # RanS 22.2.21
+        # if DataSet == 'ABCTB':
+        if DataSet == 'LUNG':
+            use_otsu3 = True  # this helps avoid the grid
+        else:
+            use_otsu3 = False
+
+        thmb_seg_map, thmb_seg_image = _calc_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3)
+        slide.close()
+        # Saving segmentation map, segmentation image and thumbnail:
+        # thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
+        thumb.save(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg'))
+        thmb_seg_map.save(os.path.join(out_path_dataset, 'SegData', 'SegMaps', fn + '_SegMap.png'))  # RanS 24.2.21
+        # thmb_seg_image.save(os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.png'))
+        thmb_seg_image.save(
+            os.path.join(out_path_dataset, 'SegData', 'SegImages', fn + '_SegImage.jpg'))  # RanS 24.2.21
     else:
-        print('Segmentation Process finished without exceptions!')
-
+        print('Error: Found no slide in path {}'.format(dir))
+        # TODO: implement a case for a slide that cannot be opened.
+        error_dict = {}
+        error_dict['File'] = file
+        error_dict['Error'] = 'Slide not found'
+        return error_dict
 
 def otsu3(img):
     #blur = cv.GaussianBlur(img,(5,5),0)
@@ -967,7 +999,7 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     return xy
 
 
-def _make_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool) -> (Image, Image):
+def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:

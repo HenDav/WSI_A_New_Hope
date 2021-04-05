@@ -116,7 +116,7 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   target_kind=args.target,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles,
-                                  mag=args.mag
+                                  desired_slide_magnification=args.mag
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
