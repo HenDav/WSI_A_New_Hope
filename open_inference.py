@@ -50,9 +50,59 @@ inference_files['TCGA_ER_fold1_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_g
 inference_files['TCGA_ER_fold1_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1440-Folds_[1]-Tiles_500.data'
 inference_files['TCGA_ER_fold1_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\TCGA_ER_mag_10\exp141\Inference\Model_Epoch_1420-Folds_[1]-Tiles_500.data' '''
 
-inference_files['exp177_epoch740_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\our_slides_comparison_180321\Model_Epoch_740-Folds_[1]-Tiles_100.data'
+'''inference_files['exp177_epoch740_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\our_slides_comparison_180321\Model_Epoch_740-Folds_[1]-Tiles_100.data'
 inference_files['exp177_epoch760_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\our_slides_comparison_180321\Model_Epoch_760-Folds_[1]-Tiles_100.data'
-inference_files['rons_epoch1467_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\inference\our_slides_comparison_180321\Model_Epoch_rons_model-Folds_[1]-Tiles_100.data'
+inference_files['rons_epoch1467_test_100'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\inference\our_slides_comparison_180321\Model_Epoch_rons_model-Folds_[1]-Tiles_100.data' '''
+
+'''inference_files['exp226_fold1_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 226\Inference\Model_Epoch_1500-Folds_[1]-Tiles_500.data'
+inference_files['exp239_fold1_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 239\Inference\Model_Epoch_1500-Folds_[1]-Tiles_500.data'
+inference_files['exp240_fold2_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 240\Inference\Model_Epoch_1500-Folds_[2]-Tiles_500.data'
+inference_files['exp241_fold3_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 241\Inference\Model_Epoch_1500-Folds_[3]-Tiles_500.data'
+inference_files['exp242_fold4_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 242\Inference\Model_Epoch_1500-Folds_[4]-Tiles_500.data'
+inference_files['exp243_fold5_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\Onco\exp 243\Inference\Model_Epoch_1500-Folds_[5]-Tiles_500.data' '''
+
+"""inference_files['exp177_fold1_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_700-Folds_[1]-Tiles_500.data'
+inference_files['exp177_fold1_epoch720_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_720-Folds_[1]-Tiles_500.data'
+inference_files['exp177_fold1_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_740-Folds_[1]-Tiles_500.data'
+inference_files['exp177_fold1_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_760-Folds_[1]-Tiles_500.data'
+inference_files['exp177_fold1_epoch780_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_780-Folds_[1]-Tiles_500.data'
+inference_files['exp177_fold1_epoch800_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp177\Inference\Model_Epoch_800-Folds_[1]-Tiles_500.data'"""
+
+"""inference_files['exp227_fold3_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_700-Folds_[3]-Tiles_500.data'
+inference_files['exp227_fold3_epoch720_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_720-Folds_[3]-Tiles_500.data'
+inference_files['exp227_fold3_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_740-Folds_[3]-Tiles_500.data'
+inference_files['exp227_fold3_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_760-Folds_[3]-Tiles_500.data'
+inference_files['exp227_fold3_epoch780_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_780-Folds_[3]-Tiles_500.data'
+inference_files['exp227_fold3_epoch800_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp227\Inference\Model_Epoch_800-Folds_[3]-Tiles_500.data'"""
+
+"""inference_files['exp203_fold2_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_700-Folds_[2]-Tiles_500.data'
+inference_files['exp203_fold2_epoch720_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_720-Folds_[2]-Tiles_500.data'
+inference_files['exp203_fold2_epoch740_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_740-Folds_[2]-Tiles_500.data'
+inference_files['exp203_fold2_epoch760_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_760-Folds_[2]-Tiles_500.data'
+inference_files['exp203_fold2_epoch780_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_780-Folds_[2]-Tiles_500.data'
+inference_files['exp203_fold2_epoch800_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp203\Inference\Model_Epoch_800-Folds_[2]-Tiles_500.data'"""
+
+"""inference_files['exp228_fold3_epoch1400_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1400-Folds_[3]-Tiles_500.data'
+inference_files['exp228_fold3_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1420-Folds_[3]-Tiles_500.data'
+inference_files['exp228_fold3_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1440-Folds_[3]-Tiles_500.data'
+inference_files['exp228_fold3_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1460-Folds_[3]-Tiles_500.data'
+inference_files['exp228_fold3_epoch1480_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1480-Folds_[3]-Tiles_500.data'
+inference_files['exp228_fold3_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp228\Inference\Model_Epoch_1500-Folds_[3]-Tiles_500.data'"""
+
+"""inference_files['exp229_fold1_epoch1400_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1400-Folds_[1]-Tiles_500.data'
+inference_files['exp229_fold1_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1420-Folds_[1]-Tiles_500.data'
+inference_files['exp229_fold1_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1440-Folds_[1]-Tiles_500.data'
+inference_files['exp229_fold1_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1460-Folds_[1]-Tiles_500.data'
+inference_files['exp229_fold1_epoch1480_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1480-Folds_[1]-Tiles_500.data'
+inference_files['exp229_fold1_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp229\Inference\Model_Epoch_1500-Folds_[1]-Tiles_500.data'"""
+
+inference_files['exp230_fold2_epoch1400_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1400-Folds_[2]-Tiles_500.data'
+inference_files['exp230_fold2_epoch1420_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1420-Folds_[2]-Tiles_500.data'
+inference_files['exp230_fold2_epoch1440_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1440-Folds_[2]-Tiles_500.data'
+inference_files['exp230_fold2_epoch1460_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1460-Folds_[2]-Tiles_500.data'
+inference_files['exp230_fold2_epoch1480_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1480-Folds_[2]-Tiles_500.data'
+inference_files['exp230_fold2_epoch1500_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp230\Inference\Model_Epoch_1500-Folds_[2]-Tiles_500.data'
+
 
 
 infer_type = 'REG'
@@ -80,6 +130,8 @@ def auc_for_n_patches(patch_scores, n, all_targets):
 
 legend_labels = []
 roc_auc = []
+slide_score_all = []
+
 for ind, key in enumerate(inference_files.keys()):
     with open(inference_files[key], 'rb') as filehandle:
         inference_data = pickle.load(filehandle)
@@ -98,26 +150,20 @@ for ind, key in enumerate(inference_files.keys()):
         if patch_scores.ndim == 3:
             patch_scores = np.squeeze(patch_scores[:, ind,:])
         # all_scores = np.max(patch_scores, axis=1) #maxpool - temp! RanS 20.1.21
-        #slide_score_std = np.nanstd(patch_scores, axis=1)
-        #slide_score_mean = np.nanmean(patch_scores, axis=1)
         slide_score_mean = np.array([np.nanmean(patch_scores[ii, patch_scores[ii, :] > 0]) for ii in range(patch_scores.shape[0])])
         slide_score_std = np.array([np.nanstd(patch_scores[ii, patch_scores[ii, :] > 0]) for ii in range(patch_scores.shape[0])])
-        slide_conf = np.abs(slide_score_mean - 0.5)
-        correct_array = all_labels == all_targets
-        std_wrong = slide_score_std[~correct_array]
-        std_correct = slide_score_std[correct_array]
-        conf_wrong = slide_conf[~correct_array]
-        conf_correct = slide_conf[correct_array]
-        # plt.hist([conf_wrong, conf_correct])
-        # plt.legend(['confidence - wrong predictions','confidence - correct predictions'])
+
+        slide_score_all.append(slide_score_mean)
 
         #results per patient RanS 18.3.21
-        patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
-        patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
-        patient_mean_score_df = patch_df.groupby('patient').mean()
-        roc_auc_patient = roc_auc_score(patient_mean_score_df['targets'], patient_mean_score_df['scores'])
-        fpr_patient, tpr_patient, thresholds_patient = roc_curve(patient_mean_score_df['targets'],
-                                                                 patient_mean_score_df['scores'])
+        is_TCGA = True
+        if is_TCGA:
+            patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
+            patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
+            patient_mean_score_df = patch_df.groupby('patient').mean()
+            roc_auc_patient = roc_auc_score(patient_mean_score_df['targets'], patient_mean_score_df['scores'])
+            fpr_patient, tpr_patient, thresholds_patient = roc_curve(patient_mean_score_df['targets'],
+                                                                     patient_mean_score_df['scores'])
 
         test_n_patches = False
         if test_n_patches:
@@ -147,8 +193,23 @@ for ind, key in enumerate(inference_files.keys()):
 
     #plt.plot(fpr, tpr)
     #legend_labels.append(key + ' (AUC=' + str(round(roc_auc[-1], 2)) +')')
-    plt.plot(fpr_patient, tpr_patient)
-    legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 2)) + ')')
+    if is_TCGA:
+        plt.plot(fpr_patient, tpr_patient)
+        legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 2)) + ')')
+
+#combine several models, RanS 11.4.21
+slide_score_mean_all = np.mean(np.array(slide_score_all), axis=0)
+combine_all_models = False
+if is_TCGA and combine_all_models:
+    #patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])]  # only TCGA!
+    patch_all_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean_all, 'targets': all_targets})
+    patient_mean_score_all_df = patch_all_df.groupby('patient').mean()
+    roc_auc_all_patient = roc_auc_score(patient_mean_score_all_df['targets'], patient_mean_score_all_df['scores'])
+    fpr_patient_all, tpr_patient_all, thresholds_patient_all = roc_curve(patient_mean_score_all_df['targets'],
+                                                             patient_mean_score_all_df['scores'])
+    plt.plot(fpr_patient_all, tpr_patient_all)
+    legend_labels.append(' (all models combined patient AUC=' + str(round(roc_auc_all_patient, 2)) + ')')
+
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.legend(legend_labels)

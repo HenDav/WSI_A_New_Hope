@@ -53,7 +53,13 @@ if __name__ =='__main__':
     if args.stats:
         utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
     if args.hard_copy:
-        utils_data_managment.make_tiles_hard_copy(tile_size=args.tile_size)
+        utils_data_managment.make_tiles_hard_copy(DataSet=args.dataset,
+                                                  ROOT_DIR=args.data_root,
+                                                  tile_sz=args.tile_size,
+                                                  num_tiles=-1,
+                                                  desired_magnification=args.mag,
+                                                  added_extension=args.added_extension,
+                                                  num_workers=num_workers)
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 

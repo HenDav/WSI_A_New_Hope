@@ -15,6 +15,7 @@ import openslide
 from tqdm import tqdm
 import sys
 from math import isclose
+from PIL import Image
 
 
 class WSI_Master_Dataset(Dataset):
@@ -64,11 +65,13 @@ class WSI_Master_Dataset(Dataset):
         print(dir_dict)
         locations_list = []
 
+        self.ROOT_PATH = dir_dict[self.DataSet] #RanS 5.4.21 - will make problems with breast dataset?
+
         for _, key in enumerate(dir_dict):
             locations_list.append(dir_dict[key])
+
             slide_meta_data_file = os.path.join(dir_dict[key], 'slides_data_' + key + '.xlsx')
             grid_meta_data_file = os.path.join(dir_dict[key], 'Grids', 'Grid_data.xlsx')
-
 
             slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
             grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
@@ -174,6 +177,8 @@ class WSI_Master_Dataset(Dataset):
         self.magnification = []
         self.slides = []
         self.grid_lists = []
+        if self.DataSet=='ABCTB': # RanS 12.4.21, support presaved patches
+            self.tiles_dir = []
 
         for _, index in enumerate(tqdm(valid_slide_indices)):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
@@ -189,14 +194,19 @@ class WSI_Master_Dataset(Dataset):
                 try:
                     # image_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], all_image_file_names[index])
                     image_file = os.path.join(dir_dict[all_image_ids[index]], all_image_file_names[index])
-                    self.slides.append(openslide.open_slide(image_file))
-                    basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
-                    # grid_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-                    grid_file = os.path.join(dir_dict[all_image_ids[index]], 'Grids',
-                                             basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-                    with open(grid_file, 'rb') as filehandle:
-                        grid_list = pickle.load(filehandle)
-                        self.grid_lists.append(grid_list)
+                    #print('image_file:', image_file) #temp RanS 6.4.21
+                    if DataSet == 'ABCTB':  # RanS 12.4.21, support presaved patches
+                        tiles_dir = os.path.join(dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
+                        self.tiles_dir.append(tiles_dir)
+                    else: #RanS 12.4.21, support presaved patches
+                        self.slides.append(openslide.open_slide(image_file))
+                        basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
+                        # grid_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                        grid_file = os.path.join(dir_dict[all_image_ids[index]], 'Grids',
+                                                 basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                        with open(grid_file, 'rb') as filehandle:
+                            grid_list = pickle.load(filehandle)
+                            self.grid_lists.append(grid_list)
                 except FileNotFoundError:
                     raise FileNotFoundError(
                         'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
@@ -221,20 +231,36 @@ class WSI_Master_Dataset(Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
-        if sys.platform == 'win32':
-            image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
-            slide = openslide.open_slide(image_file)
-        else:
-            slide = self.slides[idx]
 
-        tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
-                                        slide=self.slides[idx],
-                                        how_many=self.bag_size,
-                                        magnification=self.magnification[idx],
-                                        tile_size=int(self.tile_size / (1 - self.scale_factor)),
-                                        # Fix boundaries with scale
-                                        print_timing=self.print_time,
-                                        desired_mag=self.desired_magnification)
+        if self.DataSet == 'ABCTB': #RanS 12.4.21, support presaved patches
+            #slide_name = self.image_file_names[idx]
+            #n_tiles = self.tissue_tiles[idx]
+            idxs = sample(range(self.tissue_tiles[idx]), self.bag_size)
+            #tiles_dir = os.path.join('.'.join((os.path.basename(slide_name)).split('.')[:-1]))
+            tiles = []
+            for ind in idxs:
+                tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(ind) + '.data')
+                with open(tile_path, 'rb') as fh:
+                    header = fh.readline()
+                    tile_bin = fh.read()
+                dtype, w, h, c = header.decode('ascii').strip().split()
+                tile = np.frombuffer(tile_bin, dtype=dtype).reshape((int(w), int(h), int(c)))
+                tiles.append(Image.fromarray(tile))
+        else:
+            if sys.platform == 'win32':
+                image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
+                slide = openslide.open_slide(image_file)
+            else:
+                slide = self.slides[idx]
+
+            tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
+                                            slide=slide,
+                                            how_many=self.bag_size,
+                                            magnification=self.magnification[idx],
+                                            tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                            # Fix boundaries with scale
+                                            print_timing=self.print_time,
+                                            desired_mag=self.desired_magnification)
 
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)

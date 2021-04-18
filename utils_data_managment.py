@@ -73,7 +73,7 @@ def slide_2_image(slide_name: str, DataSet: str = 'HEROHE'):
     #image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.png'))
 
 
-def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
+'''def make_tiles_hard_copy_old(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
     """
     This function makes a hard copy of the tile in order to avoid using openslide
     :param data_path:
@@ -98,10 +98,144 @@ def make_tiles_hard_copy(data_path: str = 'tcga-data', tile_size: int = 256, how
         file_name = os.path.join(data_path, meta_data['id'][i], 'tiles', 'tiles.data')
         with open(file_name, 'wb') as filehandle:
             pickle.dump(slide_tiles, filehandle)
-        """
+        """'''
 
 
-def _make_HC_tiles_from_slide(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
+def make_tiles_hard_copy(DataSet: str = 'TCGA',
+                         ROOT_DIR: str = 'All Data',
+                         tile_sz: int = 256,
+                         num_tiles: int = -1,
+                         desired_magnification: int = 10,
+                         added_extension: str = '',
+                         num_workers: int = 1):
+    """    
+    :param DataSet: Dataset to create grid for 
+    :param ROOT_DIR: Root Directory for the data
+    :param tile_sz: Desired tile size at desired magnification.
+    :param tissue_coverage: tissue percent requirement for each tile in the grid 
+    :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
+           the case where we want to create alternative grids and keep the grids already created
+    :return: 
+    """""
+
+    # Create alternative slides_data file (if needed):
+    if added_extension != '':
+        copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
+
+    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
+    grid_data_file = os.path.join(ROOT_DIR, DataSet, 'Grids', 'Grid_data.xlsx')
+
+    slide_meta_data_DF = pd.read_excel(slides_data_file)
+    grid_meta_data_DF = pd.read_excel(grid_data_file)
+    slides_meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
+                                 **grid_meta_data_DF.set_index('file').to_dict()})
+    slides_meta_data_DF.reset_index(inplace=True)
+    slides_meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
+
+
+    files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
+
+    meta_data_DF = pd.DataFrame(files, columns=['file'])
+
+    slides_meta_data_DF.set_index('file', inplace=True)
+    meta_data_DF.set_index('file', inplace=True)
+
+    print('Starting hard-copy tile production')
+    print()
+
+    with multiprocessing.Pool(num_workers) as pool:
+        with tqdm(total=len(files)) as pbar:
+            for i, _ in enumerate(pool.map(partial(_make_HC_tiles_from_slide,
+                                        meta_data_DF=slides_meta_data_DF,
+                                        ROOT_DIR=ROOT_DIR,
+                                        added_extension=added_extension,
+                                        DataSet=DataSet,
+                                        tile_size=tile_sz,
+                                        desired_magnification=desired_magnification,
+                                        num_tiles=num_tiles,
+                                        from_tile=0),
+                                files)):
+                pbar.update()
+
+    '''for file in tqdm(files):
+        _make_HC_tiles_from_slide(file=file,
+                                  meta_data_DF=slides_meta_data_DF,
+                                  ROOT_DIR=ROOT_DIR,
+                                  added_extension=added_extension,
+                                  DataSet=DataSet,
+                                  tile_size=tile_sz,
+                                  desired_magnification=desired_magnification,
+                                  num_tiles=num_tiles,
+                                  from_tile=0)'''
+
+    print('Finished hard-copy tile production phase !')
+
+
+def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: str, added_extension: str,
+                              DataSet: str, from_tile: int, num_tiles: int,
+                              desired_magnification: int = 20, tile_size: int = 256):
+
+    if meta_data_DF.loc[file, 'Total tiles - 256 compatible @ X' + str(desired_magnification)] == -1:
+        print('Could not find tile data for slide ' + file)
+        return
+
+    file_name = os.path.join(ROOT_DIR, DataSet, file)
+
+    out_dir = os.path.join(ROOT_DIR, DataSet, 'tiles')
+
+    objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
+    if objective_power == 'Missing Data':
+        print('hard copy was not computed for file {}'.format(file))
+        print('objective power was not found')
+        return
+
+    slide = openslide.OpenSlide(file_name)
+    best_slide_level, adjusted_tile_size, level_0_tile_size = \
+        utils.get_optimal_slide_level(slide, objective_power, desired_magnification, tile_size)
+
+    #basic_grid_file_name = 'grid_tlsz' + str(level_0_tile_size) + '.data'
+    base_name = '.'.join((os.path.basename(file_name)).split('.')[:-1])
+    basic_grid_file_name = base_name + '--tlsz' + str(tile_size) + '.data'
+
+    # open grid list:
+    #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
+    grid_file = os.path.join(ROOT_DIR, DataSet, 'Grids', basic_grid_file_name)
+    with open(grid_file, 'rb') as filehandle:
+        # read the data as binary data stream
+        grid_list = pickle.load(filehandle)
+
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)
+    if not os.path.isdir(os.path.join(out_dir, base_name)):
+        os.mkdir(os.path.join(out_dir, base_name))
+
+    if num_tiles == -1: #extract all tiles!
+        num_tiles = len(grid_list)
+
+    image_tiles, _ = utils._get_tiles(slide=slide,
+                                              locations=grid_list[from_tile: from_tile + num_tiles],
+                                              tile_size_level_0=level_0_tile_size,
+                                              adjusted_tile_sz=adjusted_tile_size,
+                                              output_tile_sz=tile_size,
+                                              best_slide_level=best_slide_level)
+
+    for ind, tile in enumerate(image_tiles):
+        tile_file_name = os.path.join(out_dir, base_name, 'tile_' + str(ind) + '.data')
+        tile_array = np.array(tile)
+        with open(tile_file_name, 'wb+') as fh:
+            fh.write('{0:} {1:} {2:} {3:}\n'.format(tile_array.dtype, tile_array.shape[0], tile_array.shape[1], tile_array.shape[2]).encode('ascii'))
+            fh.write(tile_array)
+        #tile.save(tile_file_name, "JPEG")
+    '''for tile_idx in range(from_tile, from_tile + num_tiles):
+        #tile, _ = utils._get_tiles_2(file_name, [grid_list[tile_idx]], adjusted_tile_size)
+        tile_file_name = os.path.join(out_dir, base_name + '_tile', str(tile_idx) + '.data')
+        with open(tile_file_name, 'wb') as filehandle:
+            pickle.dump(image_tiles[tile_idx], filehandle)'''
+
+    return
+
+
+def _make_HC_tiles_from_slide_old(file_name: str, from_tile: int, num_tiles: int, tile_basic_file_name: str, magnification: int = 20, tile_size: int = 256):
     BASIC_OBJ_POWER = 20
     adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
     basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
@@ -194,233 +328,6 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
 
     return total_mean, total_var
 
-
-'''
-def make_grid(DataSet: str = 'HEROHE',
-              ROOT_DIR: str = 'All Data',
-              tile_sz: int = 256,
-              tissue_coverage: float = 0.5,
-              desired_mag: int = 20,
-              out_path: str = ''):
-    """
-    This function creates a location for all top left corners of the grid
-    :param data_file: name of main excel data file containing size of images (this file is created by function :"make_slides_xl_file")
-    :param tile_sz: size of tiles to be created
-    :return:
-    """
-
-    #BASIC_OBJ_PWR = 20
-
-    data_file = os.path.join(ROOT_DIR, 'slides_data.xlsx') #should this be out_path? probably not. RanS 15.2.21
-
-    if DataSet == 'RedSquares':
-        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
-
-    meta_data_DF = pd.read_excel(data_file)
-    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
-    # objective_power = list(meta_data_DF['Manipulated Objective Power'])
-    meta_data_DF.set_index('file', inplace=True)
-    tile_nums = []
-    total_tiles =[]
-
-    if not os.path.isdir(os.path.join(out_path, DataSet, 'Grids')):
-        os.mkdir(os.path.join(out_path, DataSet, 'Grids'))
-    if not os.path.isdir(os.path.join(out_path, DataSet, 'SegData', 'GridImages')):
-        os.mkdir(os.path.join(out_path, DataSet, 'SegData', 'GridImages'))
-    print('Starting Grid production...')
-    print()
-
-    for i, file in enumerate(tqdm(files)):
-        #print(file)
-        #filename = os.path.basename(file).split('.')[0]
-        filename = '.'.join(os.path.basename(file).split('.')[:-1])
-        database = meta_data_DF.loc[file, 'id']
-
-        # Save the grid to file:
-        grid_file = os.path.join(out_path, database, 'Grids', filename + '--tlsz' + str(tile_sz) + '.data')
-        segmap_file = os.path.join(out_path, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
-
-        #RanS 31.12.20 - do not overwrite files
-        #if os.path.isfile(grid_file):
-        #    pickle.load(grid_file)
-        if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
-            height = int(meta_data_DF.loc[file, 'Height'])
-            width  = int(meta_data_DF.loc[file, 'Width'])
-
-            # RanS 6.1.21 - i index is wrong
-            #if objective_power[i] == 'Missing Data':
-            obj_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
-            if obj_power == 'Missing Data':
-                print('Grid was not computed for file {}'.format(file))
-                print('objective power was not found')
-                tile_nums.append(0)
-                total_tiles.append(-1)
-                continue
-
-            #RanS 15.2.21
-            downsample = obj_power / desired_mag
-            converted_tile_size = int(tile_sz * downsample)
-            #converted_tile_size = int(tile_sz * (int(obj_power) / BASIC_OBJ_PWR))
-            #print(height, width, converted_tile_size)
-            basic_grid = [(row, col) for row in range(0, height, converted_tile_size) for col in range(0, width, converted_tile_size)]
-            total_tiles.append((len(basic_grid)))
-
-            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            #legit_grid = _legit_grid(os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', file.split('.')[0] + '_SegMap.png'),
-            legit_grid, out_grid = _legit_grid(segmap_file,
-                                     basic_grid,
-                                     converted_tile_size,
-                                     (height, width),
-                                     desired_tissue_coverage=tissue_coverage)
-            # create a list with number of tiles in each file
-            tile_nums.append(len(legit_grid))
-
-            #plot grid on thumbnail
-            thumb_file = os.path.join(out_path, database, 'SegData', 'Thumbs', filename + '_thumb.jpg')
-            if os.path.isfile(thumb_file):
-                thumb = np.array(Image.open(thumb_file))
-                slide = openslide.OpenSlide(os.path.join(out_path, database, file))
-                thumb_downsample = slide.dimensions[0] / thumb.shape[1] #shape is transposed
-                patch_size_thumb = converted_tile_size / thumb_downsample
-
-                fig, ax = plt.subplots()
-                ax.imshow(thumb)
-
-                for patch in out_grid:
-                    xy = (np.array(patch[::-1]) / thumb_downsample)
-                    rect = patches.Rectangle(xy, patch_size_thumb, patch_size_thumb, linewidth=1, edgecolor='none',facecolor='g', alpha=0.5)
-                    ax.add_patch(rect)
-                plt.axis('off')
-                plt.savefig(os.path.join(out_path, DataSet, 'SegData', 'GridImages', filename + '_GridImage.jpg'),
-                            bbox_inches='tight', pad_inches=0, dpi=400)
-                plt.close(fig)
-
-            with open(grid_file, 'wb') as filehandle:
-                # store the data as binary data stream
-                pickle.dump(legit_grid, filehandle)
-        else:
-            print('Grid was not computed for file {}'.format(file))
-            if ~os.path.isfile(os.path.join(ROOT_DIR, database, file)):
-                print('slide was not found')
-            if ~os.path.isfile(segmap_file):
-                print('seg map was not found')
-            tile_nums.append(0)
-            total_tiles.append(-1)
-
-    # Adding the number of tiles to the excel file:
-    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
-
-    slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
-
-    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_mag)] = tile_nums
-    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X'+ str(desired_mag)] = total_tiles
-    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile)'] = slide_usage
-
-    meta_data_DF.to_excel(data_file)
-
-    print('Finished Grid production phase !')
-
-
-def make_grid_2(DataSet: str = 'TCGA',
-                ROOT_DIR: str = 'All Data',
-                tile_sz: int = 256,
-                tissue_coverage: float = 0.5,
-                desired_magnification: int = 10,
-                added_extension: str = '',
-                different_SegMap_file_extension: bool = False):
-    """    
-    :param DataSet: Dataset to create grid for 
-    :param ROOT_DIR: Root Directory for the data
-    :param tile_sz: Desired tile size at desired magnification.
-    :param tissue_coverage: tissue percent requirement for each tile in the grid 
-    :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
-           the case where we want to create alternative grids and keep the grids already created
-    :param different_SegMap_file_extension: a parameter defining the modified name of the SegData directory.
-    :return: 
-    """""
-
-    # Create alternative slides_data file (if needed):
-    if added_extension != '':
-        copy2(os.path.join(ROOT_DIR, 'slides_data.xlsx'), os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx'))
-
-    data_file = os.path.join(ROOT_DIR, 'slides_data' + added_extension + '.xlsx')
-
-    if DataSet == 'RedSquares':
-        data_file = os.path.join(ROOT_DIR, 'slides_data_RedSquares.xlsx')
-
-    meta_data_DF = pd.read_excel(data_file)
-    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
-    meta_data_DF.set_index('file', inplace=True)
-    tile_nums = []
-    total_tiles =[]
-    print('Starting Grid production...')
-    print()
-
-    for i, file in enumerate(tqdm(files)):
-        #filename = os.path.basename(file).split('.')[0]
-        filename = '.'.join(os.path.basename(file).split('.')[:-1])
-        database = meta_data_DF.loc[file, 'id']
-
-        # Save the grid to file:
-        if not os.path.isdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension)):
-            os.mkdir(os.path.join(ROOT_DIR, database, 'Grids' + added_extension))
-        grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension, filename + '--tlsz' + str(tile_sz) + '.data')
-
-        if different_SegMap_file_extension != '':
-            segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegMap_file_extension, 'SegMaps', filename + '_SegMap.png')
-        else:
-            segmap_file = os.path.join(ROOT_DIR, database, 'SegData', 'SegMaps', filename + '_SegMap.png')
-
-        if os.path.isfile(os.path.join(ROOT_DIR, database, file)) and os.path.isfile(segmap_file): # make sure file exists
-            height = int(meta_data_DF.loc[file, 'Height'])
-            width  = int(meta_data_DF.loc[file, 'Width'])
-
-            objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
-            if objective_power == 'Missing Data':
-                print('Grid was not computed for file {}'.format(file))
-                print('objective power was not found')
-                tile_nums.append(0)
-                total_tiles.append(-1)
-                continue
-
-            adjusted_tile_size_at_level_0 = int(tile_sz * (int(objective_power) / desired_magnification))
-            basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in range(0, width, adjusted_tile_size_at_level_0)]
-            total_tiles.append((len(basic_grid)))
-
-            # We now have to check, which tiles of this grid are legitimate, meaning they contain enough tissue material.
-            legit_grid,_ = _legit_grid(segmap_file,
-                                     basic_grid,
-                                     adjusted_tile_size_at_level_0,
-                                     (height, width),
-                                     desired_tissue_coverage=tissue_coverage)
-            # create a list with number of tiles in each file
-            tile_nums.append(len(legit_grid))
-
-            with open(grid_file, 'wb') as filehandle:
-                # store the data as binary data stream
-                pickle.dump(legit_grid, filehandle)
-        else:
-            print('Grid was not computed for file {}'.format(file))
-            if ~os.path.isfile(os.path.join(ROOT_DIR, database, file)):
-                print('slide was not found')
-            if ~os.path.isfile(segmap_file):
-                print('seg map was not found')
-            tile_nums.append(0)
-            total_tiles.append(-1)
-
-    # Adding the number of tiles to the excel file:
-    #TODO - support adding grids to a half-filled excel files? (currently erases everything) RanS 26.10.20 - FIXED (but need to to complete evaluation)
-
-    slide_usage = list(((np.array(tile_nums) / np.array(total_tiles)) * 100).astype(int))
-
-    meta_data_DF.loc[files, 'Legitimate tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = tile_nums
-    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
-    meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile) @ X' + str(desired_magnification)] = slide_usage
-
-    meta_data_DF.to_excel(data_file)
-
-    print('Finished Grid production phase !')
-'''
 
 def make_grid(DataSet: str = 'TCGA',
               ROOT_DIR: str = 'All Data',

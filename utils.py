@@ -43,6 +43,26 @@ def make_dir(dirname):
             raise
 
 
+def get_optimal_slide_level(slide, magnification, desired_mag, tile_size):
+    desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
+
+    level, best_next_level = -1, -1
+    for index, downsample in enumerate(slide.level_downsamples):
+        if isclose(desired_downsample, downsample, rel_tol=1e-3):
+            level = index
+            level_downsample = 1
+            break
+
+        elif downsample < desired_downsample:
+            best_next_level = index
+            level_downsample = int(desired_downsample / slide.level_downsamples[best_next_level])
+
+    adjusted_tile_size = tile_size * level_downsample
+    best_slide_level = level if level > best_next_level else best_next_level
+    level_0_tile_size = int(desired_downsample) * tile_size
+    return best_slide_level, adjusted_tile_size, level_0_tile_size
+
+
 def _choose_data(grid_list: list,
                  slide: openslide.OpenSlide,
                  how_many: int,
@@ -64,22 +84,7 @@ def _choose_data(grid_list: list,
     :return:
     """
 
-    desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
-
-    level, best_next_level = -1, -1
-    for index, downsample in enumerate(slide.level_downsamples):
-        if isclose(desired_downsample, downsample, rel_tol=1e-3):
-            level = index
-            level_downsample = 1
-            break
-
-        elif downsample < desired_downsample:
-            best_next_level = index
-            level_downsample = int(desired_downsample / slide.level_downsamples[best_next_level])
-
-    adjusted_tile_size = tile_size * level_downsample
-    best_slide_level = level if level > best_next_level else best_next_level
-    level_0_tile_size = int(desired_downsample) * tile_size
+    best_slide_level, adjusted_tile_size, level_0_tile_size = get_optimal_slide_level(slide, magnification, desired_mag, tile_size)
 
     # Choose locations from the grid list:
     loc_num = len(grid_list)
@@ -740,7 +745,10 @@ def get_datasets_dir_dict(Dataset: str):
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
             dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
-            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/same_slide_mrxs_50test_temp'  # temp RanS 5.4.21
+            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/mrxs_50test_temp/ABCTB'  # temp RanS 6.4.21
+            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/ABCTB_50_slides/ABCTB'  # temp RanS 13.4.21
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict['ABCTB'] = r'C:\ran_data\ABCTB\ABCTB_examples\ABCTB'
         else:
             raise Exception('ABCTB can be used only on gipdeep3')
 

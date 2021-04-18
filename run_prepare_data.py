@@ -1,7 +1,8 @@
 import subprocess
 
 subprocess.run(['python', 'prepare_data.py',
-                    '--segmentation',
+                    #'--segmentation',
+                    '--hard_copy',
                     #'--data_collection',
                     #'--grid',
                     #'--stats',

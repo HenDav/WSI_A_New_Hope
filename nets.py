@@ -196,7 +196,7 @@ class ResNet18(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.basic_resnet(x)
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -210,7 +210,7 @@ class ResNet34(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.basic_resnet(x)
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -237,7 +237,7 @@ class ResNet50(nn.Module):
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
         x = self.linear_layer(self.basic_resnet(x))
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -284,7 +284,7 @@ class ResNet34_GN(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.linear_layer(self.con_layers(x))
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -304,7 +304,7 @@ class ResNet50_GN(nn.Module):
     def forward(self, x):
         x = x.squeeze()
         x = self.linear_layer(self.con_layers(x))
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -362,7 +362,7 @@ class net_with_3FC(nn.Module):
         x = F.relu(self.fc1(self.dropout(x)))
         x = F.relu(self.fc2(self.dropout(x)))
         x = self.fc3(x)
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -403,7 +403,7 @@ class net_with_2FC(nn.Module):
         x = self.pretrained(x)
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
@@ -529,7 +529,7 @@ class ResNet_NO_downsample(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
-        x = torch.nn.functional.softmax(x, dim=1)
+        #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
 
 
