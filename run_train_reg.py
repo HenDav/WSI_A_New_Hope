@@ -31,12 +31,13 @@ else:
                     #'--model', 'nets.resnet50_with_3FC()',
                     '--bootstrap',
                     #'--transform_type', 'aug_receptornet',
-                    '--transform_type', 'rvf',
+                    #'--transform_type', 'rvf',
+                    '--transform_type', 'pcbnfrsc',
                     #'-fast',
                     '--mag', str(10),
                     '--eval_rate', str(10),
                     #'-time'
-                    #'-im'
+                    '-im'
                     #'--balanced_sampling'
                 ])
 

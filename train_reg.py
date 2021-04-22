@@ -206,15 +206,15 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tile_size': TILE_SIZE,
                         'tiles_per_bag': 1},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
-        else:
-            acc_test, bacc_test = None, None
+        #else:
+        #    acc_test, bacc_test = None, None
 
     all_writer.close()
     if print_timing:
         time_writer.close()
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE, epoch: int):
 
     total_test, true_pos_test, true_neg_test = 0, 0, 0
     total_pos_test, total_neg_test = 0, 0
@@ -245,12 +245,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             total_neg_test += targets.eq(0).sum().item()
             true_pos_test += predicted[targets.eq(1)].eq(1).sum().item()
             true_neg_test += predicted[targets.eq(0)].eq(0).sum().item()
-
-        #acc = 100 * float(num_correct) / total
-        #balanced_acc = 100 * (true_pos / total_pos + true_neg / total_neg) / 2
-        #balanced_acc = 100. * ((true_pos + eps) / (total_pos + eps) + (true_neg + eps) / (total_neg + eps)) / 2
-
-        writer_string = 'Test'
 
         if not args.bootstrap:
             acc = 100 * float(correct_labeling_test) / total_test
@@ -318,20 +312,18 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             bacc = np.nanmean(bacc_array)
             bacc_err = np.nanstd(bacc_array)
 
-            writer_all.add_scalar(writer_string + '/Accuracy error', acc_err, epoch)
-            writer_all.add_scalar(writer_string + '/Balanced Accuracy error', bacc_err, epoch)
-            writer_all.add_scalar(writer_string + '/Roc-Auc error', roc_auc_std, epoch)
+            all_writer.add_scalar('Test_errors/Accuracy error', acc_err, epoch)
+            all_writer.add_scalar('Test_erors/Balanced Accuracy error', bacc_err, epoch)
+            all_writer.add_scalar('Test_errors/Roc-Auc error', roc_auc_std, epoch)
             if args.n_patches_test > 1:
-                writer_all.add_scalar(writer_string + '/slide AUC error', roc_auc_slide_std, epoch)
+                all_writer.add_scalar('Test_errors/slide AUC error', roc_auc_slide_std, epoch)
 
-        writer_all.add_scalar(writer_string + '/Accuracy', acc, epoch)
-        writer_all.add_scalar(writer_string + '/Balanced Accuracy', bacc, epoch)
-        writer_all.add_scalar(writer_string + '/Roc-Auc', roc_auc, epoch)
+        all_writer.add_scalar('Test/Accuracy', acc, epoch)
+        all_writer.add_scalar('Test/Balanced Accuracy', bacc, epoch)
+        all_writer.add_scalar('Test/Roc-Auc', roc_auc, epoch)
         if args.n_patches_test > 1:
-            writer_all.add_scalar(writer_string + '/slide AUC', roc_auc_slide, epoch)
+            all_writer.add_scalar('Test/slide AUC', roc_auc_slide, epoch)
 
-        #print('{}: Accuracy of {:.2f}% ({} / {}) over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', acc, num_correct, total))
-        #print('{}: Slide AUC of {:.2f} over Test set'.format('EVAL mode' if eval_mode else 'TRAIN mode', roc_auc_slide))
         if args.n_patches_test > 1:
             print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
         else:

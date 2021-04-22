@@ -22,8 +22,9 @@ subprocess.run(['python', 'prepare_data.py',
                     #'--dataset','CARMEL3',
                     #'--dataset', 'TCGA',
                     '--dataset', 'ABCTB',
-                    '--tissue_coverage', '0.3',
+                    #'--tissue_coverage', '0.5',
                     '--mag', '10',
+                    '--oversized_HC_tiles'
                     #'--data_folder', r'C:\ran_data\gip-main_examples\Leukemia',
                     #'--data_folder', r'C:\ran_data\ABCTB',
                 ])

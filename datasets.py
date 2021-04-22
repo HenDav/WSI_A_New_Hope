@@ -86,6 +86,7 @@ class WSI_Master_Dataset(Dataset):
         if self.DataSet == 'LUNG':
             # for lung, take only origin: lung
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -549,7 +550,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                                       tile_size_level_0=self.level_0_tile_size,
                                       adjusted_tile_sz=self.adjusted_tile_size,
                                       output_tile_sz=self.tile_size,
-                                      best_slide_level=self.best_slide_level)
+                                      best_slide_level=self.best_slide_level,
+                                      random_shift=True)
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 

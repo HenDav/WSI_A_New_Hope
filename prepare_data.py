@@ -21,6 +21,7 @@ parser.add_argument('--mag', type=int, default=20, help='desired magnification o
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
 parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
+parser.add_argument('--oversized_HC_tiles', action='store_true', help='create larger tiles to support random shift') #RanS 18.4.21
 args = parser.parse_args()
 
 num_workers = get_cpu()
@@ -59,7 +60,8 @@ if __name__ =='__main__':
                                                   num_tiles=-1,
                                                   desired_magnification=args.mag,
                                                   added_extension=args.added_extension,
-                                                  num_workers=num_workers)
+                                                  num_workers=num_workers,
+                                                  oversized_HC_tiles=args.oversized_HC_tiles)
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 

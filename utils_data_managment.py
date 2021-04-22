@@ -25,6 +25,7 @@ import cv2 as cv
 import multiprocessing
 from functools import partial
 from datetime import date
+import time
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -107,7 +108,8 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
                          num_tiles: int = -1,
                          desired_magnification: int = 10,
                          added_extension: str = '',
-                         num_workers: int = 1):
+                         num_workers: int = 1,
+                         oversized_HC_tiles: bool = False):
     """    
     :param DataSet: Dataset to create grid for 
     :param ROOT_DIR: Root Directory for the data
@@ -153,7 +155,8 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
                                         tile_size=tile_sz,
                                         desired_magnification=desired_magnification,
                                         num_tiles=num_tiles,
-                                        from_tile=0),
+                                        from_tile=0,
+                                        oversized_HC_tiles=oversized_HC_tiles),
                                 files)):
                 pbar.update()
 
@@ -173,8 +176,9 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
 
 def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: str, added_extension: str,
                               DataSet: str, from_tile: int, num_tiles: int,
-                              desired_magnification: int = 20, tile_size: int = 256):
-
+                              desired_magnification: int = 20, tile_size: int = 256,
+                              oversized_HC_tiles: bool = False):
+    start = time.time()
     if meta_data_DF.loc[file, 'Total tiles - 256 compatible @ X' + str(desired_magnification)] == -1:
         print('Could not find tile data for slide ' + file)
         return
@@ -190,8 +194,6 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
         return
 
     slide = openslide.OpenSlide(file_name)
-    best_slide_level, adjusted_tile_size, level_0_tile_size = \
-        utils.get_optimal_slide_level(slide, objective_power, desired_magnification, tile_size)
 
     #basic_grid_file_name = 'grid_tlsz' + str(level_0_tile_size) + '.data'
     base_name = '.'.join((os.path.basename(file_name)).split('.')[:-1])
@@ -204,20 +206,29 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
         # read the data as binary data stream
         grid_list = pickle.load(filehandle)
 
+    if num_tiles == -1: #extract all tiles!
+        num_tiles = len(grid_list)
+
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
     if not os.path.isdir(os.path.join(out_dir, base_name)):
         os.mkdir(os.path.join(out_dir, base_name))
+    # RanS 22.4.21, do not rewrite if all tiles are already saved
+    elif len([name for name in os.listdir(os.path.join(out_dir, base_name)) if os.path.isfile(os.path.join(out_dir, base_name, name))]) == num_tiles:
+        print('skipping file ' + file + ", all tiles already exist")
+        return
 
-    if num_tiles == -1: #extract all tiles!
-        num_tiles = len(grid_list)
+    best_slide_level, adjusted_tile_size, level_0_tile_size = \
+        utils.get_optimal_slide_level(slide, objective_power, desired_magnification, tile_size)
 
     image_tiles, _ = utils._get_tiles(slide=slide,
                                               locations=grid_list[from_tile: from_tile + num_tiles],
                                               tile_size_level_0=level_0_tile_size,
                                               adjusted_tile_sz=adjusted_tile_size,
                                               output_tile_sz=tile_size,
-                                              best_slide_level=best_slide_level)
+                                              best_slide_level=best_slide_level,
+                                              random_shift=False,
+                                              oversized_HC_tiles=oversized_HC_tiles)
 
     for ind, tile in enumerate(image_tiles):
         tile_file_name = os.path.join(out_dir, base_name, 'tile_' + str(ind) + '.data')
@@ -231,7 +242,8 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
         tile_file_name = os.path.join(out_dir, base_name + '_tile', str(tile_idx) + '.data')
         with open(tile_file_name, 'wb') as filehandle:
             pickle.dump(image_tiles[tile_idx], filehandle)'''
-
+    end = time.time()
+    print('finished file ' + file + ', total time ' + str(end-start) + ' sec')
     return
 
 

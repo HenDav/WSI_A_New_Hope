@@ -101,7 +101,8 @@ def _choose_data(grid_list: list,
                                         adjusted_tile_sz=adjusted_tile_size,
                                         output_tile_sz=tile_size,
                                         best_slide_level=best_slide_level,
-                                        print_timing=print_timing)
+                                        print_timing=print_timing,
+                                        random_shift=True)
 
     return image_tiles, time_list
 
@@ -112,7 +113,9 @@ def _get_tiles(slide: openslide.OpenSlide,
                adjusted_tile_sz: int,
                output_tile_sz: int,
                best_slide_level: int,
-               print_timing: bool = False):
+               print_timing: bool = False,
+               random_shift: bool = False,
+               oversized_HC_tiles: bool = False):
     """
     This function extract tiles from the slide.
     :param slide: OpenSlide object containing a slide
@@ -154,14 +157,21 @@ def _get_tiles(slide: openslide.OpenSlide,
 
     tiles_PIL = []
     start_gettiles = time.time()
+
+    if oversized_HC_tiles:
+        adjusted_tile_sz *= 2
+
     for idx, loc in enumerate(locations):
-        try:
+        if random_shift:
             tile_shifting = sample(range(-tile_size_level_0 // 2, tile_size_level_0 // 2), 2)
+        elif oversized_HC_tiles:
+            tile_shifting = (tile_size_level_0 // 2, tile_size_level_0 // 2)
+
+        if random_shift or oversized_HC_tiles:
             new_loc_init = {'Top': loc[0] - tile_shifting[0],
                             'Left': loc[1] - tile_shifting[1]}
             new_loc_end = {'Bottom': new_loc_init['Top'] + tile_size_level_0,
                            'Right': new_loc_init['Left'] + tile_size_level_0}
-
             if new_loc_init['Top'] < 0:
                 new_loc_init['Top'] += abs(new_loc_init['Top'])
             if new_loc_init['Left'] < 0:
@@ -172,7 +182,11 @@ def _get_tiles(slide: openslide.OpenSlide,
             if new_loc_end['Right'] > slide.dimensions[0]:
                 delta_Width = new_loc_end['Right'] - slide.dimensions[0]
                 new_loc_init['Left'] -= delta_Width
+        else:
+            new_loc_init = {'Top': loc[0],
+                            'Left': loc[1]}
 
+        try:
             # When reading from OpenSlide the locations is as follows (col, row)
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
         except:
@@ -603,7 +617,8 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                     transforms.RandomVerticalFlip(),
                     #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
-                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    #transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.RandomAffine(degrees=0, scale=(1, 1 + scale_factor)), #RanS 18.4.21, avoid the need to keep larger patches
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
 
@@ -757,6 +772,14 @@ def get_datasets_dir_dict(Dataset: str):
             dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA' #TODO: move to local
         else:
             dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
+
+    elif Dataset == 'LUNG':
+        if sys.platform == 'linux':
+            dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG/LUNG' #TODO: move to local
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict['LUNG'] = r'C:\ran_data\Lung_examples\LUNG'
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['LUNG'] = 'All Data/LUNG'
 
     return dir_dict
 
