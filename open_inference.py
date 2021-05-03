@@ -117,15 +117,36 @@ inference_files['exp263_fold1_epoch1260_test_500'] = r'C:\Pathnet_results\MIL_ge
 inference_files['exp263_fold1_epoch1280_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp263\Inference\Model_Epoch_1280-Folds_[1]-Tiles_500.data'
 inference_files['exp263_fold1_epoch1300_test_500'] = r'C:\Pathnet_results\MIL_general_try4\exp263\Inference\Model_Epoch_1300-Folds_[1]-Tiles_500.data'"""
 
-inference_files['exp264_fold5_epoch600_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_600-Folds_[5]-Tiles_500.data'
+"""inference_files['exp264_fold5_epoch600_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_600-Folds_[5]-Tiles_500.data'
 inference_files['exp264_fold5_epoch620_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_620-Folds_[5]-Tiles_500.data'
 inference_files['exp264_fold5_epoch640_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_640-Folds_[5]-Tiles_500.data'
 inference_files['exp264_fold5_epoch660_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_660-Folds_[5]-Tiles_500.data'
 inference_files['exp264_fold5_epoch680_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_680-Folds_[5]-Tiles_500.data'
-inference_files['exp264_fold5_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_700-Folds_[5]-Tiles_500.data'
+inference_files['exp264_fold5_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\lung_april21\exp264\Inference\Model_Epoch_700-Folds_[5]-Tiles_500.data'"""
+
+inference_files['exp253_fold1_epoch1200_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1200-Folds_[1]-Tiles_500.data'
+inference_files['exp253_fold1_epoch1220_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1220-Folds_[1]-Tiles_500.data'
+inference_files['exp253_fold1_epoch1240_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1240-Folds_[1]-Tiles_500.data'
+inference_files['exp253_fold1_epoch1260_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1260-Folds_[1]-Tiles_500.data'
+inference_files['exp253_fold1_epoch1280_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1280-Folds_[1]-Tiles_500.data'
+inference_files['exp253_fold1_epoch1300_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp253\Inference\Model_Epoch_1300-Folds_[1]-Tiles_500.data'
+
+"""inference_files['exp258_fold2_epoch1200_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1200-Folds_[2]-Tiles_500.data'
+inference_files['exp258_fold2_epoch1220_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1220-Folds_[2]-Tiles_500.data'
+inference_files['exp258_fold2_epoch1240_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1240-Folds_[2]-Tiles_500.data'
+inference_files['exp258_fold2_epoch1260_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1260-Folds_[2]-Tiles_500.data'
+inference_files['exp258_fold2_epoch1280_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1280-Folds_[2]-Tiles_500.data'
+inference_files['exp258_fold2_epoch1300_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp258\Inference\Model_Epoch_1300-Folds_[2]-Tiles_500.data'"""
+
+"""inference_files['exp260_fold3_epoch600_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_600-Folds_[3]-Tiles_500.data'
+inference_files['exp260_fold3_epoch620_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_620-Folds_[3]-Tiles_500.data'
+inference_files['exp260_fold3_epoch640_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_640-Folds_[3]-Tiles_500.data'
+inference_files['exp260_fold3_epoch660_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_660-Folds_[3]-Tiles_500.data'
+inference_files['exp260_fold3_epoch680_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_680-Folds_[3]-Tiles_500.data'
+inference_files['exp260_fold3_epoch700_test_500'] = r'C:\Pathnet_results\MIL_general_try4\no_softmax_runs\exp260\Inference\Model_Epoch_700-Folds_[3]-Tiles_500.data'"""
 
 infer_type = 'REG'
-is_TCGA = False
+is_TCGA = True
 
 
 def auc_for_n_patches(patch_scores, n, all_targets):
@@ -237,5 +258,10 @@ plt.legend(legend_labels)
 plt.xlim(0, 1)
 plt.ylim(0, 1)
 plt.grid(b=True)
+
+if is_TCGA:
+    print('average AUC per slide: ' + str(np.round(np.mean(roc_auc_patient), 2)))
+else:
+    print('average AUC per slide: ' + str(np.round(np.mean(roc_auc), 2)))
 plt.show()
 

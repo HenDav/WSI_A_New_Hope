@@ -12,8 +12,8 @@ import pandas as pd
 import pickle
 
 parser = argparse.ArgumentParser(description='Slide inspector')
-parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_5/CARMEL5', type=str, help='input dir')
-parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_5/thumbs', type=str, help='output dir')
+parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_6/CARMEL6', type=str, help='input dir')
+parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_6/thumbs', type=str, help='output dir')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 
 args = parser.parse_args()

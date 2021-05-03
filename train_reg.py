@@ -313,7 +313,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             bacc_err = np.nanstd(bacc_array)
 
             all_writer.add_scalar('Test_errors/Accuracy error', acc_err, epoch)
-            all_writer.add_scalar('Test_erors/Balanced Accuracy error', bacc_err, epoch)
+            all_writer.add_scalar('Test_errors/Balanced Accuracy error', bacc_err, epoch)
             all_writer.add_scalar('Test_errors/Roc-Auc error', roc_auc_std, epoch)
             if args.n_patches_test > 1:
                 all_writer.add_scalar('Test_errors/slide AUC error', roc_auc_slide_std, epoch)
@@ -356,9 +356,6 @@ if __name__ == '__main__':
                                                      Receptor=args.target,
                                                      num_bags=args.batch_size)
     else:
-        '''args.output_dir, args.test_fold, args.transform_type, TILE_SIZE,\
-           _, _, args.dx, _, _, _ = utils.run_data(experiment=args.experiment)'''
-
         args.output_dir, args.test_fold, args.transform_type, TILE_SIZE, tiles_per_bag, \
         args.batch_size,  args.dx, args.dataset, args.target, _, args.model = utils.run_data(experiment=args.experiment)
 
@@ -393,7 +390,8 @@ if __name__ == '__main__':
                                          n_tiles=args.n_patches_train,
                                          color_param=args.c_param,
                                          get_images=args.images,
-                                         desired_slide_magnification=args.mag
+                                         desired_slide_magnification=args.mag,
+                                         DX=args.dx,
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -404,7 +402,8 @@ if __name__ == '__main__':
                                         transform_type='none',
                                         n_tiles=args.n_patches_test,
                                         get_images=args.images,
-                                        desired_slide_magnification=args.mag
+                                        desired_slide_magnification=args.mag,
+                                        DX=args.dx,
                                         )
     sampler = None
     do_shuffle = True

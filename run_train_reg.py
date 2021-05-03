@@ -18,7 +18,9 @@ else:
                     '--epochs', str(2),
                     #'--dataset', 'LUNG',
                     #'--dataset', 'Breast',
-                    '--dataset', 'ABCTB',
+                    #'--dataset', 'ABCTB',
+                    #'--dataset', 'PDL1',
+                    '--dataset', 'ABCTB_TCGA',
                     '--target', 'ER',
                     #'--target', 'Her2',
                     #'--target', 'PDL1',
@@ -36,8 +38,9 @@ else:
                     #'-fast',
                     '--mag', str(10),
                     '--eval_rate', str(10),
+                    '-d'
                     #'-time'
-                    '-im'
+                    #'-im'
                     #'--balanced_sampling'
                 ])
 

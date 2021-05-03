@@ -43,9 +43,6 @@ class WSI_Master_Dataset(Dataset):
 
         print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
 
-        # Define data root:
-        #self.ROOT_PATH = define_data_root(DataSet)
-
         self.DataSet = DataSet
         self.desired_magnification = desired_slide_magnification
         self.tile_size = tile_size
@@ -65,7 +62,9 @@ class WSI_Master_Dataset(Dataset):
         print(dir_dict)
         locations_list = []
 
-        self.ROOT_PATH = dir_dict[self.DataSet] #RanS 5.4.21 - will make problems with breast dataset?
+        #temp cancelled RanS 3.5.21
+        #if sys.platform == 'win32':
+        #    self.ROOT_PATH = dir_dict[self.DataSet] #RanS 5.4.21 - will make problems with breast dataset?
 
         for _, key in enumerate(dir_dict):
             locations_list.append(dir_dict[key])
@@ -118,7 +117,7 @@ class WSI_Master_Dataset(Dataset):
             list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles))
 
         # The train set should be a combination of all sets except the test set and validation set:
-        if self.DataSet == 'Breast':
+        if self.DataSet == 'Breast' or 'ABCTB_TCGA':
             fold_column_name = 'test fold idx breast'
         else:
             fold_column_name = 'test fold idx'
@@ -156,7 +155,8 @@ class WSI_Master_Dataset(Dataset):
         all_in_fold = list(self.meta_data_DF[fold_column_name])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(
             self.desired_magnification)])
-        if self.DataSet != 'TCGA':
+        #if self.DataSet != 'TCGA':
+        if 'TCGA' not in dir_dict:
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -178,8 +178,9 @@ class WSI_Master_Dataset(Dataset):
         self.magnification = []
         self.slides = []
         self.grid_lists = []
-        if self.DataSet=='ABCTB': # RanS 12.4.21, support presaved patches
+        if self.DataSet == 'ABCTB': # RanS 12.4.21, support presaved patches
             self.tiles_dir = []
+            self.rand_crop = transforms.RandomCrop(self.tile_size)
 
         for _, index in enumerate(tqdm(valid_slide_indices)):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
@@ -193,16 +194,13 @@ class WSI_Master_Dataset(Dataset):
 
                 # Preload slides - improves speed during training.
                 try:
-                    # image_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], all_image_file_names[index])
                     image_file = os.path.join(dir_dict[all_image_ids[index]], all_image_file_names[index])
-                    #print('image_file:', image_file) #temp RanS 6.4.21
                     if DataSet == 'ABCTB':  # RanS 12.4.21, support presaved patches
                         tiles_dir = os.path.join(dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
                         self.tiles_dir.append(tiles_dir)
                     else: #RanS 12.4.21, support presaved patches
                         self.slides.append(openslide.open_slide(image_file))
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
-                        # grid_file = os.path.join(self.ROOT_PATH, all_image_path_names[index], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         grid_file = os.path.join(dir_dict[all_image_ids[index]], 'Grids',
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
@@ -213,7 +211,7 @@ class WSI_Master_Dataset(Dataset):
                         'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
 
         # Setting the transformation:
-        self.transform, self.scale_factor = define_transformations(transform_type, self.train, self.tile_size,
+        self.transform = define_transformations(transform_type, self.train, self.tile_size,
                                                                    self.color_param)
 
         if train_type == 'REG':
@@ -233,20 +231,19 @@ class WSI_Master_Dataset(Dataset):
         start_getitem = time.time()
         idx = idx % self.real_length
 
-        if self.DataSet == 'ABCTB': #RanS 12.4.21, support presaved patches
-            #slide_name = self.image_file_names[idx]
-            #n_tiles = self.tissue_tiles[idx]
+        if self.DataSet == 'ABCTB': #load presaved patches
             idxs = sample(range(self.tissue_tiles[idx]), self.bag_size)
-            #tiles_dir = os.path.join('.'.join((os.path.basename(slide_name)).split('.')[:-1]))
-            tiles = []
-            for ind in idxs:
-                tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(ind) + '.data')
+            empty_image = Image.fromarray(np.uint8(np.zeros((self.tile_size, self.tile_size, 3))))
+            tiles = [empty_image] * self.bag_size
+            for ii, tile_ind in enumerate(idxs):
+                tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(tile_ind) + '.data')
                 with open(tile_path, 'rb') as fh:
                     header = fh.readline()
                     tile_bin = fh.read()
                 dtype, w, h, c = header.decode('ascii').strip().split()
                 tile = np.frombuffer(tile_bin, dtype=dtype).reshape((int(w), int(h), int(c)))
-                tiles.append(Image.fromarray(tile))
+                tile1 = self.rand_crop(Image.fromarray(tile))
+                tiles[ii] = tile1
         else:
             if sys.platform == 'win32':
                 image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
@@ -258,7 +255,8 @@ class WSI_Master_Dataset(Dataset):
                                             slide=slide,
                                             how_many=self.bag_size,
                                             magnification=self.magnification[idx],
-                                            tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                            #tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                            tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
                                             # Fix boundaries with scale
                                             print_timing=self.print_time,
                                             desired_mag=self.desired_magnification)
@@ -477,8 +475,6 @@ class Infer_Dataset(WSI_Master_Dataset):
         start_getitem = time.time()
         if self.tiles_to_go is None:
             self.tiles_to_go = self.num_tiles[self.slide_num]
-            '''self.current_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
-            self.current_slide = openslide.open_slide(self.current_file)'''
 
             if sys.platform == 'win32':
                 image_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])

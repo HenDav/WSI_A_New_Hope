@@ -155,17 +155,24 @@ def _get_tiles(slide: openslide.OpenSlide,
 
         plt.show()
 
-    tiles_PIL = []
+    #tiles_PIL = []
+
+    #RanS 28.4.21, preallocate list of images
+    empty_image = Image.fromarray(np.uint8(np.zeros((output_tile_sz,output_tile_sz,3))))
+    tiles_PIL = [empty_image] * len(locations)
+
     start_gettiles = time.time()
 
     if oversized_HC_tiles:
         adjusted_tile_sz *= 2
+        output_tile_sz *= 2
+        tile_shifting = (tile_size_level_0 // 2, tile_size_level_0 // 2)
 
     for idx, loc in enumerate(locations):
         if random_shift:
             tile_shifting = sample(range(-tile_size_level_0 // 2, tile_size_level_0 // 2), 2)
-        elif oversized_HC_tiles:
-            tile_shifting = (tile_size_level_0 // 2, tile_size_level_0 // 2)
+        #elif oversized_HC_tiles:
+        #    tile_shifting = (tile_size_level_0 // 2, tile_size_level_0 // 2)
 
         if random_shift or oversized_HC_tiles:
             new_loc_init = {'Top': loc[0] - tile_shifting[0],
@@ -197,7 +204,7 @@ def _get_tiles(slide: openslide.OpenSlide,
         if adjusted_tile_sz != output_tile_sz:
             image = image.resize((output_tile_sz, output_tile_sz))
 
-        tiles_PIL.append(image)
+        tiles_PIL[idx] = image
 
     end_gettiles = time.time()
 
@@ -577,7 +584,7 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                                                   mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
                                                   std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
                                               ])
-    scale_factor = 0
+    scale_factor = 0.2
     # if self.transform and self.train:
     if transform_type != 'none' and train:
         # TODO: Consider using - torchvision.transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False)
@@ -590,7 +597,6 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                 transforms.Compose([MyRotation(angles=[0, 90, 180, 270]),
                                     transforms.RandomVerticalFlip()])
         elif transform_type in ['cbnfrsc', 'cbnfrs']:  # color, blur, noise, flip, rotate, scale, +-cutout
-            scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
@@ -601,11 +607,10 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                     transforms.RandomVerticalFlip(),
                     #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
-                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.RandomAffine(degrees=0, scale=(1, 1 + scale_factor)), #RanS 18.4.21, avoid the need to keep larger patches
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type in ['pcbnfrsc', 'pcbnfrs']:  # parameterized color, blur, noise, flip, rotate, scale, +-cutout
-            scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     # transforms.ColorJitter(brightness=(0.65, 1.35), contrast=(0.5, 1.5),
@@ -624,7 +629,6 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
 
         elif transform_type == 'aug_receptornet':  #
         #elif transform_type == 'c_0_05_bnfrsc' or 'c_0_05_bnfrs':  # color 0.1, blur, noise, flip, rotate, scale, +-cutout
-            scale_factor = 0
             transform1 = \
                 transforms.Compose([
                     transforms.ColorJitter(brightness=64.0/255, contrast=0.75, saturation=0.25, hue=0.04),
@@ -638,7 +642,6 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                 ])
 
         elif transform_type == 'cbnfr':  # color, blur, noise, flip, rotate
-            scale_factor = 0
             transform1 = \
                 transforms.Compose([
                     transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25),  # RanS 2.12.20
@@ -651,7 +654,6 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type in ['bnfrsc', 'bnfrs']:  # blur, noise, flip, rotate, scale, +-cutout
-            scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)), #RanS 23.12.20
@@ -659,21 +661,19 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                     transforms.RandomVerticalFlip(),
                     #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
-                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.RandomAffine(degrees=0, scale=(1, 1 + scale_factor)), #RanS 18.4.21, avoid the need to keep larger patches
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type == 'frs':  # flip, rotate, scale
-            scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     transforms.RandomVerticalFlip(),
                     #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
-                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.RandomAffine(degrees=0, scale=(1, 1 + scale_factor)), #RanS 18.4.21, avoid the need to keep larger patches
                     transforms.CenterCrop(tile_size),  #fix boundary when scaling<1
                 ])
         elif transform_type == 'hedcfrs':  # HED color, flip, rotate, scale
-            scale_factor = 0.2
             transform1 = \
                 transforms.Compose([
                     transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25)),
@@ -681,7 +681,7 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
                     transforms.RandomVerticalFlip(),
                     #transforms.RandomHorizontalFlip(),
                     MyRotation(angles=[0, 90, 180, 270]),
-                    transforms.RandomAffine(degrees=0, scale=(1 - scale_factor, 1 + scale_factor)),
+                    transforms.RandomAffine(degrees=0, scale=(1, 1 + scale_factor)), #RanS 18.4.21, avoid the need to keep larger patches
                     transforms.CenterCrop(tile_size),  # fix boundary when scaling<1
                     #transforms.functional.crop(top=0, left=0, height=tile_size, width=tile_size)
                     # fix boundary when scaling<1
@@ -699,31 +699,54 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
     #    transform.transforms.append(MyMeanPixelRegularization(p=0.75))
         #transform.transforms.append(transforms.RandomApply(torch.nn.ModuleList([MyMeanPixelRegularization]), p=0.75))
 
-    return transform, scale_factor
+    return transform
 
 
 def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
-    if Dataset == 'Breast':
+    TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
+    ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
+    HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
+    SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
+
+    TCGA_gipdeep3_path = r'/mnt/hdd/All_Data/TCGA'
+    HEROHE_gipdeep3_path = r'/mnt/hdd/All_Data/HEROHE'
+    ABCTB_gipdeep3_path = r'/mnt/hdd/All_Data/ABCTB'
+
+    TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
+    HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
+    ABCTB_ran_path = r'C:\ran_data\ABCTB\ABCTB_examples\ABCTB'
+
+    TCGA_omer_path = r'All Data/TCGA'
+    HEROHE_omer_path = r'All Data/HEROHE'
+
+    if Dataset == 'ABCTB_TCGA':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['TCGA'] = TCGA_gipdeep_path
+            dir_dict['ABCTB'] = ABCTB_gipdeep_path
+        elif sys.platform == 'win32':  # GIPdeep
+            dir_dict['TCGA'] = TCGA_ran_path
+            dir_dict['ABCTB'] = ABCTB_ran_path
+    elif Dataset == 'Breast':
         if sys.platform == 'linux':  # GIPdeep
             for ii in np.arange(1, 4):
                 dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
 
             if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['TCGA'] = r'/mnt/hdd/All_Data/TCGA'
-                dir_dict['HEROHE'] = r'/mnt/hdd/All_Data/HEROHE'
-                dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
+                dir_dict['TCGA'] = TCGA_gipdeep3_path
+                dir_dict['HEROHE'] = HEROHE_gipdeep3_path
+                dir_dict['ABCTB'] = ABCTB_gipdeep_path
             else:
-                dir_dict['TCGA'] = r'/home/womer/project/All Data/TCGA'
-                dir_dict['HEROHE'] = r'/home/womer/project/All Data/HEROHE'
+                dir_dict['TCGA'] = TCGA_gipdeep_path
+                dir_dict['HEROHE'] = HEROHE_gipdeep_path
 
         elif sys.platform == 'win32':  #Ran local
-            dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
-            dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
+            dir_dict['TCGA'] = TCGA_ran_path
+            dir_dict['HEROHE'] = HEROHE_ran_path
 
         elif sys.platform == 'darwin':   #Omer local
-            dir_dict['TCGA'] = r'All Data/TCGA'
-            dir_dict['HEROHE'] = r'All Data/HEROHE'
+            dir_dict['TCGA'] = TCGA_omer_path
+            dir_dict['HEROHE'] = HEROHE_omer_path
 
         else:
             raise Exception('Unrecognized platform')
@@ -731,15 +754,15 @@ def get_datasets_dir_dict(Dataset: str):
     elif Dataset == 'TCGA':
         if sys.platform == 'linux':  # GIPdeep
             if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['TCGA'] = r'/mnt/hdd/All_Data/TCGA'
+                dir_dict['TCGA'] = TCGA_gipdeep3_path
             else:  # Run from netapp
-                dir_dict['TCGA'] = r'/home/womer/project/All Data/TCGA'
+                dir_dict['TCGA'] = TCGA_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['TCGA'] = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat'
+            dir_dict['TCGA'] = TCGA_ran_path
 
         elif sys.platform == 'darwin':  # Omer local
-            dir_dict['TCGA'] = r'All Data/TCGA'
+            dir_dict['TCGA'] = TCGA_omer_path
 
         else:
             raise Exception('Unrecognized platform')
@@ -747,39 +770,43 @@ def get_datasets_dir_dict(Dataset: str):
     elif Dataset == 'HEROHE':
         if sys.platform == 'linux':  # GIPdeep
             if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['HEROHE'] = r'/mnt/hdd/All_Data/HEROHE'
+                dir_dict['HEROHE'] = HEROHE_gipdeep3_path
             else:  # Run from netapp
-                dir_dict['HEROHE'] = r'/home/womer/project/All Data/HEROHE'
+                dir_dict['HEROHE'] = HEROHE_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['HEROHE'] = r'C:\ran_data\HEROHE_examples'
+            dir_dict['HEROHE'] = HEROHE_ran_path
 
         elif sys.platform == 'darwin':  # Omer local
-            dir_dict['HEROHE'] = r'All Data/HEROHE'
+            dir_dict['HEROHE'] = HEROHE_omer_path
 
     elif Dataset == 'ABCTB':
-        if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
-            dir_dict['ABCTB'] = r'/mnt/hdd/All_Data/ABCTB'
-            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/mrxs_50test_temp/ABCTB'  # temp RanS 6.4.21
-            #dir_dict['ABCTB'] = r'/mnt/hdd/temp/ABCTB_50_slides/ABCTB'  # temp RanS 13.4.21
+        if sys.platform == 'linux':  # GIPdeep Run from local files
+            dir_dict['ABCTB'] = ABCTB_gipdeep_path #non local, temp RanS 28.4.21
+            #dir_dict['ABCTB'] = ABCTB_gipdeep3_path
+
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['ABCTB'] = r'C:\ran_data\ABCTB\ABCTB_examples\ABCTB'
-        else:
-            raise Exception('ABCTB can be used only on gipdeep3')
+            dir_dict['ABCTB'] = ABCTB_ran_path
+        #else:
+        #    raise Exception('ABCTB can be used only on gipdeep3')
 
     elif Dataset == 'SHEBA':
-        if sys.platform == 'linux' and platform.node() == 'gipdeep3':  # GIPdeep Run from local files
-            dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA' #TODO: move to local
-        else:
-            dir_dict['SHEBA'] = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
+        if sys.platform == 'linux':
+            dir_dict['SHEBA'] = SHEBA_gipdeep_path
 
     elif Dataset == 'LUNG':
         if sys.platform == 'linux':
-            dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG/LUNG' #TODO: move to local
+            dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG/LUNG'
         elif sys.platform == 'win32':  # Ran local
             dir_dict['LUNG'] = r'C:\ran_data\Lung_examples\LUNG'
         elif sys.platform == 'darwin':  # Omer local
             dir_dict['LUNG'] = 'All Data/LUNG'
+
+    elif Dataset == 'PDL1':
+        if sys.platform == 'linux':
+            dir_dict['PDL1'] = r'/mnt/gipnetapp_public/sgils/LUNG/PDL1'
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict['PDL1'] = r'C:\ran_data\IHC_examples\PDL1'
 
     return dir_dict
 
