@@ -780,6 +780,12 @@ def get_datasets_dir_dict(Dataset: str):
         elif sys.platform == 'darwin':  # Omer local
             dir_dict['HEROHE'] = HEROHE_omer_path
 
+    elif Dataset == 'ABCTB_TIF':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['ABCTB_TIF'] = r'/home/womer/project/All Data/ABCTB_TIF'
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['ABCTB_TIF'] = r'All Data/ABCTB_TIF'
+
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux':  # GIPdeep Run from local files
             dir_dict['ABCTB'] = ABCTB_gipdeep_path #non local, temp RanS 28.4.21

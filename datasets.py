@@ -96,7 +96,10 @@ class WSI_Master_Dataset(Dataset):
         slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
             self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == 0])
 
-        slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1]) #RanS 9.5.21
+        if 'bad segmentation' in self.meta_data_DF.columns:
+            slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1]) #RanS 9.5.21
+        else:
+            slides_with_bad_seg = set()
 
         # Define number of tiles to be used
         if train_type == 'REG':
