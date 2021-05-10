@@ -375,7 +375,7 @@ if __name__ == '__main__':
     #num_workers = 4 #temp RanS 24.3.21
 
     if sys.platform == 'win32':
-        num_workers = 4
+        num_workers = 0 #temp RanS 3.5.21
 
     print('num workers = ', num_workers)
 
@@ -408,12 +408,6 @@ if __name__ == '__main__':
     sampler = None
     do_shuffle = True
     if args.balanced_sampling:
-        '''num_pos, num_neg = train_dset.target.count('Positive'), train_dset.target.count('Negative')
-        num_samples = (num_neg + num_pos) * train_dset.factor
-        targets_numpy = np.array(train_dset.target)
-        pos_targets, neg_targets = targets_numpy == 'Positive', targets_numpy == 'Negative'
-        weights = np.zeros(num_samples)
-        weights[pos_targets], weights[neg_targets] = 1 / num_pos, 1 / num_neg'''
         labels = pd.DataFrame(train_dset.target * train_dset.factor)
         n_pos = np.sum(labels == 'Positive').item()
         n_neg = np.sum(labels == 'Negative').item()
@@ -431,7 +425,6 @@ if __name__ == '__main__':
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
-
 
     # Load model
     model = eval(args.model)

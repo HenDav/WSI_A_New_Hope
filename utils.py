@@ -935,13 +935,20 @@ def save_code_files(args: argsNamespace, train_DataSet):
     args_dict = vars(args)
 
     # Add Grid Data:
-    grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids', 'production_meta_data.xlsx')
-    if os.path.isfile(grid_meta_data_file):
-        grid_data_DF = pd.read_excel(grid_meta_data_file)
-        grid_dict = grid_data_DF.to_dict()
-        data_dict = {**args_dict, **grid_dict}
-    else:
-        data_dict = args_dict
+    data_dict = args_dict
+    # grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids', 'production_meta_data.xlsx')
+    for _, key in enumerate(train_DataSet.dir_dict):
+        grid_meta_data_file = os.path.join(train_DataSet.dir_dict[key], 'Grids', 'production_meta_data.xlsx')
+        if os.path.isfile(grid_meta_data_file):
+            grid_data_DF = pd.read_excel(grid_meta_data_file)
+            grid_dict = grid_data_DF.to_dict('split')
+            grid_dict['dataset'] = key
+            grid_dict.pop('index')
+            grid_dict.pop('columns')
+            data_dict[key + '_grid'] = grid_dict
+            #data_dict = {**args_dict, **grid_dict}
+    #else:
+    #    data_dict = args_dict
 
     data_DF = pd.DataFrame([data_dict]).transpose()
 

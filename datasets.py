@@ -57,20 +57,16 @@ class WSI_Master_Dataset(Dataset):
         self.color_param = color_param
 
         # Get DataSets location:
-        dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
+        self.dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
         print('Train Data will be taken from these locations:')
-        print(dir_dict)
+        print(self.dir_dict)
         locations_list = []
 
-        #temp cancelled RanS 3.5.21
-        #if sys.platform == 'win32':
-        #    self.ROOT_PATH = dir_dict[self.DataSet] #RanS 5.4.21 - will make problems with breast dataset?
+        for _, key in enumerate(self.dir_dict):
+            locations_list.append(self.dir_dict[key])
 
-        for _, key in enumerate(dir_dict):
-            locations_list.append(dir_dict[key])
-
-            slide_meta_data_file = os.path.join(dir_dict[key], 'slides_data_' + key + '.xlsx')
-            grid_meta_data_file = os.path.join(dir_dict[key], 'Grids', 'Grid_data.xlsx')
+            slide_meta_data_file = os.path.join(self.dir_dict[key], 'slides_data_' + key + '.xlsx')
+            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids', 'Grid_data.xlsx')
 
             slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
             grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
@@ -100,6 +96,8 @@ class WSI_Master_Dataset(Dataset):
         slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
             self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == 0])
 
+        slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1]) #RanS 9.5.21
+
         # Define number of tiles to be used
         if train_type == 'REG':
             n_minimal_tiles = n_tiles
@@ -114,10 +112,10 @@ class WSI_Master_Dataset(Dataset):
                 '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
         valid_slide_indices = np.array(
-            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles))
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg))
 
         # The train set should be a combination of all sets except the test set and validation set:
-        if self.DataSet == 'Breast' or 'ABCTB_TCGA':
+        if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
             fold_column_name = 'test fold idx breast'
         else:
             fold_column_name = 'test fold idx'
@@ -146,7 +144,7 @@ class WSI_Master_Dataset(Dataset):
         all_image_file_names = list(self.meta_data_DF['file'])
 
         '''if DataSet == 'Breast':
-            all_image_path_names = [os.path.join(dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
+            all_image_path_names = [os.path.join(self.dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
         else:
             all_image_path_names = list(self.meta_data_DF['id'])'''
 
@@ -156,7 +154,7 @@ class WSI_Master_Dataset(Dataset):
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(
             self.desired_magnification)])
         #if self.DataSet != 'TCGA':
-        if 'TCGA' not in dir_dict:
+        if 'TCGA' not in self.dir_dict:
             self.DX = False
         if self.DX:
             all_is_DX_cut = list(self.meta_data_DF['DX'])
@@ -178,30 +176,30 @@ class WSI_Master_Dataset(Dataset):
         self.magnification = []
         self.slides = []
         self.grid_lists = []
-        if self.DataSet == 'ABCTB': # RanS 12.4.21, support presaved patches
-            self.tiles_dir = []
-            self.rand_crop = transforms.RandomCrop(self.tile_size)
+        self.presaved_tiles = []
 
         for _, index in enumerate(tqdm(valid_slide_indices)):
             if (self.DX and all_is_DX_cut[index]) or not self.DX:
                 self.image_file_names.append(all_image_file_names[index])
                 # self.image_path_names.append(all_image_path_names[index])
-                self.image_path_names.append(dir_dict[all_image_ids[index]])
+                self.image_path_names.append(self.dir_dict[all_image_ids[index]])
                 self.in_fold.append(all_in_fold[index])
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
+                self.presaved_tiles.append(all_image_ids[index]=='ABCTB')
 
                 # Preload slides - improves speed during training.
                 try:
-                    image_file = os.path.join(dir_dict[all_image_ids[index]], all_image_file_names[index])
-                    if DataSet == 'ABCTB':  # RanS 12.4.21, support presaved patches
-                        tiles_dir = os.path.join(dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
-                        self.tiles_dir.append(tiles_dir)
-                    else: #RanS 12.4.21, support presaved patches
+                    image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
+                    if self.presaved_tiles[-1]:
+                        tiles_dir = os.path.join(self.dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
+                        self.slides.append(tiles_dir)
+                        self.grid_lists.append(0)
+                    else:
                         self.slides.append(openslide.open_slide(image_file))
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
-                        grid_file = os.path.join(dir_dict[all_image_ids[index]], 'Grids',
+                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids',
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
                             grid_list = pickle.load(filehandle)
@@ -213,6 +211,8 @@ class WSI_Master_Dataset(Dataset):
         # Setting the transformation:
         self.transform = define_transformations(transform_type, self.train, self.tile_size,
                                                                    self.color_param)
+        if np.sum(self.presaved_tiles):
+            self.rand_crop = transforms.RandomCrop(self.tile_size)
 
         if train_type == 'REG':
             self.factor = n_tiles
@@ -231,12 +231,13 @@ class WSI_Master_Dataset(Dataset):
         start_getitem = time.time()
         idx = idx % self.real_length
 
-        if self.DataSet == 'ABCTB': #load presaved patches
+        if self.presaved_tiles[idx]:  # load presaved patches
             idxs = sample(range(self.tissue_tiles[idx]), self.bag_size)
             empty_image = Image.fromarray(np.uint8(np.zeros((self.tile_size, self.tile_size, 3))))
             tiles = [empty_image] * self.bag_size
             for ii, tile_ind in enumerate(idxs):
-                tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(tile_ind) + '.data')
+                #tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(tile_ind) + '.data')
+                tile_path = os.path.join(self.slides[idx], 'tile_' + str(tile_ind) + '.data')
                 with open(tile_path, 'rb') as fh:
                     header = fh.readline()
                     tile_bin = fh.read()
@@ -245,11 +246,7 @@ class WSI_Master_Dataset(Dataset):
                 tile1 = self.rand_crop(Image.fromarray(tile))
                 tiles[ii] = tile1
         else:
-            if sys.platform == 'win32':
-                image_file = os.path.join(self.ROOT_PATH, self.image_path_names[idx], self.image_file_names[idx])
-                slide = openslide.open_slide(image_file)
-            else:
-                slide = self.slides[idx]
+            slide = self.slides[idx]
 
             tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
                                             slide=slide,
@@ -425,6 +422,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.magnification = []
         self.num_tiles = []
         self.slide_grids = []
+        self.grid_lists = []
 
         ind = 0
         for _, slide_num in enumerate(self.valid_slide_indices):
@@ -439,23 +437,27 @@ class Infer_Dataset(WSI_Master_Dataset):
 
                 # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
                 self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
-
-                basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                grid_file = os.path.join(self.image_path_names[ind], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
-
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
 
-                with open(grid_file, 'rb') as filehandle:
-                    grid_list = pickle.load(filehandle)
-                chosen_locations = [grid_list[loc] for loc in which_patches]
-                chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
-                self.slide_grids.extend(chosen_locations_chunks)
+                if self.presaved_tiles[ind]:
+                    self.grid_lists.append(0)
+                else:
+                    basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
+                    grid_file = os.path.join(self.image_path_names[ind], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    with open(grid_file, 'rb') as filehandle:
+                        grid_list = pickle.load(filehandle)
+                        self.grid_lists.append(grid_list)
+                    #chosen_locations = [grid_list[loc] for loc in which_patches] #moved to get_item, RanS 5.5.21
+
+                #chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
+                patch_ind_chunks = chunks(which_patches, self.tiles_per_iter) #RanS 5.5.21
+                self.slide_grids.extend(patch_ind_chunks)
 
                 ind += 1  # RanS 29.1.21
 
         # The following properties will be used in the __getitem__ function
         self.tiles_to_go = None
-        self.slide_num = 0
+        self.slide_num = -1
         self.current_file = None
         print(
             'Initiation of WSI INFERENCE for {} DataSet and {} of folds {} is Complete. {} Slides, Working on Tiles of size {}^2. {} Tiles per slide, {} tiles per iteration, {} iterations to complete full inference'
@@ -474,80 +476,66 @@ class Infer_Dataset(WSI_Master_Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         if self.tiles_to_go is None:
+            self.slide_num += 1  #RanS 5.5.21
             self.tiles_to_go = self.num_tiles[self.slide_num]
 
-            if sys.platform == 'win32':
-                image_file = os.path.join(self.ROOT_PATH, self.image_path_names[self.slide_num], self.image_file_names[self.slide_num])
-                self.current_slide = openslide.open_slide(image_file)
-            else:
-                self.current_slide = self.slides[self.slide_num]
+            self.current_slide = self.slides[self.slide_num]
 
             self.initial_num_patches = self.num_tiles[self.slide_num]
 
-            # RanS 11.3.21
-            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+            if not self.presaved_tiles[self.slide_num]: #RanS 5.5.21
+                # RanS 11.3.21
+                desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
-            level, best_next_level = -1, -1
-            for index, downsample in enumerate(self.current_slide.level_downsamples):
-                if isclose(desired_downsample, downsample, rel_tol=1e-3):
-                    level = index
-                    level_downsample = 1
-                    break
+                level, best_next_level = -1, -1
+                for index, downsample in enumerate(self.current_slide.level_downsamples):
+                    if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                        level = index
+                        level_downsample = 1
+                        break
 
-                elif downsample < desired_downsample:
-                    best_next_level = index
-                    level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
+                    elif downsample < desired_downsample:
+                        best_next_level = index
+                        level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
-            self.adjusted_tile_size = self.tile_size * level_downsample
-            self.best_slide_level = level if level > best_next_level else best_next_level
-            self.level_0_tile_size = int(desired_downsample) * self.tile_size
+                self.adjusted_tile_size = self.tile_size * level_downsample
+                self.best_slide_level = level if level > best_next_level else best_next_level
+                self.level_0_tile_size = int(desired_downsample) * self.tile_size
 
         label = [1] if self.target[self.slide_num] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
+
+        if self.presaved_tiles[self.slide_num]: #RanS 5.5.21
+            idxs = self.slide_grids[idx]
+            empty_image = Image.fromarray(np.uint8(np.zeros((self.tile_size, self.tile_size, 3))))
+            tiles = [empty_image] * len(idxs)
+            for ii, tile_ind in enumerate(idxs):
+                # tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(tile_ind) + '.data')
+                tile_path = os.path.join(self.slides[self.slide_num], 'tile_' + str(tile_ind) + '.data')
+                with open(tile_path, 'rb') as fh:
+                    header = fh.readline()
+                    tile_bin = fh.read()
+                dtype, w, h, c = header.decode('ascii').strip().split()
+                tile = np.frombuffer(tile_bin, dtype=dtype).reshape((int(w), int(h), int(c)))
+                tile1 = self.rand_crop(Image.fromarray(tile))
+                tiles[ii] = tile1
+        else:
+            locs = [self.grid_lists[self.slide_num][loc] for loc in self.slide_grids[idx]]
+            tiles, time_list = _get_tiles(slide=self.current_slide,
+                                          #locations=self.slide_grids[idx],
+                                          locations=locs,
+                                          tile_size_level_0=self.level_0_tile_size,
+                                          adjusted_tile_sz=self.adjusted_tile_size,
+                                          output_tile_sz=self.tile_size,
+                                          best_slide_level=self.best_slide_level,
+                                          random_shift=True)
+
         if self.tiles_to_go <= self.tiles_per_iter:
             self.tiles_to_go = None
-            self.slide_num += 1
+            #self.slide_num += 1 #moved RanS 5.5.21
         else:
             self.tiles_to_go -= self.tiles_per_iter
-
-        '''
-        #adjusted_tile_size = self.tile_size * (self.magnification[idx] // self.BASIC_MAGNIFICATION)
-        downsample = int(self.magnification[idx] / self.basic_magnification)
-        adjusted_tile_size = int(self.tile_size * downsample) #RanS 30.12.20
-
-        tiles, time_list = _get_tiles(self.current_slide, #RanS 9.2.21, preload slides
-                                      self.slide_grids[idx],
-                                      adjusted_tile_size,
-                                      self.print_time,
-                                      downsample)'''
-
-        # desired_downsample = self.magnification[idx] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
-        # RanS 11.3.21
-        '''desired_downsample = self.magnification[self.slide_num] / self.basic_magnification  # downsample needed for each dimension (reflected by level_downsamples property)
-
-        level, best_next_level = -1, -1
-        for index, downsample in enumerate(self.current_slide.level_downsamples):
-            if isclose(desired_downsample, downsample, rel_tol=1e-3):
-                level = index
-                level_downsample = 1
-                break
-
-            elif downsample < desired_downsample:
-                best_next_level = index
-                level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
-
-        adjusted_tile_size = self.tile_size * level_downsample
-        best_slide_level = level if level > best_next_level else best_next_level
-        level_0_tile_size = int(desired_downsample) * self.tile_size'''
-
-        tiles, time_list = _get_tiles(slide=self.current_slide,
-                                      locations=self.slide_grids[idx],
-                                      tile_size_level_0=self.level_0_tile_size,
-                                      adjusted_tile_sz=self.adjusted_tile_size,
-                                      output_tile_sz=self.tile_size,
-                                      best_slide_level=self.best_slide_level,
-                                      random_shift=True)
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 
@@ -576,4 +564,5 @@ class Infer_Dataset(WSI_Master_Dataset):
                 images[i] = trans(tiles[i])
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
-        return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename
+        #return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename
+        return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21

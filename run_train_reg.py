@@ -7,10 +7,11 @@ if infer:
                     #'--folds', '123456',
                     '--folds', '2',
                     #'--dataset', 'Breast',
-                    '--dataset', 'TCGA',
+                    #'--dataset', 'TCGA',
+                    '--dataset', 'ABCTB_TCGA',
                     '--num_tiles', '30',
-                    '-ex', '38',
-                    '--from_epoch', '1080',
+                    '-ex', '321',
+                    '--from_epoch', '0',
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',

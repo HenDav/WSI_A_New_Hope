@@ -179,7 +179,8 @@ with torch.no_grad():
                 patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
-                all_slide_names[slide_num] = os.path.basename(slide_file[0])
+                #all_slide_names[slide_num] = os.path.basename(slide_file[0])
+                all_slide_names[slide_num] = slide_file[0] #RanS 5.5.21
 
                 if target == 1 and predicted == 1:
                     correct_pos[model_num] += 1
