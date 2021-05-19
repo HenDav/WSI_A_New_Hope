@@ -1,6 +1,6 @@
 import subprocess
 
-infer = False
+infer = True
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',

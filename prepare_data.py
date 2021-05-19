@@ -12,7 +12,6 @@ parser.add_argument('--grid', dest='grid', action='store_true', help='need to ma
 parser.add_argument('--tile_size', type=int, default=256, help='size of tiles')
 parser.add_argument('--stats', dest='stats', action='store_true', help='need to compute statistical data?')
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
-#parser.add_argument('--data_folder', type=str, default='All Data/HEROHE', help='location of data folder')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='type of dataset to use (HEROHE/TCGA/LUNG)')
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
 parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
@@ -22,6 +21,8 @@ parser.add_argument('--out_path', type=str, default='', help='path for output fi
 parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
 parser.add_argument('--oversized_HC_tiles', action='store_true', help='create larger tiles to support random shift') #RanS 18.4.21
+parser.add_argument('--as_jpg', action='store_true', help='save tiles as jpg') #RanS 10.5.21
+#parser.add_argument('--wide_tile', action='store_true', help='use wide tiles for viewing') #RanS 11.5.21
 args = parser.parse_args()
 
 num_workers = get_cpu()
@@ -40,9 +41,6 @@ if __name__ =='__main__':
                                                 out_path=out_path,
                                                 num_workers=num_workers)
     if args.grid:
-        '''utils_data_managment.make_grid(DataSet=args.dataset, ROOT_DIR=args.data_root, tile_sz=args.tile_size,
-                                       tissue_coverage=args.tissue_coverage, desired_mag=args.mag, out_path=out_path)'''
-
         utils_data_managment.make_grid(DataSet=args.dataset,
                                        ROOT_DIR=args.data_root,
                                        tile_sz=args.tile_size,
@@ -52,7 +50,9 @@ if __name__ =='__main__':
                                        different_SegData_path_extension=args.SegData_path,
                                        num_workers=num_workers)
     if args.stats:
-        utils_data_managment.compute_normalization_values(DataSet=args.dataset, ROOT_DIR=args.data_root)
+        utils_data_managment.compute_normalization_values(DataSet=args.dataset,
+                                                          ROOT_DIR=args.data_root,
+                                                          tile_size=args.tile_size)
     if args.hard_copy:
         utils_data_managment.make_tiles_hard_copy(DataSet=args.dataset,
                                                   ROOT_DIR=args.data_root,
@@ -61,7 +61,8 @@ if __name__ =='__main__':
                                                   desired_magnification=args.mag,
                                                   added_extension=args.added_extension,
                                                   num_workers=num_workers,
-                                                  oversized_HC_tiles=args.oversized_HC_tiles)
+                                                  oversized_HC_tiles=args.oversized_HC_tiles,
+                                                  as_jpg=args.as_jpg)
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 

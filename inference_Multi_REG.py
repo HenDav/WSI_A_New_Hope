@@ -42,7 +42,7 @@ data_path = ''
 
 print('Loading pre-saved models:')
 models = []
-
+dx = False
 
 for counter in range(len(args.from_epoch)):
     epoch = args.from_epoch[counter]
@@ -51,12 +51,12 @@ for counter in range(len(args.from_epoch)):
     print('  Exp. {} and Epoch {}'.format(experiment, epoch))
     # Basic meta data will be taken from the first model (ONLY if all inferences are done from the same experiment)
     if counter == 0:
-        output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name = utils.run_data(experiment=experiment)
+        output_dir, _, _, TILE_SIZE, _, _, dx, _, args.target, _, model_name = utils.run_data(experiment=experiment)
         if different_experiments:
             Output_Dirs.append(output_dir)
         fix_data_path = True
     elif counter > 0 and different_experiments:
-        output_dir, _, _, _, _, _, _, _, target, _, model_name = utils.run_data(experiment=experiment)
+        output_dir, _, _, _, _, _, dx, _, target, _, model_name = utils.run_data(experiment=experiment)
         Output_Dirs.append(output_dir)
         fix_data_path = True
 
@@ -116,7 +116,8 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   target_kind=args.target,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles,
-                                  desired_slide_magnification=args.mag
+                                  desired_slide_magnification=args.mag,
+                                  dx=dx
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 

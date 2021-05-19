@@ -4,6 +4,7 @@ import pickle
 from cycler import cycler
 import numpy as np
 import pandas as pd
+import os
 
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
@@ -152,15 +153,29 @@ inference_files['exp279_fold1_epoch860_test_500'] = r'C:\Pathnet_results\MIL_gen
 inference_files['exp279_fold1_epoch880_test_500'] = r'C:\Pathnet_results\MIL_general_try4\IHC_runs\exp279\Inference\Model_Epoch_880-Folds_[1]-Tiles_500.data'
 inference_files['exp279_fold1_epoch900_test_500'] = r'C:\Pathnet_results\MIL_general_try4\IHC_runs\exp279\Inference\Model_Epoch_900-Folds_[1]-Tiles_500.data'"""
 
-inference_files['exp277_fold1_epoch300_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_300-Folds_[1]-Tiles_500.data'
+"""inference_files['exp277_fold1_epoch300_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_300-Folds_[1]-Tiles_500.data'
 inference_files['exp277_fold1_epoch320_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_320-Folds_[1]-Tiles_500.data'
 inference_files['exp277_fold1_epoch340_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_340-Folds_[1]-Tiles_500.data'
 inference_files['exp277_fold1_epoch360_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_360-Folds_[1]-Tiles_500.data'
 inference_files['exp277_fold1_epoch380_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_380-Folds_[1]-Tiles_500.data'
-inference_files['exp277_fold1_epoch400_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_400-Folds_[1]-Tiles_500.data'
+inference_files['exp277_fold1_epoch400_test_500'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\exp277\Inference\Model_Epoch_400-Folds_[1]-Tiles_500.data'"""
+
+"""inference_files['exp283_fold2_epoch700_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_700-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch720_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_720-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch740_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_740-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch760_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_760-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch780_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_780-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch800_test_500_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_w_inky_slides\Model_Epoch_800-Folds_[2]-Tiles_500.data'"""
+
+inference_files['exp283_fold2_epoch700_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_700-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch720_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_720-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch740_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_740-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch760_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_760-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch780_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_780-Folds_[2]-Tiles_500.data'
+inference_files['exp283_fold2_epoch800_test_500_no_inky_slides'] = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\exp283\Inference_no_inky_slides\Model_Epoch_800-Folds_[2]-Tiles_500.data'
 
 infer_type = 'REG'
-is_TCGA = False
+patient_level = True
 
 
 def auc_for_n_patches(patch_scores, n, all_targets):
@@ -210,9 +225,15 @@ for ind, key in enumerate(inference_files.keys()):
 
         slide_score_all.append(slide_score_mean)
 
-        #results per patient RanS 18.3.21
-        if is_TCGA:
-            patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
+        #results per patient RanS 18.3.21, works only for TCGA, ABCTB
+        if patient_level:
+            patient_all = []
+            for name in all_slide_names:
+                if os.path.splitext(name)[-1] == '.svs': #TCGA files
+                    patient_all.append(name[8:12])
+                elif os.path.splitext(name)[-1] == '.ndpi': #ABCTB files
+                    patient_all.append(name[:9])
+            #patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
             patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
             patient_mean_score_df = patch_df.groupby('patient').mean()
             roc_auc_patient = roc_auc_score(patient_mean_score_df['targets'], patient_mean_score_df['scores'])
@@ -246,7 +267,7 @@ for ind, key in enumerate(inference_files.keys()):
     print('np.sum(all_labels):', np.sum(all_labels))
 
 
-    if is_TCGA:
+    if patient_level:
         plt.plot(fpr_patient, tpr_patient)
         legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 2)) + ')')
     else:
@@ -256,7 +277,7 @@ for ind, key in enumerate(inference_files.keys()):
 #combine several models, RanS 11.4.21
 slide_score_mean_all = np.mean(np.array(slide_score_all), axis=0)
 combine_all_models = False
-if is_TCGA and combine_all_models:
+if patient_level and combine_all_models:
     #patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])]  # only TCGA!
     patch_all_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean_all, 'targets': all_targets})
     patient_mean_score_all_df = patch_all_df.groupby('patient').mean()
@@ -273,7 +294,7 @@ plt.xlim(0, 1)
 plt.ylim(0, 1)
 plt.grid(b=True)
 
-if is_TCGA:
+if patient_level:
     print('average AUC per patient: ' + str(np.round(np.mean(roc_auc_patient), 2)))
 else:
     print('average AUC per slide: ' + str(np.round(np.mean(roc_auc), 2)))

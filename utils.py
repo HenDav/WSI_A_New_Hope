@@ -800,26 +800,28 @@ def get_datasets_dir_dict(Dataset: str):
         if sys.platform == 'linux':
             dir_dict['SHEBA'] = SHEBA_gipdeep_path
 
-    elif Dataset == 'LUNG':
+    elif Dataset == 'PORTO_HE':
         if sys.platform == 'linux':
-            dir_dict['LUNG'] = r'/home/rschley/All_Data/LUNG/LUNG'
+            dir_dict['PORTO_HE'] = r'/mnt/gipnetapp_public/sgils/LUNG/PORTO_HE'
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['LUNG'] = r'C:\ran_data\Lung_examples\LUNG'
+            dir_dict['PORTO_HE'] = r'C:\ran_data\Lung_examples\LUNG'
         elif sys.platform == 'darwin':  # Omer local
-            dir_dict['LUNG'] = 'All Data/LUNG'
+            dir_dict['PORTO_HE'] = 'All Data/LUNG'
 
-    elif Dataset == 'PDL1':
+    elif Dataset == 'PORTO_PDL1':
         if sys.platform == 'linux':
-            dir_dict['PDL1'] = r'/mnt/gipnetapp_public/sgils/LUNG/PDL1'
+            dir_dict['PORTO_PDL1'] = r'/mnt/gipnetapp_public/sgils/LUNG/PORTO_PDL1'
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['PDL1'] = r'C:\ran_data\IHC_examples\PDL1'
+            dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\PDL1'
 
     return dir_dict
 
 
 def assert_dataset_target(DataSet, target_kind):
-    if DataSet == 'LUNG' and target_kind not in ['PDL1', 'EGFR']:
-        raise ValueError('For LUNG DataSet, target should be one of: PDL1, EGFR')
+    if DataSet == 'PORTO_HE' and target_kind not in ['PDL1', 'EGFR']:
+        raise ValueError('For PORTO_HE DataSet, target should be one of: PDL1, EGFR')
+    elif DataSet == 'PORTO_PDL1' and target_kind != 'PDL1':
+        raise ValueError('For PORTO_PDL1 DataSet, target should be PDL1')
     elif DataSet == 'HEROHE' and target_kind != 'Her2':
         raise ValueError('for HEROHE DataSet, target should be Her2')
     elif (DataSet == 'TCGA' or DataSet[:6] == 'CARMEL' or DataSet == 'Breast') and target_kind not in ['ER', 'PR', 'Her2']:

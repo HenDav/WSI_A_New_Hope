@@ -78,7 +78,7 @@ class WSI_Master_Dataset(Dataset):
         self.meta_data_DF.reset_index(inplace=True)
         self.meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
 
-        if self.DataSet == 'LUNG':
+        if self.DataSet == 'PORTO_HE' or self.DataSet == 'PORTO_PDL1':
             # for lung, take only origin: lung
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21

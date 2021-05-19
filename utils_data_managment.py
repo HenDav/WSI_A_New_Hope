@@ -27,6 +27,8 @@ import multiprocessing
 from functools import partial
 from datetime import date
 import time
+from skimage.color import rgb2hed
+from colorsys import rgb_to_hsv
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -75,34 +77,6 @@ def slide_2_image(slide_name: str, DataSet: str = 'HEROHE'):
     #image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.png'))
 
 
-'''def make_tiles_hard_copy_old(data_path: str = 'tcga-data', tile_size: int = 256, how_many_tiles: int = 500):
-    """
-    This function makes a hard copy of the tile in order to avoid using openslide
-    :param data_path:
-    :return:
-    """
-
-    dirs = utils._get_tcga_id_list(data_path)
-    meta_data = pd.read_excel(os.path.join(data_path, 'slides_data.xlsx'))
-
-    for i in tqdm(range(meta_data.shape[0])):
-        if meta_data['Total tiles - 256 compatible @ X20'][i] == -1:
-            print('Could not find tile data for slide XXXXXXX')
-            continue
-
-        slide_file_name = os.path.join(data_path, meta_data['id'][i], meta_data['file'][i])
-        # slide_tiles = _choose_data(slide_file_name, how_many_tiles, meta_data['Manipulated Objective Power'][i], tile_size, resize=True)
-        tiles_basic_file_name = os.path.join(data_path, meta_data['id'][i], 'tiles')
-        _make_HC_tiles_from_slide(slide_file_name, 0, how_many_tiles, tiles_basic_file_name, meta_data['Manipulated Objective Power'][i], tile_size)
-
-
-        """
-        file_name = os.path.join(data_path, meta_data['id'][i], 'tiles', 'tiles.data')
-        with open(file_name, 'wb') as filehandle:
-            pickle.dump(slide_tiles, filehandle)
-        """'''
-
-
 def make_tiles_hard_copy(DataSet: str = 'TCGA',
                          ROOT_DIR: str = 'All Data',
                          tile_sz: int = 256,
@@ -110,7 +84,8 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
                          desired_magnification: int = 10,
                          added_extension: str = '',
                          num_workers: int = 1,
-                         oversized_HC_tiles: bool = False):
+                         oversized_HC_tiles: bool = False,
+                         as_jpg: bool = False):
     """    
     :param DataSet: Dataset to create grid for 
     :param ROOT_DIR: Root Directory for the data
@@ -122,11 +97,13 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
     """""
 
     # Create alternative slides_data file (if needed):
-    if added_extension != '':
-        copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
+    #cancelled RanS 10.5.21, slides_data isn't changed
+    #if added_extension != '':
+    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
 
-    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
-    grid_data_file = os.path.join(ROOT_DIR, DataSet, 'Grids', 'Grid_data.xlsx')
+    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
+    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
+    grid_data_file = os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx')
 
     slide_meta_data_DF = pd.read_excel(slides_data_file)
     grid_meta_data_DF = pd.read_excel(grid_data_file)
@@ -157,7 +134,8 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
                                         desired_magnification=desired_magnification,
                                         num_tiles=num_tiles,
                                         from_tile=0,
-                                        oversized_HC_tiles=oversized_HC_tiles),
+                                        oversized_HC_tiles=oversized_HC_tiles,
+                                        as_jpg=as_jpg),
                                 files)):
                 pbar.update()
 
@@ -176,18 +154,18 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
     print('Finished hard-copy tile production phase !')
 
 
-def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: str, added_extension: str,
+def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: str,
                               DataSet: str, from_tile: int, num_tiles: int,
-                              desired_magnification: int = 20, tile_size: int = 256,
-                              oversized_HC_tiles: bool = False):
+                              added_extension: str = '', desired_magnification: int = 20, tile_size: int = 256,
+                              oversized_HC_tiles: bool = False, as_jpg: bool = False):
     start = time.time()
-    if meta_data_DF.loc[file, 'Total tiles - 256 compatible @ X' + str(desired_magnification)] == -1:
+    if meta_data_DF.loc[file, 'Total tiles - ' + str(tile_size) + ' compatible @ X' + str(desired_magnification)] == -1:
         print('Could not find tile data for slide ' + file)
         return
 
     file_name = os.path.join(ROOT_DIR, DataSet, file)
 
-    out_dir = os.path.join(ROOT_DIR, DataSet, 'tiles')
+    out_dir = os.path.join(ROOT_DIR, DataSet, 'tiles' + added_extension)
 
     objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
     if objective_power == 'Missing Data':
@@ -197,13 +175,11 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
 
     slide = openslide.OpenSlide(file_name)
 
-    #basic_grid_file_name = 'grid_tlsz' + str(level_0_tile_size) + '.data'
     base_name = '.'.join((os.path.basename(file_name)).split('.')[:-1])
     basic_grid_file_name = base_name + '--tlsz' + str(tile_size) + '.data'
 
     # open grid list:
-    #grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    grid_file = os.path.join(ROOT_DIR, DataSet, 'Grids', basic_grid_file_name)
+    grid_file = os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, basic_grid_file_name)
     with open(grid_file, 'rb') as filehandle:
         # read the data as binary data stream
         grid_list = pickle.load(filehandle)
@@ -234,17 +210,24 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
                                           best_slide_level=best_slide_level,
                                           random_shift=False,
                                           oversized_HC_tiles=oversized_HC_tiles)
-        tile_file_name = os.path.join(out_dir, base_name, 'tile_' + str(ind) + '.data')
-        tile_array = np.array(image_tile[0])
-        with open(tile_file_name, 'wb+') as fh:
-            fh.write('{0:} {1:} {2:} {3:}\n'.format(tile_array.dtype, tile_array.shape[0], tile_array.shape[1],
-                                                        tile_array.shape[2]).encode('ascii'))
-            fh.write(tile_array)
+
+
+        if as_jpg:
+            tile_file_name = os.path.join(out_dir, base_name, 'tile_' + str(ind) + '.jpg')
+            image_tile[0].save(tile_file_name, "JPEG")
+        else:
+            tile_file_name = os.path.join(out_dir, base_name, 'tile_' + str(ind) + '.data')
+            tile_array = np.array(image_tile[0])
+            with open(tile_file_name, 'wb+') as fh:
+                fh.write('{0:} {1:} {2:} {3:}\n'.format(tile_array.dtype, tile_array.shape[0], tile_array.shape[1],
+                                                            tile_array.shape[2]).encode('ascii'))
+                fh.write(tile_array)
     slide.close()  # RanS 28.4.21
 
     end = time.time()
 
-    print('finished file ' + file + ', total time ' + str(round(end-start, 2)) + ' sec, time per tile: ' + str(round((end - start1)/num_tiles, 2)) + ' sec')
+    if num_tiles > 0:
+        print('finished file ' + file + ', total time ' + str(round(end-start, 2)) + ' sec, time per tile: ' + str(round((end - start1)/num_tiles, 2)) + ' sec')
     return
 
 
@@ -272,7 +255,7 @@ def _make_HC_tiles_from_slide_old(file_name: str, from_tile: int, num_tiles: int
             pickle.dump(tile, filehandle)
 
 
-def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data') -> tuple:
+def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', tile_size: int = 256) -> tuple:
     """
     This function runs over a set of images and compute mean and variance of each channel.
     The function computes these statistic values over the thumbnail images which are at X1 magnification
@@ -296,7 +279,7 @@ def compute_normalization_values(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All D
     # gather tissue image values from thumbnail image using the segmentation map:
     for i, file in enumerate(tqdm(files)):
         filename = os.path.basename(file).split('.')[0]
-        if meta_data.loc[[file], ['Total tiles - 256 compatible @ X20']].values[0][0] == -1:
+        if meta_data.loc[[file], ['Total tiles - ' + str(tile_size) + ' compatible @ X20']].values[0][0] == -1:
             continue
 
         image_stats = {}
@@ -362,10 +345,12 @@ def make_grid(DataSet: str = 'TCGA',
     """""
 
     # Create alternative slides_data file (if needed):
-    if added_extension != '':
-        copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
+    #cancelled RanS 10.5.21, no change is amde to slides_data
+    #if added_extension != '':
+    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
 
-    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
+    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
+    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
 
     slides_meta_data_DF = pd.read_excel(slides_data_file)
     files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
@@ -381,9 +366,9 @@ def make_grid(DataSet: str = 'TCGA',
     if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension)):
         os.mkdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension))
     if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                                      'GridImages_' + str(tissue_coverage).replace('.', '_'))):
+                                      'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'))):
         os.mkdir(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                              'GridImages_' + str(tissue_coverage).replace('.', '_')))
+                              'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_')))
 
     print('Starting Grid production...')
     print()
@@ -470,7 +455,7 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
                                   #filename + '_thumb.png') #temp
 
         grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                                       'GridImages_' + str(tissue_coverage).replace('.', '_'),
+                                       'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'),
                                         filename + '_GridImage.jpg')
         #RanS 10.3.21, do not rewrite
         if os.path.isfile(thumb_file) and not os.path.isfile(grid_image_file):
@@ -576,8 +561,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     META_DATA_FILE = {}
     META_DATA_FILE['TCGA'] = 'TCGA_BRCA.xlsx'
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
-    META_DATA_FILE['LUNG'] = 'LISTA COMPLETA pdl1 - Gil - V3.xlsx'
-    META_DATA_FILE['PDL1'] = 'LISTA COMPLETA pdl1 - Gil - V3.xlsx'
+    META_DATA_FILE['PORTO_HE'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
+    META_DATA_FILE['PORTO_PDL1'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
     META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
     META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
@@ -593,29 +578,36 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
 
     #meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet_key]))
     meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
-    if DataSet == 'LUNG':
+    if DataSet == 'PORTO_HE':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
-    elif DataSet == 'PDL1':
+    elif DataSet == 'PORTO_PDL1':
         slides_name = meta_data_DF['SlideName'].astype(str)
+        batch_list = meta_data_DF['Batch']
         slide_list = []
 
-        for slide in slides_name:
-            try:
-                slide_start = int(slide[:4])
-            except:
-                slide_start = 0
-            try:
-                slide_end = int(slide[-2:])
-            except:
-                slide_end = 0
-            if 2015 < slide_start < 2021 and slide[4]=='-':
-                pdl_name = str(int(slide[5:])) + '-' + str(slide_start-2000)  # + ' PDL1'
-                slide_list.append(pdl_name)
-            elif 15 < slide_end < 21 and slide[-3]=='-':
-                pdl_name = str(int(slide[:-3])) + '-' + str(slide_end)# + ' PDL1'
-                slide_list.append(pdl_name)
-            else:
+        for slide, b in zip(slides_name, batch_list):
+            if b == 1:
+                try:
+                    slide_start = int(slide[:4])
+                except:
+                    slide_start = 0
+                try:
+                    slide_end = int(slide[-2:])
+                except:
+                    slide_end = 0
+
+                if 2015 < slide_start < 2025 and slide[4]=='-':
+                    pdl_name = str(int(slide[5:])) + '-' + str(slide_start-2000)  # + ' PDL1'
+                    slide_list.append(pdl_name)
+                elif 15 < slide_end < 21 and slide[-3]=='-':
+                    pdl_name = str(int(slide[:-3])) + '-' + str(slide_end)# + ' PDL1'
+                    slide_list.append(pdl_name)
+                else:
+                    slide_list.append(slide)
+            elif b == 2:
                 slide_list.append(slide)
+            else:
+                ValueError('invalid batch number!')
         meta_data_DF['bcr_patient_barcode'] = slide_list
     elif DataSet[:6] == 'CARMEL':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
@@ -648,12 +640,6 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     mpp_dict = {'.svs': 'aperio.MPP', '.ndpi': 'openslide.mpp-x', '.mrxs': 'openslide.mpp-x', 'tiff': 'openslide.mpp-x'}
     date_dict = {'.svs': 'aperio.Date', '.ndpi': 'tiff.DateTime', '.mrxs': 'mirax.GENERAL.SLIDE_CREATIONDATETIME', 'tiff': 'philips.DICOM_ACQUISITION_DATETIME'}
 
-    #RanS 9.11.20
-    '''if meta_data_DF.columns.__contains__('Test_fold_idx'):
-        use_folds_from_file = True
-    else:
-        use_folds_from_file = False'''
-
     for idx, file in enumerate(tqdm(slides)):
         fn, data_format = os.path.splitext(os.path.basename(file))
         id_dict = {}
@@ -663,18 +649,19 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
             id_dict['patient barcode'] = '-'.join(file.split('/')[-1].split('-')[0:3])
         elif DataSet == 'ABCTB':
             id_dict['patient barcode'] = os.path.basename(file)
-        elif DataSet == 'PDL1':
-            id_dict['patient barcode'] = '.'.join(os.path.basename(file).split('.')[:-1])[:-5] #RanS 2.5.21
+        elif DataSet == 'PORTO_PDL1':
+            id_dict['patient barcode'] = '.'.join(os.path.basename(file).split('.')[:-1])[:-5]  # RanS 2.5.21
+        elif DataSet == 'PORTO_HE': #RanS 18.5.21
+            file_name = '.'.join(os.path.basename(file).split('.')[:-1])
+            if file_name[-3:] == ' he':
+                file_name = file_name[:-3]
+            if (file_name[-2:] == '-1') or (file_name[-2:] == '-2'):
+                file_name = file_name[:-2]
+            id_dict['patient barcode'] = file_name
         else:
-        #elif DataSet == 'HEROHE':
-            #id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
             id_dict['patient barcode'] = '.'.join(os.path.basename(file).split('.')[:-1])
-        #elif DataSet == 'LUNG':
-            #id_dict['patient barcode'] = os.path.basename(file).split('.')[0]
 
-        # id_dict['id'] = root.split('/')[-1]
         id_dict['id'] = DataSet
-        #id_dict['file'] = file.split('/')[-1]
         id_dict['file'] = os.path.basename(file)
         id_dict['DX'] = True if (file.find('DX') != -1 or DataSet != 'TCGA') else False
 
@@ -698,19 +685,17 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         except:
             id_dict['Height'] = 'Missing Data'
         try:
-            #id_dict['Manipulated Objective Power'] = int(float(img.properties['aperio.AppMag']))
             id_dict['Manipulated Objective Power'] = int(float(img.properties[mag_dict[data_format]]))
         except:
             id_dict['Manipulated Objective Power'] = 'Missing Data'
         try:
-            #id_dict['Scan Date'] = img.properties['aperio.Date']
             id_dict['Scan Date'] = img.properties[date_dict[data_format]]
         except:
             id_dict['Scan Date'] = 'Missing Data'
         img.close()
 
         # Get data from META_DATA_FILE and add to the dictionary ER_status, PR_status, Her2_status
-        if DataSet == 'LUNG' or DataSet == 'PDL1':
+        if DataSet == 'PORTO_HE' or DataSet == 'PORTO_PDL1':
             try:
                 value = meta_data_DF.loc[[id_dict['patient barcode']], ['PDL1']].values[0][0]
                 if value == 0:
@@ -732,6 +717,13 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
 
             except:
                 id_dict['EGFR status'] = 'Missing Data'
+
+            #RanS 14.5.21
+            try:
+                id_dict['Origin'] = meta_data_DF.loc[[id_dict['patient barcode']], ['Origin']].values[0][0]
+            except:
+                id_dict['Origin'] = 'Missing Data'
+
         else: #breast cancer
             try:
                 id_dict['ER status'] = meta_data_DF.loc[[id_dict['patient barcode']], ['ER_status']].values[0][0]
@@ -800,16 +792,27 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
 
     error_list = []
 
-    with multiprocessing.Pool(num_workers) as pool:
-        #for error1 in tqdm(pool.imap_unordered(partial(_make_segmentation_for_image,
-        for error1 in tqdm(pool.imap(partial(_make_segmentation_for_image,
-                                                       DataSet=DataSet,
-                                                       magnification=magnification,
-                                                       mag_dict=mag_dict,
-                                                       rewrite=rewrite,
-                                                       out_path_dataset=out_path_dataset),
-                                                slide_files), total=len(slide_files)):
-            error_list.append(error1)
+    if sys.platform == 'win32':
+        debug = True  # temp RanS 13.5.21
+    else:
+        debug = False
+
+    if debug:
+        for file in tqdm(slide_files):
+            error1 = _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_dict, magnification)
+            if error1 != []:
+                error_list.append(error1)
+    else:
+        with multiprocessing.Pool(num_workers) as pool:
+            for error1 in tqdm(pool.imap(partial(_make_segmentation_for_image,
+                                                           DataSet=DataSet,
+                                                           magnification=magnification,
+                                                           mag_dict=mag_dict,
+                                                           rewrite=rewrite,
+                                                           out_path_dataset=out_path_dataset),
+                                                    slide_files), total=len(slide_files)):
+                if error1 != []:
+                    error_list.append(error1)
 
     if len(error_list) != 0:
         # Saving all error data to excel file:
@@ -842,7 +845,7 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
 
     if slide is not None:
         # Get a thumbnail image to create the segmentation for:
-        if file.split('/')[-1][-3:] != 'jpg':
+        if os.path.splitext(file)[-1] != '.jpg':
             try:
                 if DataSet == 'SHEBA':
                     objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
@@ -889,21 +892,37 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
             thumb_arr[thumb_arr_equal1 & thumb_arr_equal2, :] = 255
             thumb = Image.fromarray(thumb_arr)
 
+        # RanS 29.4.21
+        if DataSet == 'PORTO_PDL1':
+            is_IHC_slide = True
+        else:
+            is_IHC_slide = False
+
+        #RanS 13.5.21, avoid control tissue on PORTO second batch IHC
+        #detect edges of tissue, dump lower 33%
+        if (is_IHC_slide and fn[-5:] == ' pdl1'):
+            thumb_arr = np.array(thumb)
+            thumb_binary_inverse = 255-np.max(thumb_arr,axis=2)
+            positions = np.nonzero(thumb_binary_inverse)
+            top = positions[0].min()
+            bottom = positions[0].max()
+            cutoff = int(top + (bottom - top) *0.6)
+            thumb_arr[cutoff:, :, :] = 255
+            #thumb_arr[int(thumb.size[0]*0.66):, :, :] = 255
+            thumb_cropped = Image.fromarray(thumb_arr)
+        else:
+            thumb_cropped = thumb
         # RanS 22.2.21
         # if DataSet == 'ABCTB':
-        if DataSet == 'LUNG':
-            use_otsu3 = True  # this helps avoid the grid
+        if DataSet == 'PORTO_HE':
+            use_otsu3 = True # this helps avoid the grid
         else:
             use_otsu3 = False
 
-        #RanS 29.4.21
-        if DataSet == 'PDL1':
-            filter_gray_contours = False
-        else:
-            filter_gray_contours = True
-
-        thmb_seg_map, thmb_seg_image = _calc_segmentation_for_image(thumb, magnification, use_otsu3=use_otsu3, filter_gray_contours=filter_gray_contours)
+        thmb_seg_map, edge_image = _calc_segmentation_for_image(thumb_cropped, magnification, use_otsu3=use_otsu3, is_IHC_slide=is_IHC_slide)
         slide.close()
+        thmb_seg_image = Image.blend(thumb, edge_image, 0.5)
+
         # Saving segmentation map, segmentation image and thumbnail:
         # thumb.save(os.path.join(out_path_dataset, 'SegData',  'Thumbs', fn + '_thumb.png'))
         thumb.save(os.path.join(out_path_dataset, 'SegData', 'Thumbs', fn + '_thumb.jpg'))
@@ -966,25 +985,31 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     return xy
 
 
-def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool, filter_gray_contours: bool) -> (Image, Image):
+def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool,
+                                 is_IHC_slide: bool) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
     :param magnification:
     :return:
     """
 
-
     # Converting the image from RGBA to HSV and to a numpy array (from PIL):
     #image_array = np.array(image.convert('HSV'))
-    image_array = np.array(image.convert('CMYK')) #RanS 9.12.20
+    if is_IHC_slide:
+        #image_array = rgb2hed(image)[:, :, 2] #DAB channel
+        #image_array = (255 * (image_array - np.min(image_array)) / (np.max(image_array) - np.min(image_array))).astype('uint8')
+        image_array = np.array(image.convert('CMYK'))[:, :, 1]  # RanS 9.12.20
+    else:
+        image_array = np.array(image.convert('CMYK'))[:, :, 1] #RanS 9.12.20
     # otsu Thresholding:
     #use_otsu3 = True
-    if use_otsu3:
+    '''if use_otsu3:
         # RanS 25.10.20 - 3way binarization
-        thresh = otsu3(image_array[:, :, 1])
-        _, seg_map = cv.threshold(image_array[:, :, 1], thresh[0], 255, cv.THRESH_BINARY)
+        thresh = otsu3(image_array)
+        _, seg_map = cv.threshold(image_array, thresh[0], 255, cv.THRESH_BINARY)
     else:
-        _, seg_map = cv.threshold(image_array[:, :, 1], 0, 255, cv.THRESH_OTSU)
+        _, seg_map = cv.threshold(image_array, 0, 255, cv.THRESH_OTSU)'''
+    _, seg_map = cv.threshold(image_array, 0, 255, cv.THRESH_OTSU)
 
     #RanS 2.12.20 - try otsu3 in HED color space
     temp = False
@@ -1001,12 +1026,16 @@ def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
         plt.imshow(seg_map_HED)
 
     #RanS 9.11.20 - test median pixel color to inspect segmentation
-    image_array_rgb = np.array(image)
-    pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
-    median_color = np.median(pixel_vec, axis=0)
-    if all(median_color > 180) and use_otsu3: #median pixel is white-ish, changed from 200
-        #take upper threshold
-        _, seg_map = cv.threshold(image_array[:, :, 1], thresh[1], 255, cv.THRESH_BINARY)
+    if use_otsu3:
+        image_array_rgb = np.array(image)
+        pixel_vec = image_array_rgb.reshape(-1,3)[seg_map.reshape(-1)>0]
+        median_color = np.median(pixel_vec, axis=0)
+        median_hue = rgb_to_hsv(*median_color/256)[0]*360
+        #if all(median_color > 180): #median pixel is white-ish, changed from 200
+        if (median_hue < 250):  # RanS 19.5.21, median seg hue is not purple/red
+            #take upper threshold
+            thresh = otsu3(image_array)
+            _, seg_map = cv.threshold(image_array, thresh[1], 255, cv.THRESH_BINARY)
 
     # Smoothing the tissue segmentation imaqe:
     #size = 30 * magnification
@@ -1020,48 +1049,49 @@ def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     seg_map_filt[seg_map_filt > th_val] = 255
     seg_map_filt[seg_map_filt <= th_val] = 0
 
-    # find small contours and delete them from segmentation map
-    #size_thresh = 30000 #10000
-    #size_thresh = 10000 #RanS 9.12.20, lung cancer biopsies can be very small
-    size_thresh = 5000  # RanS 9.12.20, lung cancer biopsies can be very small
-    contours, _ = cv.findContours(seg_map_filt, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
 
-    contour_area = np.zeros(len(contours))
+    if not is_IHC_slide:
+        # find small contours and delete them from segmentation map
+        # size_thresh = 30000 #10000
+        # size_thresh = 10000 #RanS 9.12.20, lung cancer biopsies can be very small
+        size_thresh = 5000  # RanS 9.12.20, lung cancer biopsies can be very small
+        contours, _ = cv.findContours(seg_map_filt, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+        contour_area = np.zeros(len(contours))
 
-    rgb_image = np.array(image)
-    hsv_image = np.array(image.convert('HSV')) # temp RanS 24.2.21
+        for ii in range(len(contours)):
+            contour_area[ii] = cv.contourArea(contours[ii])
 
-    for ii in range(len(contours)):
-        contour_area[ii] = cv.contourArea(contours[ii])
+        max_contour = np.max(contour_area)
+        small_contours_bool = (contour_area < size_thresh) & (contour_area < max_contour * 0.02)
 
-    #temp RanS 30.12.20 - plot each contour with its mean color, std...
-    temp_plot = False
-    if temp_plot:
-        #im1 = np.zeros(seg_map.shape)
-        rgb_image2 = rgb_image.copy()
-        #for ii in range(len(contours)):
-        for ii in np.where(contour_area>10000)[0]: #temp RanS 24.2.21
-            rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color_std[ii, 2], thickness=cv.FILLED)
-            #rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
-            #im1 = cv.drawContours(im1, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
-            #im1 = cv.drawContours(im1, contours, contourIdx=ii, color=contour_std[ii], thickness=1)
-            #rgb_image2 = cv.drawContours(rgb_image2, contours, contourIdx=ii, color = [1,1,1], thickness=-1)
-        plt.imshow(rgb_image2)
-        #plt.imshow(rgb_image)
-        #plt.imshow(im1,alpha=0.5)
-        #plt.colorbar()
+    if not use_otsu3 and not is_IHC_slide: #RanS 19.5.21, do not filter small parts filtering for lung cancer
+        #temp RanS 30.12.20 - plot each contour with its mean color, std...
+        temp_plot = False
+        if temp_plot:
+            #im1 = np.zeros(seg_map.shape)
+            rgb_image2 = rgb_image.copy()
+            #for ii in range(len(contours)):
+            for ii in np.where(contour_area>10000)[0]: #temp RanS 24.2.21
+                rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_color_std[ii, 2], thickness=cv.FILLED)
+                #rgb_image2 = cv.drawContours(rgb_image2, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
+                #im1 = cv.drawContours(im1, [contours[ii]], -1, contour_std[ii], thickness=cv.FILLED)
+                #im1 = cv.drawContours(im1, contours, contourIdx=ii, color=contour_std[ii], thickness=1)
+                #rgb_image2 = cv.drawContours(rgb_image2, contours, contourIdx=ii, color = [1,1,1], thickness=-1)
+            plt.imshow(rgb_image2)
+            #plt.imshow(rgb_image)
+            #plt.imshow(im1,alpha=0.5)
+            #plt.colorbar()
 
-    max_contour = np.max(contour_area)
-    small_contours_bool = (contour_area < size_thresh) & (contour_area < max_contour * 0.02)
-    small_contours = [contours[ii] for ii in range(len(contours)) if small_contours_bool[ii]==True]
-
-    seg_map_filt = cv.drawContours(seg_map_filt, small_contours, -1, (0, 0, 255), thickness=cv.FILLED) #delete the small contours
+        small_contours = [contours[ii] for ii in range(len(contours)) if small_contours_bool[ii]==True]
+        seg_map_filt = cv.drawContours(seg_map_filt, small_contours, -1, (0, 0, 255), thickness=cv.FILLED) #delete the small contours
 
     #RanS 30.12.20, delete gray contours
     #gray_contours_bool = contour_std < 5
 
     #RanS 3.3.21, check contour color only for large contours
-    if filter_gray_contours:
+    if not is_IHC_slide:
+        hsv_image = np.array(image.convert('HSV'))  # temp RanS 24.2.21
+        rgb_image = np.array(image)
         large_contour_ind = np.where(small_contours_bool == False)[0]
         white_mask = np.zeros(seg_map.shape, np.uint8)
         white_mask[np.any(rgb_image < 240, axis=2)] = 255
@@ -1091,9 +1121,9 @@ def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     # Make the edge thicker by dilating:
     kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
     edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
-    seg_image = Image.blend(image, edge_image, 0.5)
+    #seg_image = Image.blend(image, edge_image, 0.5)
 
-    return seg_map_PIL, seg_image
+    return seg_map_PIL, edge_image
 
 
 def TCGA_dirs_2_files():
