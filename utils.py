@@ -753,10 +753,10 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'TCGA':
         if sys.platform == 'linux':  # GIPdeep
-            if platform.node() == 'gipdeep3':  # Run from local files
+            '''if platform.node() == 'gipdeep3':  # Run from local files
                 dir_dict['TCGA'] = TCGA_gipdeep3_path
-            else:  # Run from netapp
-                dir_dict['TCGA'] = TCGA_gipdeep_path
+            else:  # Run from netapp'''
+            dir_dict['TCGA'] = TCGA_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['TCGA'] = TCGA_ran_path
@@ -769,10 +769,10 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'HEROHE':
         if sys.platform == 'linux':  # GIPdeep
-            if platform.node() == 'gipdeep3':  # Run from local files
+            '''if platform.node() == 'gipdeep3':  # Run from local files
                 dir_dict['HEROHE'] = HEROHE_gipdeep3_path
-            else:  # Run from netapp
-                dir_dict['HEROHE'] = HEROHE_gipdeep_path
+            else:  # Run from netapp'''
+            dir_dict['HEROHE'] = HEROHE_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['HEROHE'] = HEROHE_ran_path
@@ -785,6 +785,12 @@ def get_datasets_dir_dict(Dataset: str):
             dir_dict['ABCTB_TIF'] = r'/home/womer/project/All Data/ABCTB_TIF'
         elif sys.platform == 'darwin':  # Omer local
             dir_dict['ABCTB_TIF'] = r'All Data/ABCTB_TIF'
+
+    elif Dataset == 'ABCTB_TILES':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['ABCTB_TILES'] = r'/home/womer/project/All Data/ABCTB_TILES'
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['ABCTB_TILES'] = r'All Data/ABCTB_TILES'
 
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux':  # GIPdeep Run from local files

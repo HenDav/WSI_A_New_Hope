@@ -190,7 +190,8 @@ class WSI_Master_Dataset(Dataset):
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
-                self.presaved_tiles.append(all_image_ids[index]=='ABCTB')
+                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB')
+                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
 
                 # Preload slides - improves speed during training.
                 try:
@@ -212,8 +213,7 @@ class WSI_Master_Dataset(Dataset):
                         'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
 
         # Setting the transformation:
-        self.transform = define_transformations(transform_type, self.train, self.tile_size,
-                                                                   self.color_param)
+        self.transform = define_transformations(transform_type, self.train, self.tile_size, self.color_param)
         if np.sum(self.presaved_tiles):
             self.rand_crop = transforms.RandomCrop(self.tile_size)
 
@@ -235,6 +235,7 @@ class WSI_Master_Dataset(Dataset):
         idx = idx % self.real_length
 
         if self.presaved_tiles[idx]:  # load presaved patches
+            time_tile_extraction = time.time()
             idxs = sample(range(self.tissue_tiles[idx]), self.bag_size)
             empty_image = Image.fromarray(np.uint8(np.zeros((self.tile_size, self.tile_size, 3))))
             tiles = [empty_image] * self.bag_size
@@ -248,6 +249,8 @@ class WSI_Master_Dataset(Dataset):
                 tile = np.frombuffer(tile_bin, dtype=dtype).reshape((int(w), int(h), int(c)))
                 tile1 = self.rand_crop(Image.fromarray(tile))
                 tiles[ii] = tile1
+                time_tile_extraction = (time.time() - time_tile_extraction) / len(idxs)
+                time_list = [0, time_tile_extraction]
         else:
             slide = self.slides[idx]
 
