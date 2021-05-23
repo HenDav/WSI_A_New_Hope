@@ -149,16 +149,16 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
     with multiprocessing.Pool(num_workers) as pool:
         with tqdm(total=len(files)) as pbar:
             for i, _ in enumerate(pool.map(partial(_make_HC_tiles_from_slide,
-                                        meta_data_DF=slides_meta_data_DF,
-                                        ROOT_DIR=ROOT_DIR,
-                                        added_extension=added_extension,
-                                        DataSet=DataSet,
-                                        tile_size=tile_sz,
-                                        desired_magnification=desired_magnification,
-                                        num_tiles=num_tiles,
-                                        from_tile=0,
-                                        oversized_HC_tiles=oversized_HC_tiles),
-                                files)):
+                                                   meta_data_DF=slides_meta_data_DF,
+                                                   ROOT_DIR=ROOT_DIR,
+                                                   added_extension=added_extension,
+                                                   DataSet=DataSet,
+                                                   tile_size=tile_sz,
+                                                   desired_magnification=desired_magnification,
+                                                   num_tiles=num_tiles,
+                                                   from_tile=0,
+                                                   oversized_HC_tiles=oversized_HC_tiles),
+                                           files)):
                 pbar.update()
 
     '''for file in tqdm(files):
