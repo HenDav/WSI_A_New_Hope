@@ -22,10 +22,13 @@ in_dir = args.in_dir
 out_dir = args.out_dir
 rewrite_figs = True
 
+#TODO RanS 21.5.21 - define something more general
 if os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_3')):
     grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_3')
 elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_5')):
     grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_5')
+elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0.05')):
+    grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0.05')
 else:
     IOError('no grid_images folder found, please check')
 

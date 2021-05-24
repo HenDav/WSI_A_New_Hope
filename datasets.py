@@ -42,7 +42,6 @@ class WSI_Master_Dataset(Dataset):
         assert_dataset_target(DataSet, target_kind)
 
         print('Initializing {} DataSet....'.format('Train' if train else 'Test'))
-
         self.DataSet = DataSet
         self.desired_magnification = desired_slide_magnification
         self.tile_size = tile_size

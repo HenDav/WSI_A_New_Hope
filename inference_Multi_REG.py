@@ -124,7 +124,9 @@ inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pi
 new_slide = True
 
 NUM_MODELS = len(models)
-NUM_SLIDES = len(inf_dset.valid_slide_indices)
+#NUM_SLIDES = len(inf_dset.valid_slide_indices)
+NUM_SLIDES = len(inf_dset.image_file_names) #RanS 24.5.21, valid_slide_indices always counts non-dx slides
+print('NUM_SLIDES: ', str(NUM_SLIDES)) #temp RanS 24.5.21
 
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))

@@ -1,5 +1,19 @@
 import subprocess
 
+subprocess.run(['python', 'train_mil_multi_V2.py',
+                '--test_fold', str(2),
+                '--epochs', str(2),
+                #'--dataset', 'LUNG',
+                '--dataset', 'PORTO_HE',
+                '--target', 'PDL1',
+                #'--target', 'PDL1',
+                #'--transform_type', 'wcfrs',
+                '--transform_type', 'pcbnfrsc',
+                #'--transform_type', 'hedcfrs',
+                #'--model', 'receptornet',
+                #'--saved_model_path', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\model_data_Epoch_124.pt',
+                ])
+
 '''subprocess.run(['python', 'train_mil_joint.py',
                 '--test_fold', str(1),
                 '--epochs', str(2),
@@ -43,7 +57,7 @@ import subprocess
                 '-ev'
                 ])'''
 
-subprocess.run(['python', 'train_mil_joint.py',
+"""subprocess.run(['python', 'train_mil_joint.py',
                 '--test_fold', str(1),
                 '--epochs', str(2),
                 #'--dataset', 'LUNG',
@@ -54,7 +68,8 @@ subprocess.run(['python', 'train_mil_joint.py',
                 '--transform_type', 'aug_receptornet',
                 #'--transform_type', 'hedcfrs',
                 '--model', 'receptornet',
-                #'--saved_model_path', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\model_data_Epoch_124.pt',
+                
                 '--bootstrap',
                 '--balanced_sampling'
-                ])
+                ])"""
+

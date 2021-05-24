@@ -367,7 +367,7 @@ if __name__ == '__main__':
     #TILES_PER_BAG = args.tiles_per_bag
     #num_bags = args.num_bags
 
-    if sys.platform == 'linux':
+    if sys.platform == 'linux' or sys.platform == 'win32':
         TILE_SIZE = 256
         #TILES_PER_BAG = args.tiles_per_bag
         # data_path = '/home/womer/project/All Data'

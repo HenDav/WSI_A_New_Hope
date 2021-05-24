@@ -20,7 +20,6 @@ import nvidia_smi
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=1, type=int, help='Epochs to run')
-#parser.add_argument('-t', dest='transformation', action='store_true', help='Include transformations ?')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
@@ -29,19 +28,20 @@ parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSe
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 
-parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares')  # RanS 7.12.20
-parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
-parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)')  # RanS 7.12.20
-parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet') # RanS 15.12.20
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')  # RanS 16.12.20
-parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')  # RanS 16.12.20
-parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter') # RanS 28.12.20
-parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)') # RanS 29.12.20
-parser.add_argument('--tta', action='store_true', help='use test-time augmentation') #RanS 4.1.21
-parser.add_argument('--saved_model_path', default='none', type=str, help='path for saved model for MIL feature extractor')  # RanS 6.1.21
-parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--target', default='Her2', type=str, help='label: Her2/ER/PR/EGFR/PDL1/RedSquares')
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty')
+parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')
+parser.add_argument('--transform_type', default='flip', type=str, help='type of patch augmentation (string)')
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
+#parser.add_argument('--model', default='resnet50_gn', type=str, help='resnet50_gn / receptornet')
+parser.add_argument('--model', default='nets_mil.MIL_PreActResNet50_GatedAttention_Ron()', type=str, help='net to use')
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')
+parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
+parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('--bag_size_test', default=50, type=int, help='# of samples in test bags (inference)')
+parser.add_argument('--tta', action='store_true', help='use test-time augmentation')
+parser.add_argument('--saved_model_path', default='none', type=str, help='path for saved model for MIL feature extractor')
+parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches')
 
 args = parser.parse_args()
 eps = 1e-7
@@ -475,8 +475,8 @@ if __name__ == '__main__':
                                          transform_type=args.transform_type,
                                          DX=args.dx,
                                          get_images=args.images,
-                                         c_param=args.c_param,
-                                         mag=args.mag)
+                                         color_param=args.c_param,
+                                         desired_slide_magnification=args.mag)
 
     test_dset = datasets.WSI_MILdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -491,8 +491,8 @@ if __name__ == '__main__':
                                         transform_type=test_transform,
                                         DX=args.dx,
                                         get_images=args.images,
-                                        tta=args.tta,
-                                        mag=args.mag)
+                                        test_time_augmentation=args.tta,
+                                        desired_slide_magnification=args.mag)
 
 
     sampler = None
@@ -515,11 +515,8 @@ if __name__ == '__main__':
         weights[np.array(labels == 'Negative')] = 1 / n_neg
         do_shuffle = False  # the sampler shuffles
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
-                                                                 #, replacement=False)
-        do_shuffle = False
 
-    #num_workers = cpu_available * 8  # RanS 28.1.21
-    num_workers = cpu_available  # RanS 9.2.21
+    num_workers = cpu_available
     print('num workers = ', num_workers)
     train_loader = DataLoader(train_dset, batch_size=1, shuffle=do_shuffle, num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=True)
@@ -529,7 +526,8 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    model = utils.get_model(args.model, args.saved_model_path)
+    #model = utils.get_model(args.model, args.saved_model_path)
+    model = eval(args.model)
 
     utils.run_data(experiment=experiment, model=model.model_name)
 
