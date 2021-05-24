@@ -363,7 +363,8 @@ def run_data(experiment: str = None,
                     'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,
-                    'Transformation String': 'None'
+                    'Transformation String': 'None',
+                    'Desired Slide Magnification': DataSet_Slide_magnification
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -397,7 +398,7 @@ def run_data(experiment: str = None,
 
     elif experiment is not None and DataSet_Slide_magnification is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
-        run_DF.at[index, 'Slide Magnification'] = DataSet_Slide_magnification
+        run_DF.at[index, 'Desired Slide Magnification'] = DataSet_Slide_magnification
         run_DF.to_excel(run_file_name)
 
     elif experiment is not None and test_mean_auc is not None:
@@ -419,9 +420,10 @@ def run_data(experiment: str = None,
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
+        desired_magnification = str(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
 
         return location, test_fold, transformations, tile_size, tiles_per_bag, \
-               num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name
+               num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name, desired_magnification
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
