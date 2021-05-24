@@ -58,7 +58,7 @@ class WSI_Master_Dataset(Dataset):
 
         # Get DataSets location:
         self.dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
-        print('Train Data will be taken from these locations:')
+        print('Slide Data will be taken from these locations:')
         print(self.dir_dict)
         locations_list = []
 

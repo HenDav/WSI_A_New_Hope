@@ -720,8 +720,8 @@ def get_datasets_dir_dict(Dataset: str):
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
     ABCTB_ran_path = r'C:\ran_data\ABCTB\ABCTB_examples\ABCTB'
 
-    TCGA_omer_path = r'All Data/TCGA'
-    HEROHE_omer_path = r'All Data/HEROHE'
+    TCGA_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/TCGA'
+    HEROHE_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/HEROHE'
 
     if Dataset == 'ABCTB_TCGA':
         if sys.platform == 'linux':  # GIPdeep
