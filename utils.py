@@ -25,6 +25,7 @@ from argparse import Namespace as argsNamespace
 from shutil import copy2
 from datetime import date
 import platform
+import inspect
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -307,7 +308,7 @@ def run_data(experiment: str = None,
              DX: bool = False,
              DataSet_name: list = ['TCGA'],
              DataSet_size: tuple = None,
-             DataSet_Slide_magnification = None,
+             DataSet_Slide_magnification: int = None,
              epoch: int = None,
              model: str = None,
              transformation_string: str = None,
@@ -363,7 +364,8 @@ def run_data(experiment: str = None,
                     'Receptor': Receptor,
                     'Model': 'None',
                     'Last Epoch': 0,
-                    'Transformation String': 'None'
+                    'Transformation String': 'None',
+                    'Desired Slide Magnification': DataSet_Slide_magnification
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -397,7 +399,7 @@ def run_data(experiment: str = None,
 
     elif experiment is not None and DataSet_Slide_magnification is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
-        run_DF.at[index, 'Slide Magnification'] = DataSet_Slide_magnification
+        run_DF.at[index, 'Desired Slide Magnification'] = DataSet_Slide_magnification
         run_DF.to_excel(run_file_name)
 
     elif experiment is not None and test_mean_auc is not None:
@@ -419,9 +421,10 @@ def run_data(experiment: str = None,
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
+        Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, \
-               num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name
+        return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
+               DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
@@ -717,8 +720,8 @@ def get_datasets_dir_dict(Dataset: str):
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
     ABCTB_ran_path = r'C:\ran_data\ABCTB\ABCTB_examples\ABCTB'
 
-    TCGA_omer_path = r'All Data/TCGA'
-    HEROHE_omer_path = r'All Data/HEROHE'
+    TCGA_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/TCGA'
+    HEROHE_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/HEROHE'
 
     if Dataset == 'ABCTB_TCGA':
         if sys.platform == 'linux':  # GIPdeep
@@ -945,7 +948,12 @@ def save_code_files(args: argsNamespace, train_DataSet):
     :return:
     """
     code_files_path = os.path.join(args.output_dir, 'Code')
-    args.run_file = os.path.basename(__file__)
+    # Get the filename that called this function
+    frame = inspect.stack()[1]
+    module = inspect.getmodule(frame[0])
+    full_filename = module.__file__
+    args.run_file = full_filename.split('/')[-1]
+
     args_dict = vars(args)
 
     # Add Grid Data:
@@ -974,3 +982,111 @@ def save_code_files(args: argsNamespace, train_DataSet):
     py_files = glob.glob('*.py')
     for _, file in enumerate(py_files):
         copy2(file, code_files_path)
+
+def extract_tile_scores_for_slide(all_features, models):
+    # Save tile scores and last models layer bias difference to file:
+    tile_scores_list = []
+    for index in range(len(models)):
+        model = models[index]
+
+        # Compute for each tile the multiplication between it's feature vector and the last layer weight difference vector:
+        last_layer_weights = model.classifier[0].weight.detach().cpu().numpy()
+        f = last_layer_weights[1] - last_layer_weights[0]
+        mult = np.matmul(f, all_features)
+        tile_scores_list.append(mult[:, index])
+
+    return tile_scores_list
+
+
+'''
+def extract_tile_scores_for_slide_1(all_features, models, Output_Dirs, Epochs, data_path, slide_name):
+    # Save tile scores and last models layer bias difference to file:
+    tile_scores_list = []
+    for index in range(len(models)):
+        model = models[index]
+        output_dir = Output_Dirs[index]
+        epoch = Epochs[index]
+
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores')):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores'))
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch))):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch)))
+
+        slide_score_filename = '.'.join(slide_name[0].split('/')[-1].split('.')[:-1]) + '--epoch_' + str(
+            epoch) + '--scores.xlsx'
+        full_slide_scores_filename = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), slide_score_filename)
+
+        # Compute for each tile the multiplication between it's feature vector and the last layer weight difference vector:
+        last_layer_weights = model.classifier[0].weight.detach().cpu().numpy()
+        f = last_layer_weights[1] - last_layer_weights[0]
+        mult = np.matmul(f, all_features)
+
+        tile_scores_list.append(mult[:, index])
+
+        model_bias_filename = 'epoch_' + str(epoch) + '-bias.xlsx'
+        full_model_bias_filename = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch),
+                                                model_bias_filename)
+
+        if not os.path.isfile(full_model_bias_filename):
+            last_layer_bias = model.classifier[0].bias.detach().cpu().numpy()
+            last_layer_bias_diff = last_layer_bias[1] - last_layer_bias[0]
+
+            last_layer_bias_DF = pd.DataFrame([last_layer_bias_diff])
+            last_layer_bias_DF.to_excel(full_model_bias_filename)
+
+    return tile_scores_list
+'''
+
+def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores, all_slides_weights, models, Output_Dirs, Epochs, data_path):
+    # Save slide scores to file:
+    for num_model in range(len(models)):
+        output_dir = Output_Dirs[num_model]
+        epoch = Epochs[num_model]
+        model = models[num_model]
+
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores')):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores'))
+        if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch))):
+            os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch)))
+
+        model_bias_filename = 'epoch_' + str(epoch) + '-bias.xlsx'
+        full_model_bias_filename = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores',
+                                                'Epoch_' + str(epoch),
+                                                model_bias_filename)
+        if not os.path.isfile(full_model_bias_filename):
+            last_layer_bias = model.classifier[0].bias.detach().cpu().numpy()
+            last_layer_bias_diff = last_layer_bias[1] - last_layer_bias[0]
+
+            last_layer_bias_DF = pd.DataFrame([last_layer_bias_diff])
+            last_layer_bias_DF.to_excel(full_model_bias_filename)
+
+        all_slides_tile_scores_DF = pd.DataFrame(all_slides_tile_scores[num_model]).transpose()
+        all_slides_final_scores_DF = pd.DataFrame(all_slides_final_scores[num_model]).transpose()
+        all_slides_weights_DF = pd.DataFrame(all_slides_weights[num_model]).transpose()
+
+        tile_scores_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_scores.xlsx')
+        slide_score_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'slide_scores.xlsx')
+        tile_weights_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights.xlsx')
+
+        all_slides_tile_scores_DF.to_excel(tile_scores_file_name)
+        all_slides_final_scores_DF.to_excel(slide_score_file_name)
+        all_slides_weights_DF.to_excel(tile_weights_file_name)
+
+
+def map_original_grid_list_to_equiv_grid_list(adjusted_tile_size, grid_list):
+    """
+    This function is used in datasets.Full_Slide_Inference_Dataset.
+    It's use is to find the corresponding locations in the equivalent grid list of the tiles in the original_grid_list
+    """
+    equivalent_grid = []
+    for location in grid_list:
+        equivalent_location = (location[0] // adjusted_tile_size, location[1] // adjusted_tile_size)
+        equivalent_grid.append(equivalent_location)
+
+    return equivalent_grid
+
+

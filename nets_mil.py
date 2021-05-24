@@ -774,22 +774,21 @@ class ResNet50_GN_GatedAttention(nn.Module):
 
 class MIL_PreActResNet50_Ron_MultiBag(nn.Module):
     def __init__(self,
-                 num_bags: int = 2,
-                 tiles: int = 10):
+                 tiles_per_bag: int = 10):
         super(MIL_PreActResNet50_Ron_MultiBag, self).__init__()
 
         self.model_name = THIS_FILE + 'MIL_PreActResNet50_Ron_MultiBag()'
         print('Using model {}'.format(self.model_name))
 
-        #self.num_bags = num_bags
-        self.tiles = tiles
+        self.infer = False
+        self.features_part = False
+
+        self.tiles_per_bag = tiles_per_bag
         self.M = 500
         self.L = 128
         self.K = 1  # in the paper referred a 1.
 
         self.feat_ext_part1 = PreActResNets.MIL_PreActResNet50_Ron()
-
-        #self.linear_1 = nn.Linear(in_features=1000, out_features=self.M)
 
         self.attention_V = nn.Sequential(
             nn.Linear(self.M, self.L),
@@ -806,75 +805,76 @@ class MIL_PreActResNet50_Ron_MultiBag(nn.Module):
         self.classifier = nn.Sequential(
             # nn.Linear(self.M * self.K, 1),
             # nn.Sigmoid()
-            nn.Linear(self.M * self.K, 2),
+            nn.Linear(self.M * self.K, 2)
         )
 
 
-    def forward(self, x):
-        num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+    def forward(self, x, H = None, A = None):
+        if not self.infer:  # Training mode
+            num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
 
-        x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+            x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+            H = self.feat_ext_part1(x)
 
-        H = self.feat_ext_part1(x)
+            A_V = self.attention_V(H)  # NxL
+            A_U = self.attention_U(H)  # NxL
+            A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+            A = torch.transpose(A, 1, 0)  # KxN
+            #A = F.softmax(A, dim=1)  # softmax over N
 
+            if torch.cuda.is_available():
+                M = torch.zeros(0).cuda()
+                A_after_sftmx = torch.zeros(0).cuda()
+            else:
+                M = torch.zeros(0)
+                A_after_sftmx = torch.zeros(0)
 
-        A_V = self.attention_V(H)  # NxL
-        A_U = self.attention_U(H)  # NxL
-        A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
-        A = torch.transpose(A, 1, 0)  # KxN
-        A = F.softmax(A, dim=1)  # softmax over N
+            # The following if statement is needed in cases where the accuracy checking (testing phase) is done in
+            # a 1 bag per mini-batch mode
+            if num_of_bags == 1 and not self.training:
+                A_after_sftmx = F.softmax(A, dim=1)
+                M = torch.mm(A_after_sftmx, H)
 
-        if torch.cuda.is_available():
-            M = torch.zeros(0).cuda()
-            A_after_sftmx = torch.zeros(0).cuda()
-        else:
-            M = torch.zeros(0)
-            A_after_sftmx = torch.zeros(0)
+            else:
+                for i in range(num_of_bags):
+                    first_tile_idx = i * self.tiles_per_bag
+                    a = A[:, first_tile_idx : first_tile_idx + self.tiles_per_bag]
+                    a = F.softmax(a, dim=1)
 
-        # The following if statement is needed in cases where the accuracy checking is done in a 1 bag per minibatch mode
-        if num_of_bags == 1 and not self.training:
-            A = F.softmax(A, dim=1)
-            M = torch.mm(A, H)
-            '''
-            Y_prob = self.class_2(self.class_1(M))  #self.class_10(M)
+                    h = H[first_tile_idx : first_tile_idx + self.tiles_per_bag, :]
+                    m = torch.mm(a, h)
+                    M = torch.cat((M, m))
+                    
+                    A_after_sftmx = torch.cat((A_after_sftmx, a))
 
-            Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
-            Y_class_1D = Y_class[:, 0]
-            
-            return Y_prob, Y_class_1D, A
-            '''
             out = self.classifier(M)
+            return out, A_after_sftmx
 
-            return out
+        # In inference mode, there is no need to use more than one bag in each mini-batch because the data variability
+        # is needed only for the training process.
+        else:  # Inference mode
+            if self.features_part:
+                num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
 
+                if num_of_bags != 1:
+                    raise Exception('Inference mode supports only 1 bag(Slide) per Mini Batch')
 
-        for i in range(num_of_bags):
-            first_tile_idx = i * self.tiles
-            a = A[:, first_tile_idx : first_tile_idx + self.tiles]
-            a = F.softmax(a, dim=1)
+                x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+                H = self.feat_ext_part1(x)
 
-            h = H[first_tile_idx : first_tile_idx + self.tiles, :]
-            m = torch.mm(a, h)
-            M = torch.cat((M, m))
+                A_V = self.attention_V(H)  # NxL
+                A_U = self.attention_U(H)  # NxL
+                A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+                A = torch.transpose(A, 1, 0)  # KxN
 
-            A_after_sftmx = torch.cat((A_after_sftmx, a))
+                return H, A
 
-        '''
-        # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
-        # probability that the input belong to class 1/TRUE (and not 0/FALSE)
-        """Y_prob = self.class_2(self.class_1(M))
-        Y_class = torch.ge(Y_prob, 0.5).float()"""
+            else:
+                A_after_sftmx = F.softmax(A, dim=1)  # softmax over N
+                M = torch.mm(A_after_sftmx, H)
+                out = self.classifier(M)
 
-        Y_prob = self.class_2(self.class_1(M))  # self.class_10(M)
-
-        Y_class = torch.ge(Y_prob, 0.5).float()  # This line just turns probability to class.
-        Y_class_1D = Y_class[:, 0]
-        return Y_prob, Y_class_1D, A_after_sftmx
-        '''
-
-
-        out = self.classifier(M)
-        return out
+                return out, A_after_sftmx
 
 
 class ResNet50_GatedAttention_MultiBag(nn.Module):
@@ -1314,7 +1314,7 @@ class ReceptorNet(nn.Module):
 
         # In case we want an inference of a whole slide we need ALL the tiles from that slide:
         else:
-            if self.infer_part>2 or self.infer_part<1:
+            if self.infer_part > 2 or self.infer_part < 1:
                 raise Exception('Inference Mode should include feature extraction (part 1) or classification (part 2)')
             elif self.infer_part == 1:
                 H, A = self.part1(x)
