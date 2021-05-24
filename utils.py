@@ -420,7 +420,7 @@ def run_data(experiment: str = None,
         Receptor = str(run_DF_exp.loc[[experiment], ['Receptor']].values[0][0])
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
-        desired_magnification = str(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
+        desired_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
 
         return location, test_fold, transformations, tile_size, tiles_per_bag, \
                num_bags, DX, DataSet_name, Receptor, MultiSlide, model_name, desired_magnification
