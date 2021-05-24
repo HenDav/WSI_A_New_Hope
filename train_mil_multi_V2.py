@@ -25,7 +25,7 @@ parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue t
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
-parser.add_argument('-ds', '--dataset', type=str, default='ABCTB_TCGA', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')

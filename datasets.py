@@ -8,7 +8,7 @@ from torchvision import transforms
 import time
 from torch.utils.data import Dataset
 from typing import List
-from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks
+from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks, map_original_grid_list_to_equiv_grid_list
 from utils import HEDColorJitter, define_transformations, assert_dataset_target
 from utils import show_patches_and_transformations, get_datasets_dir_dict
 import openslide
@@ -407,7 +407,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                  folds: List = [1],
                  num_tiles: int = 500,
                  dx: bool = False,
-                 desired_slide_magnification: int = 20
+                 desired_slide_magnification: int = 10
                  ):
         super(Infer_Dataset, self).__init__(DataSet=DataSet,
                                             tile_size=tile_size,
@@ -431,6 +431,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.grid_lists = []
 
         ind = 0
+        slide_with_not_enough_tiles = 0
         for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
                 if num_tiles <= self.all_tissue_tiles[slide_num] and self.all_tissue_tiles[slide_num] > 0:
@@ -438,8 +439,9 @@ class Infer_Dataset(WSI_Master_Dataset):
                 else:
                     # self.num_patches.append(self.all_tissue_tiles[slide_num])
                     self.num_tiles.append(int(self.all_tissue_tiles[slide_num]))  # RanS 10.3.21
-                    print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num],
-                                                                             num_tiles))
+                    slide_with_not_enough_tiles += 1
+                    '''print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num],
+                                                                             num_tiles))'''
 
                 # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
                 self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
@@ -460,6 +462,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                 self.slide_grids.extend(patch_ind_chunks)
 
                 ind += 1  # RanS 29.1.21
+
+        print('There are {} slides with less than {} tiles'.format(slide_with_not_enough_tiles, num_tiles))
 
         # The following properties will be used in the __getitem__ function
         self.tiles_to_go = None
