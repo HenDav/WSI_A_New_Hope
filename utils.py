@@ -1074,6 +1074,8 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
         all_slides_final_scores_DF.to_excel(slide_score_file_name)
         all_slides_weights_DF.to_excel(tile_weights_file_name)
 
+        print('Tile scores for model {}/{} has been saved !'.format(num_model, len(models)))
+
 
 def map_original_grid_list_to_equiv_grid_list(adjusted_tile_size, grid_list):
     """
@@ -1086,5 +1088,25 @@ def map_original_grid_list_to_equiv_grid_list(adjusted_tile_size, grid_list):
         equivalent_grid.append(equivalent_location)
 
     return equivalent_grid
+
+def gather_per_patient_data(all_targets, all_scores_for_class_1, all_patient_barcodes):
+    """
+    This function gets 3 lists containing data about slides targets, scores (for class 1 - positive) and patient barcodes.
+    The function computes and returns the mean score for all slides that belong to the same patient.
+    The function uses the targets list to make sure that all targets for the same patient are the equal and return it's value
+
+    :param all_targets:
+    :param all_scores_for_class_1:
+    :param all_patient_barcodes:
+    :return:
+    """
+
+
+
+    return all_targets_per_patient, all_scores_for_class_1_per_patient
+
+
+
+
 
 
