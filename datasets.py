@@ -83,6 +83,7 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
         all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+        all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
         # Let's compute which slides are these:
@@ -169,6 +170,7 @@ class WSI_Master_Dataset(Dataset):
             self.all_is_DX_cut = all_is_DX_cut if self.DX else [True] * len(self.all_magnifications)
             self.all_tissue_tiles = all_tissue_tiles
             self.all_image_file_names = all_image_file_names
+            self.all_patient_barcodes = all_patient_barcodes
 
         self.image_file_names = []
         self.image_path_names = []
@@ -428,6 +430,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.num_tiles = []
         self.slide_grids = []
         self.grid_lists = []
+        self.patient_barcode = []
 
         ind = 0
         slide_with_not_enough_tiles = 0
@@ -444,6 +447,7 @@ class Infer_Dataset(WSI_Master_Dataset):
 
                 # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
                 self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
+                self.patient_barcode.append(self.all_patient_barcodes[slide_num])
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
 
                 if self.presaved_tiles[ind]:
@@ -574,4 +578,5 @@ class Infer_Dataset(WSI_Master_Dataset):
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
         #return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename
-        return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21
+        #return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21
+        return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
