@@ -189,8 +189,8 @@ class WSI_Master_Dataset(Dataset):
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
-                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB')
-                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
+                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB')
+                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
 
                 # Preload slides - improves speed during training.
                 try:

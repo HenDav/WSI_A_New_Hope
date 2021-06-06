@@ -51,7 +51,7 @@ for counter in range(len(args.from_epoch)):
     print('  Exp. {} and Epoch {}'.format(experiment, epoch))
     # Basic meta data will be taken from the first model (ONLY if all inferences are done from the same experiment)
     if counter == 0:
-        output_dir, _, _, TILE_SIZE, _, _, dx, _, args.target, _, model_name = utils.run_data(experiment=experiment)
+        output_dir, _, _, TILE_SIZE, _, _, dx, _, args.target, _, model_name, args.mag = utils.run_data(experiment=experiment)
         if different_experiments:
             Output_Dirs.append(output_dir)
         fix_data_path = True

@@ -357,7 +357,7 @@ if __name__ == '__main__':
                                                      num_bags=args.batch_size)
     else:
         args.output_dir, args.test_fold, args.transform_type, TILE_SIZE, tiles_per_bag, \
-        args.batch_size,  args.dx, args.dataset, args.target, _, args.model = utils.run_data(experiment=args.experiment)
+        args.batch_size,  args.dx, args.dataset, args.target, _, args.model, args.mag = utils.run_data(experiment=args.experiment)
 
         print('args.dataset:', args.dataset)
         print('args.target:', args.target)

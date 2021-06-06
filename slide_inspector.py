@@ -16,21 +16,30 @@ parser.add_argument('--in_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/
 parser.add_argument('--out_dir', default=r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_6/thumbs', type=str, help='output dir')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 parser.add_argument('--grid_only', action='store_true', help='plot grid images only')
+parser.add_argument('--grid_path_name', default='', type=str, help='extension of grid_images path') #RanS 3.6.21
 
 args = parser.parse_args()
 in_dir = args.in_dir
 out_dir = args.out_dir
 rewrite_figs = True
 
-#TODO RanS 21.5.21 - define something more general
-if os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_3')):
+if args.grid_path_name != '':
+    grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_' + args.grid_path_name)
+else:
+    grid_image_paths = glob.glob(os.path.join(in_dir, 'SegData', 'GridImages*'))
+    if len(grid_image_paths) > 1:
+        print('more than one GridImages Folder! select one')
+    else:
+        grid_image_path = grid_image_paths[0]
+
+"""if os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_3')):
     grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_3')
 elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_5')):
     grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_5')
 elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0.05')):
     grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0.05')
 else:
-    IOError('no grid_images folder found, please check')
+    IOError('no grid_images folder found, please check')"""
 
 def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag, grid_only):
     #fn = os.path.basename(slide_file)[:-5]
