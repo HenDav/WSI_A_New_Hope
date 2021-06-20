@@ -26,8 +26,7 @@ if sys.platform == 'darwin':
 elif sys.platform == 'linux':
     original_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     slide_data_filename = r'slides_data_ABCTB.xlsx'
-    #new_slides_path = r'/home/womer/project/All Data/ABCTB_TIF'
-    new_slides_path = r'/mnt/gipmed/All_Data/ABCTB_TIF'
+    new_slides_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
 
     try:
         process = subprocess.run(['ulimit',
@@ -112,7 +111,7 @@ def connect_tiles(slide_basic_name, num_tiles, num_cols):
             os.rmdir(os.path.join(new_slides_path, 'slide_tiles', slide_basic_name))
             print('Delete Successful')
         except OSError:
-            print('Could NOT delete all slide tiles or the folder. Trying again...')
+            print('Could NOT delete all slide tiles or the folder.')
 
 
 
@@ -138,12 +137,17 @@ def convert_1_slide(slide_name):
     slide_magnification = slide_data_DF[slide_data_DF['file'] == slide_name]['Manipulated Objective Power'].item()
 
     slide_basic_name = '.'.join(slide_name.split('.')[:-1])
+    tif_filename = os.path.join(new_slides_path, slide_basic_name + '.tif')
+    if os.path.isfile(tif_filename):  # Check if conversion was already done
+        print('TIF Slide Exists')
+        return
+
     if not os.path.isdir(os.path.join(new_slides_path, 'slide_tiles', slide_basic_name)):
         os.mkdir(os.path.join(new_slides_path, 'slide_tiles', slide_basic_name))
 
-    if create_thumbnails:
-        tmb = slide.get_thumbnail((1000, 1000))
-        tmb.save(os.path.join(new_slides_path, 'TIF_Thumbs', slide_basic_name + '_thumb_ndpi.png'))
+    # Create thumbnail for original slide:
+    tmb = slide.get_thumbnail((1000, 1000))
+    tmb.save(os.path.join(new_slides_path, 'TIF_Thumbs', slide_basic_name + '_thumb_ndpi.png'))
 
     best_slide_level, adjusted_tile_size, level_0_tile_size = get_optimal_slide_level(slide,
                                                                                       magnification=slide_magnification,
@@ -201,7 +205,9 @@ def convert_1_slide(slide_name):
         if print_comments:
             print('Converting to tilled tif')
         vips_filename = os.path.join(new_slides_path, 'complete_vips_slides', slide_basic_name + '.vips')
-        tif_full_command = os.path.join(new_slides_path, slide_basic_name + '.tif' + ':none,tile:512x512')
+        #tif_full_command = os.path.join(new_slides_path, slide_basic_name + '.tif' + ':none,tile:512x512')
+        tif_full_command = os.path.join(new_slides_path,
+                                        slide_basic_name + '.tif' + ':none,tile:' + str(slide_tile_size) + 'x' + str(slide_tile_size))
 
         try:
             if sys.platform == 'darwin':
@@ -223,11 +229,11 @@ def convert_1_slide(slide_name):
 
         os.remove(vips_filename)
 
-    if create_thumbnails:
-        tif_filename = os.path.join(new_slides_path, slide_basic_name + '.tif')
-        tif_slide = openslide.open_slide(tif_filename)
-        tmb_tif = tif_slide.get_thumbnail((1000, 1000))
-        tmb_tif.save(os.path.join(new_slides_path, 'TIF_Thumbs', slide_basic_name + '_thumb.png'))
+    # Create thumbnail for converted slide:
+    tif_filename = os.path.join(new_slides_path, slide_basic_name + '.tif')
+    tif_slide = openslide.open_slide(tif_filename)
+    tmb_tif = tif_slide.get_thumbnail((1000, 1000))
+    tmb_tif.save(os.path.join(new_slides_path, 'TIF_Thumbs', slide_basic_name + '_thumb.png'))
 
     print('{} FINISHED'.format(slide_basic_name))
 
@@ -237,7 +243,6 @@ def convert_1_slide(slide_name):
 
 print_comments = False
 convert_to_tilled_tif = True
-create_thumbnails = True
 multi = True
 num_workers = get_cpu()
 
@@ -258,7 +263,7 @@ if not os.path.isdir(new_slides_path):
     os.mkdir(new_slides_path)
 if not os.path.isdir(os.path.join(new_slides_path, 'slide_tiles')):
     os.mkdir(os.path.join(new_slides_path, 'slide_tiles'))
-if create_thumbnails and not os.path.isdir(os.path.join(new_slides_path, 'TIF_Thumbs')):
+if not os.path.isdir(os.path.join(new_slides_path, 'TIF_Thumbs')):
     os.mkdir(os.path.join(new_slides_path, 'TIF_Thumbs'))
 
 slide_data_DF = pd.read_excel(os.path.join(original_path, slide_data_filename))

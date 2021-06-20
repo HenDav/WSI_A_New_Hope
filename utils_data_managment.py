@@ -376,15 +376,15 @@ def make_grid(DataSet: str = 'TCGA',
     with multiprocessing.Pool(num_workers) as pool:
         #for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
         for tile_nums1, total_tiles1 in tqdm(pool.imap(partial(_make_grid_for_image,
-                                                                         meta_data_DF=slides_meta_data_DF,
-                                                                         ROOT_DIR=ROOT_DIR,
-                                                                         added_extension=added_extension,
-                                                                         DataSet=DataSet,
-                                                                         different_SegData_path_extension=different_SegData_path_extension,
-                                                                         tissue_coverage=tissue_coverage,
-                                                                         tile_sz=tile_sz,
-                                                                         desired_magnification=desired_magnification),
-                                                                 files), total=len(files)):
+                                                               meta_data_DF=slides_meta_data_DF,
+                                                               ROOT_DIR=ROOT_DIR,
+                                                               added_extension=added_extension,
+                                                               DataSet=DataSet,
+                                                               different_SegData_path_extension=different_SegData_path_extension,
+                                                               tissue_coverage=tissue_coverage,
+                                                               tile_sz=tile_sz,
+                                                               desired_magnification=desired_magnification),
+                                                       files), total=len(files)):
             tile_nums.append(tile_nums1)
             total_tiles.append(total_tiles1)
 
@@ -522,7 +522,7 @@ def _legit_grid(image_file_name: str,
     row_ratio = size[0] / segMap.shape[0]
     col_ratio = size[1] / segMap.shape[1]
 
-    # the complicated next line only rounds up the numbers
+    # the complicated next line only only rounds up the numbers
     tile_size_at_segmap_magnification = (int(-(-adjusted_tile_size_at_level_0 // row_ratio)), int(-(-adjusted_tile_size_at_level_0 // col_ratio)))
     # computing the compatible grid for the small segmentation map:
     idx_to_remove =[]
@@ -1163,3 +1163,95 @@ def update_dims():
 
     meta_data_DF.to_excel(data_file)
     print('Finished updating dims')
+
+
+def _make_background_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
+                                    different_SegData_path_extension, tissue_coverage, tile_sz, desired_magnification):
+    filename = '.'.join(os.path.basename(file).split('.')[:-1])
+    database = meta_data_DF.loc[file, 'id']
+    tissue_grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension,
+                             filename + '--tlsz' + str(tile_sz) + '.data')
+    background_grid_file = os.path.join(ROOT_DIR, database, 'Non_Tissue_Grids' + added_extension,
+                             filename + '--tlsz' + str(tile_sz) + '_BackGround' + '.data')
+
+    if os.path.isfile(os.path.join(ROOT_DIR, database, file)):
+        height = int(meta_data_DF.loc[file, 'Height'])
+        width = int(meta_data_DF.loc[file, 'Width'])
+
+        if database == 'SHEBA':
+            objective_power = 40 #temp RanS 25.3.21
+        else:
+            objective_power = meta_data_DF.loc[file, 'Manipulated Objective Power']
+        if objective_power == 'Missing Data':
+            print('Grid was not computed for file {}'.format(file))
+            print('objective power was not found')
+            tile_nums = 0
+            total_tiles = -1
+            return tile_nums, total_tiles
+
+        adjusted_tile_size_at_level_0 = int(tile_sz * (int(objective_power) / desired_magnification))
+        basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in
+                      range(0, width, adjusted_tile_size_at_level_0)]
+        total_tiles = len(basic_grid)
+
+        with open(tissue_grid_file, 'rb') as filehandle:
+            tissue_grid_list = pickle.load(filehandle)
+
+        background_tiles = list(set(basic_grid) - set(tissue_grid_list))
+        with open(background_grid_file, 'wb') as filehandle:
+            pickle.dump(background_tiles, filehandle)
+
+
+def make_background_grid(DataSet: str = 'TCGA',
+                         ROOT_DIR: str = 'All Data',
+                         tile_sz: int = 256,
+                         tissue_coverage: float = 0.5,
+                         desired_magnification: int = 10,
+                         added_extension: str = '',
+                         different_SegData_path_extension: str = '',
+                         num_workers: int = 1):
+    """    
+    :param DataSet: Dataset to create background grid for 
+    :param ROOT_DIR: Root Directory for the data
+    :param tile_sz: Desired tile size at desired magnification.
+    :param added_extension: extension for the slides_data.xlsx file and all created sub-directories. this is needed in
+           the case where we want to create alternative grids and keep the grids already created
+    :param different_SegData_path_extension: a parameter defining the modified name of the SegData directory.
+    :return: 
+    """""
+
+    # Create alternative slides_data file (if needed):
+    if added_extension != '':
+        copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
+
+    slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
+
+    slides_meta_data_DF = pd.read_excel(slides_data_file)
+    files = slides_meta_data_DF.loc[slides_meta_data_DF['id'] == DataSet]['file'].tolist()
+
+    meta_data_DF = pd.DataFrame(files, columns=['file'])
+
+    slides_meta_data_DF.set_index('file', inplace=True)
+    meta_data_DF.set_index('file', inplace=True)
+    tile_nums = []
+    total_tiles = []
+
+    # Save the background grid to file:
+    if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'Non_Tissue_Grids' + added_extension)):
+        os.mkdir(os.path.join(ROOT_DIR, DataSet, 'Non_Tissue_Grids' + added_extension))
+
+    print('Starting Non Tissue Grid production...')
+    print()
+
+    for file in files:
+        _make_background_grid_for_image(file=file,
+                                        meta_data_DF=slides_meta_data_DF,
+                                        ROOT_DIR=ROOT_DIR,
+                                        added_extension=added_extension,
+                                        DataSet=DataSet,
+                                        different_SegData_path_extension=different_SegData_path_extension,
+                                        tissue_coverage=tissue_coverage,
+                                        tile_sz=tile_sz,
+                                        desired_magnification=desired_magnification)
+
+    print('Finished BackGround Grid production phase !')

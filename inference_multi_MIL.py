@@ -16,19 +16,19 @@ import pickle
 from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=[303], help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=[304], help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[1000], help='Use this epoch model for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('-f', '--folds', type=list, default=[3], help=' folds to infer')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds))
 
 if sys.platform == 'darwin':
-    args.experiment = [1, 1]
-    args.from_epoch = [1035, 1040]
+    args.experiment = [1]
+    args.from_epoch = [1035]
     args.save_tile_scores = True
 
 
@@ -211,6 +211,8 @@ with torch.no_grad():
             slide_num += 1
 
 if args.save_tile_scores:
+    if not different_experiments:
+        Output_Dirs = output_dir
     utils.save_all_slides_and_models_data(all_slides_tile_scores_list, all_slides_scores_list, all_slides_weights_list, models, Output_Dirs, args.from_epoch, data_path)
 
 # Computing performance data for all models (over all slides scores data):

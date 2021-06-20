@@ -16,7 +16,7 @@ parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='type of 
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
 parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
-parser.add_argument('--mag', type=int, default=20, help='desired magnification of patches') #RanS 15.2.21
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 15.2.21
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
 parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
@@ -65,5 +65,6 @@ if __name__ =='__main__':
                                                   as_jpg=args.as_jpg)
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
+
 
     print('Data Preparation sequence is Done !')
