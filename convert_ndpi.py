@@ -13,18 +13,40 @@ import multiprocessing
 from functools import partial
 import resource
 
-
+REMOVABLE = True
 
 if sys.platform == 'darwin':
     original_path = r'All Data/ABCTB'
+    slide_data_path = original_path
     slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
     new_slides_path = r'All Data/ABCTB_TIF'
+
+    if REMOVABLE:
+        original_path = r'/Volumes/McKinley/ABCTB'
+        slide_data_path = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/'
+        slide_data_filename = r'slides_data_ABCTB.xlsx'
+        batch_Dict = {'1': 'Batch1',
+                      '2': 'Batch2',
+                      '3': 'Batch3',
+                      '4': 'Batch4',
+                      '5': 'Batch5',
+                      '6': 'Batch6',
+                      '7': 'Batch7',
+                      '8': 'Batch8',
+                      '9': 'Batch9',
+                      '10': 'Batch10',
+                      '11': 'Batch11',
+                      '12': 'Batch12',
+                      '13': 'Batch13'
+                      }
+        new_slides_path = r'/Volumes/HD_5TB/Data/ABCTB_TIF'
 
     resource.setrlimit(resource.RLIMIT_NOFILE, (20480, -1))
     MAX_FILES, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 
 elif sys.platform == 'linux':
     original_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
+    slide_data_path = original_path
     slide_data_filename = r'slides_data_ABCTB.xlsx'
     new_slides_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
 
@@ -243,21 +265,9 @@ def convert_1_slide(slide_name):
 
 print_comments = False
 convert_to_tilled_tif = True
-multi = True
+multi = False  #True
 num_workers = get_cpu()
 
-'''
-if sys.platform == 'darwin':
-    original_path = r'All Data/ABCTB'
-    slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
-    new_slides_path = r'All Data/ABCTB_TIF'
-
-elif sys.platform == 'linux':
-    original_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
-    slide_data_filename = r'slides_data_ABCTB.xlsx'
-    #new_slides_path = r'/home/womer/project/All Data/ABCTB_TIF'
-    new_slides_path = r'/mnt/gipmed/All_Data/ABCTB_TIF'
-'''
 # Create folders:
 if not os.path.isdir(new_slides_path):
     os.mkdir(new_slides_path)
@@ -266,7 +276,7 @@ if not os.path.isdir(os.path.join(new_slides_path, 'slide_tiles')):
 if not os.path.isdir(os.path.join(new_slides_path, 'TIF_Thumbs')):
     os.mkdir(os.path.join(new_slides_path, 'TIF_Thumbs'))
 
-slide_data_DF = pd.read_excel(os.path.join(original_path, slide_data_filename))
+slide_data_DF = pd.read_excel(os.path.join(slide_data_path, slide_data_filename))
 files = list(slide_data_DF['file'])
 
 if multi:

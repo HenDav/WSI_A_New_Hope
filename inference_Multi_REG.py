@@ -140,7 +140,7 @@ total_pos, total_neg = 0, 0
 correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, _, slide_file) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, _, slide_file, _) in enumerate(tqdm(inf_loader)):
         if new_slide:
             scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             target_current = target

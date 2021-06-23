@@ -361,7 +361,7 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  get_images: bool = False,
                  color_param: float = 0.1,
                  n_tiles: int = 10,
-                 desired_slide_magnification: int = 20
+                 desired_slide_magnification: int = 10
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
