@@ -1,11 +1,11 @@
 import subprocess
 
-infer = True
+infer = False
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
                     #'--folds', '123456',
-                    '--folds', '2',
+                    '--folds', '12',
                     #'--dataset', 'Breast',
                     #'--dataset', 'TCGA',
                     '--dataset', 'ABCTB_TCGA',
@@ -15,21 +15,20 @@ if infer:
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',
-                    '--test_fold', str(2),
-                    '--epochs', str(2),
-                    #'--dataset', 'LUNG',
+                    '--test_fold', '2',
+                    '--epochs', '2',
+                    '--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'ABCTB',
-                    #'--dataset', 'PDL1',
-                    '--dataset', 'ABCTB_TCGA',
-                    '--target', 'ER',
+                    #'--dataset', 'ABCTB_TCGA',
+                    #'--target', 'ER',
                     #'--target', 'Her2',
-                    #'--target', 'PDL1',
+                    '--target', 'PDL1',
                     #'--transform_type', 'bnfrs',
                     #'--transform_type', 'hedcfrs',
-                    '--batch_size', str(2),
+                    '--batch_size', '2',
                     '--n_patches_test', '10',
-                    '--n_patches_train', '10',
+                    '--n_patches_train', '100',
                     '--model', 'PreActResNets.PreActResNet50_Ron()',
                     #'--model', 'nets.resnet50_with_3FC()',
                     '--bootstrap',
@@ -37,12 +36,13 @@ else:
                     #'--transform_type', 'rvf',
                     '--transform_type', 'pcbnfrsc',
                     #'-fast',
-                    '--mag', str(10),
-                    '--eval_rate', str(10),
-                    '-d'
+                    '--mag', '10',
+                    '--eval_rate', '10',
+                    '-d',
                     #'-time'
                     #'-im'
                     #'--balanced_sampling'
+                    '--loan'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

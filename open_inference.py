@@ -5,7 +5,7 @@ from cycler import cycler
 import numpy as np
 import pandas as pd
 import os
-from inference_loader_input import inference_files, inference_dir, save_csv, patient_level
+from inference_loader_input import inference_files, inference_dir, save_csv, patient_level, inference_name
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
                                     '#f781bf', '#a65628', '#984ea3',
@@ -138,7 +138,7 @@ if patient_level:
     print('average AUC per patient: ' + str(np.round(np.mean(roc_auc_patient), 2)))
 else:
     print('average AUC per slide: ' + str(np.round(np.mean(roc_auc), 2)))
-plt.savefig(os.path.join(inference_dir, 'inference.png'))
+plt.savefig(os.path.join(inference_dir, inference_name + '_inference.png'))
 print('finished')
 #plt.show()
 

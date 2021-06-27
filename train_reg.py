@@ -42,6 +42,7 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -51,6 +52,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     This function trains the model
     :return:
     """
+    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
+        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
     test_auc_list = []
@@ -171,7 +174,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         if e % args.eval_rate == 0:
             #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
-            # RanS 8.12.20, perform slide inference
+            # perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
@@ -189,8 +192,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             utils.run_data(experiment=experiment, epoch=e)
 
             # Save model to file:
-            if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-                os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+            print('saving checkpoint to ', args.output_dir) #RanS 23.6.21
 
             try:
                 model_state_dict = model.module.state_dict()
@@ -206,8 +208,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tile_size': TILE_SIZE,
                         'tiles_per_bag': 1},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
-        #else:
-        #    acc_test, bacc_test = None, None
 
     all_writer.close()
     if print_timing:
@@ -392,6 +392,7 @@ if __name__ == '__main__':
                                          get_images=args.images,
                                          desired_slide_magnification=args.mag,
                                          DX=args.dx,
+                                         loan=args.loan
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -404,6 +405,7 @@ if __name__ == '__main__':
                                         get_images=args.images,
                                         desired_slide_magnification=args.mag,
                                         DX=args.dx,
+                                        loan=args.loan
                                         )
     sampler = None
     do_shuffle = True
@@ -421,6 +423,11 @@ if __name__ == '__main__':
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
                               num_workers=num_workers, pin_memory=True)
+
+    # RanS 20.6.21
+    if args.loan:
+        train_labels_df = pd.DataFrame({'slide_name': train_loader.dataset.image_file_names, 'label': train_loader.dataset.target})
+        test_labels_df = pd.DataFrame({'slide_name': test_loader.dataset.image_file_names, 'label': test_loader.dataset.target})
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])

@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
+from matplotlib import image as plt_image
 import os
-import openslide
 import pandas as pd
 import glob
 import pickle
@@ -26,6 +26,10 @@ from shutil import copy2
 from datetime import date
 import platform
 import inspect
+
+#if sys.platform == 'win32':
+#    os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran')
+import openslide
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -70,7 +74,8 @@ def _choose_data(grid_list: list,
                  magnification: int,
                  tile_size: int = 256,
                  print_timing: bool = False,
-                 desired_mag: int = 20):
+                 desired_mag: int = 20,
+                 loan: bool = False):
     """
     This function choose and returns data to be held by DataSet.
     The function is in the PreLoad Version. It works with slides already loaded to memory.
@@ -96,16 +101,17 @@ def _choose_data(grid_list: list,
         raise ValueError('Requested more tiles than available by the grid list')
 
     locs = [grid_list[idx] for idx in idxs]
-    image_tiles, time_list = _get_tiles(slide=slide,
+    image_tiles, time_list, labels = _get_tiles(slide=slide,
                                         locations=locs,
                                         tile_size_level_0=level_0_tile_size,
                                         adjusted_tile_sz=adjusted_tile_size,
                                         output_tile_sz=tile_size,
                                         best_slide_level=best_slide_level,
                                         print_timing=print_timing,
-                                        random_shift=True)
+                                        random_shift=True,
+                                        loan=loan)
 
-    return image_tiles, time_list
+    return image_tiles, time_list, labels
 
 
 def _get_tiles(slide: openslide.OpenSlide,
@@ -116,7 +122,8 @@ def _get_tiles(slide: openslide.OpenSlide,
                best_slide_level: int,
                print_timing: bool = False,
                random_shift: bool = False,
-               oversized_HC_tiles: bool = False):
+               oversized_HC_tiles: bool = False,
+               loan: bool = False):
     """
     This function extract tiles from the slide.
     :param slide: OpenSlide object containing a slide
@@ -169,6 +176,17 @@ def _get_tiles(slide: openslide.OpenSlide,
         output_tile_sz *= 2
         tile_shifting = (tile_size_level_0 // 2, tile_size_level_0 // 2)
 
+    # get localized labels - RanS 17.6.21
+    labels = np.zeros(len(locations)) - 1
+    if loan:
+        slide_name = os.path.splitext(os.path.basename(slide._filename))[0]
+        annotation_file = os.path.join(os.path.dirname(slide._filename), 'local_labels', slide_name + '-labels.png')
+        # annotation = np.array(Image.open(annotation_file))
+        annotation = (plt_image.imread(annotation_file) * 255).astype('uint8')
+        ds = 8  # defined in the QuPath groovy script
+        #Tumor = blue = (0,0,255)
+        #Positive = red = (250,62,62)
+
     for idx, loc in enumerate(locations):
         if random_shift:
             tile_shifting = sample(range(-tile_size_level_0 // 2, tile_size_level_0 // 2), 2)
@@ -202,6 +220,41 @@ def _get_tiles(slide: openslide.OpenSlide,
             print('taking blank patch instead')
             image = Image.fromarray(np.zeros([adjusted_tile_sz, adjusted_tile_sz, 3], dtype=np.uint8))
 
+        # get localized labels - RanS 17.6.21
+        if loan:
+            d = adjusted_tile_sz // ds
+            x = new_loc_init['Left'] // ds
+            y = new_loc_init['Top'] // ds
+            x0 = int(slide.properties[openslide.PROPERTY_NAME_BOUNDS_X]) // ds
+            y0 = int(slide.properties[openslide.PROPERTY_NAME_BOUNDS_Y]) // ds
+
+            #temp for debug
+            temp_plot = False
+            if temp_plot:
+                fig, ax = plt.subplots()
+                ds1 = 8
+                q = slide.get_thumbnail((slide.dimensions[0]//(ds*ds1), slide.dimensions[1]//(ds*ds1)))
+                plt.imshow(q, alpha=1)
+                q1 = Image.fromarray(annotation)
+                q1.thumbnail((annotation.shape[1]//ds1, annotation.shape[0]//ds1))
+                seg = np.zeros((q.size[0], q.size[1], 3))
+                seg[y0//ds1:y0//ds1+q1.size[1], x0//ds1:x0//ds1+q1.size[0], :] = np.array(q1)/255
+                plt.imshow(seg, alpha=0.5)
+                from matplotlib.patches import Rectangle
+                rect = Rectangle((new_loc_init['Left']//(ds*ds1), new_loc_init['Top']//(ds*ds1)), adjusted_tile_sz//(ds*ds1), adjusted_tile_sz//(ds*ds1), edgecolor='g', facecolor='g')
+                ax.add_patch(rect)
+            annotation_tile = annotation[y-y0:y-y0+d, x-x0:x-x0 + d, :]
+            #blue_zone = np.sum(annotation_tile[:,:,2] == 255) / (annotation_tile.size//3)
+            red_zone = np.sum(annotation_tile[:, :, 0] == 250) / (annotation_tile.size // 3)
+            if red_zone > 0.1:
+                labels[idx] = 1
+            else:
+                labels[idx] = 0
+
+        temp_plot1 = False
+        if temp_plot1:
+            plt.imshow(image)
+
         if adjusted_tile_sz != output_tile_sz:
             image = image.resize((output_tile_sz, output_tile_sz))
 
@@ -214,10 +267,10 @@ def _get_tiles(slide: openslide.OpenSlide,
     else:
         time_list = [0]
 
-    return tiles_PIL, time_list
+    return tiles_PIL, time_list, labels
 
 
-def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
+'''def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
     """
     This function returns the grid location of tile for a specific slide.
     :param file_name:
@@ -235,10 +288,10 @@ def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256
         # read the data as binary data stream
         grid_list = pickle.load(filehandle)
 
-        return grid_list
+        return grid_list'''
 
 
-def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
+'''def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
     """
     This function returns an OpenSlide object from the file within the directory
     :param path:
@@ -260,15 +313,15 @@ def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
         except:
             print('Cannot open slide at location: {}'.format(path))
 
-    return slide
+    return slide'''
 
 
-def _get_tcga_id_list(path: str = 'tcga-data'):
+'''def _get_tcga_id_list(path: str = 'tcga-data'):
     """
     This function returns the id of all images in the TCGA data directory given by 'path'
     :return:
     """
-    return next(os.walk(path))[1]
+    return next(os.walk(path))[1]'''
 
 
 def device_gpu_cpu():
@@ -711,10 +764,7 @@ def get_datasets_dir_dict(Dataset: str):
     ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
-
-    TCGA_gipdeep3_path = r'/mnt/hdd/All_Data/TCGA'
-    HEROHE_gipdeep3_path = r'/mnt/hdd/All_Data/HEROHE'
-    ABCTB_gipdeep3_path = r'/mnt/hdd/All_Data/ABCTB'
+    ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -735,13 +785,9 @@ def get_datasets_dir_dict(Dataset: str):
             for ii in np.arange(1, 4):
                 dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
 
-            if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['TCGA'] = TCGA_gipdeep3_path
-                dir_dict['HEROHE'] = HEROHE_gipdeep3_path
-                dir_dict['ABCTB'] = ABCTB_gipdeep_path
-            else:
-                dir_dict['TCGA'] = TCGA_gipdeep_path
-                dir_dict['HEROHE'] = HEROHE_gipdeep_path
+            dir_dict['TCGA'] = TCGA_gipdeep_path
+            dir_dict['HEROHE'] = HEROHE_gipdeep_path
+            dir_dict['ABCTB'] = ABCTB_gipdeep_path
 
         elif sys.platform == 'win32':  #Ran local
             dir_dict['TCGA'] = TCGA_ran_path
@@ -756,9 +802,6 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'TCGA':
         if sys.platform == 'linux':  # GIPdeep
-            '''if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['TCGA'] = TCGA_gipdeep3_path
-            else:  # Run from netapp'''
             dir_dict['TCGA'] = TCGA_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
@@ -772,9 +815,6 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'HEROHE':
         if sys.platform == 'linux':  # GIPdeep
-            '''if platform.node() == 'gipdeep3':  # Run from local files
-                dir_dict['HEROHE'] = HEROHE_gipdeep3_path
-            else:  # Run from netapp'''
             dir_dict['HEROHE'] = HEROHE_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
@@ -785,9 +825,12 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'ABCTB_TIF':
         if sys.platform == 'linux':  # GIPdeep
-            dir_dict['ABCTB_TIF'] = r'/home/womer/project/All Data/ABCTB_TIF'
+            #dir_dict['ABCTB_TIF'] = r'/home/womer/project/All Data/ABCTB_TIF'
+            dir_dict['ABCTB_TIF'] = ABCTB_TIF_gipdeep_path
         elif sys.platform == 'darwin':  # Omer local
             dir_dict['ABCTB_TIF'] = r'All Data/ABCTB_TIF'
+        else:
+            raise Exception('Unsupported platform')
 
     elif Dataset == 'ABCTB_TILES':
         if sys.platform == 'linux':  # GIPdeep
@@ -797,13 +840,10 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux':  # GIPdeep Run from local files
-            dir_dict['ABCTB'] = ABCTB_gipdeep_path #non local, temp RanS 28.4.21
-            #dir_dict['ABCTB'] = ABCTB_gipdeep3_path
+            dir_dict['ABCTB'] = ABCTB_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['ABCTB'] = ABCTB_ran_path
-        #else:
-        #    raise Exception('ABCTB can be used only on gipdeep3')
 
     elif Dataset == 'SHEBA':
         if sys.platform == 'linux':
@@ -821,7 +861,8 @@ def get_datasets_dir_dict(Dataset: str):
         if sys.platform == 'linux':
             dir_dict['PORTO_PDL1'] = r'/mnt/gipnetapp_public/sgils/LUNG/PORTO_PDL1'
         elif sys.platform == 'win32':  # Ran local
-            dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\PDL1'
+            #dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\PORTO_PDL1'
+            dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\temp_8_slides\PORTO_PDL1'
 
     return dir_dict
 
