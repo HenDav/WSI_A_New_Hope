@@ -16,6 +16,7 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
+import smtplib, ssl
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -486,3 +487,23 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+
+    #finished training, send email if possible
+    if os.path.isfile('mail_cfg.txt'):
+        with open("mail_cfg.txt", "r") as f:
+            text = f.readlines()
+            receiver_email = text[0][:-1]
+            password = text[1]
+
+        port = 465  # For SSL
+        sender_email = "gipmed.python@gmail.com"
+
+        message = 'Subject: finished running experiment ' + str(experiment)
+
+        # Create a secure SSL context
+        context = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message)
+            print('email sent to ' + receiver_email)

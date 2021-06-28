@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pickle
 import resnet_v2
 from collections import OrderedDict
+import smtplib, ssl
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
@@ -218,3 +219,23 @@ for model_num in range(NUM_MODELS):
                   int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
                   len(all_labels[:, model_num])))
 print('Done !')
+
+# finished training, send email if possible
+if os.path.isfile('mail_cfg.txt'):
+    with open("mail_cfg.txt", "r") as f:
+        text = f.readlines()
+        receiver_email = text[0][:-1]
+        password = text[1]
+
+    port = 465  # For SSL
+    sender_email = "gipmed.python@gmail.com"
+
+    message = 'Subject: finished running experiment ' + str(args.experiment)
+
+    # Create a secure SSL context
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+        server.login(sender_email, password)
+        server.sendmail(sender_email, receiver_email, message)
+        print('email sent to ' + receiver_email)
