@@ -1083,7 +1083,11 @@ def extract_tile_scores_for_slide_1(all_features, models, Output_Dirs, Epochs, d
 def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores, all_slides_weights, models, Output_Dirs, Epochs, data_path):
     # Save slide scores to file:
     for num_model in range(len(models)):
-        output_dir = Output_Dirs[num_model]
+        if type(Output_Dirs) is str:
+            output_dir = Output_Dirs
+        else:
+            output_dir = Output_Dirs[num_model]
+
         epoch = Epochs[num_model]
         model = models[num_model]
 
@@ -1117,7 +1121,7 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
         all_slides_final_scores_DF.to_excel(slide_score_file_name)
         all_slides_weights_DF.to_excel(tile_weights_file_name)
 
-        print('Tile scores for model {}/{} has been saved !'.format(num_model, len(models)))
+        print('Tile scores for model {}/{} has been saved !'.format(num_model + 1, len(models)))
 
 
 def map_original_grid_list_to_equiv_grid_list(adjusted_tile_size, grid_list):
@@ -1144,12 +1148,30 @@ def gather_per_patient_data(all_targets, all_scores_for_class_1, all_patient_bar
     :return:
     """
 
+    targets_dict = {}
+    scores_dict = {}
 
+    # first, we'll gather all the data for specific patients
+    for idx, patient in enumerate(all_patient_barcodes):
+        if patient in targets_dict:
+            targets_dict[patient].append(all_targets[idx])
+            scores_dict[patient].append(all_scores_for_class_1[idx])
+        else:
+            targets_dict[patient] = [all_targets[idx]]
+            scores_dict[patient] = [all_scores_for_class_1[idx]]
+
+    # Now, we'll find the mean values for each patient:
+    all_targets_per_patient, all_scores_for_class_1_per_patient = [], []
+    patient_barcodes = targets_dict.keys()
+    for barcode in patient_barcodes:
+        targets = np.array(targets_dict[barcode])
+        scores_mean = np.array(scores_dict[barcode]).mean()
+
+        # Check that all targets for the same patient are the same.
+        if targets[0] != targets.mean():
+            raise Exception('Not all targets for patient {} are equal'.format(barcode))
+
+        all_targets_per_patient.append(int(targets.mean()))
+        all_scores_for_class_1_per_patient.append(scores_mean)
 
     return all_targets_per_patient, all_scores_for_class_1_per_patient
-
-
-
-
-
-

@@ -611,3 +611,275 @@ class Infer_Dataset(WSI_Master_Dataset):
         #return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename
         #return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21
         return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
+
+
+class WSI_Segmentation_Master_Dataset(Dataset):
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 tile_size: int = 256,
+                 test_fold: int = 1,
+                 infer_folds: List = [None],
+                 train: bool = True,
+                 print_timing: bool = False,
+                 transform_type: str = 'flip',
+                 get_images: bool = False,
+                 train_type: str = 'MASTER',
+                 color_param: float = 0.1,
+                 n_tiles: int = 10,
+                 desired_slide_magnification: int = 10,
+                 slide_repetitions: int = 1):
+
+        print('Initializing {} DataSet for Segmentation....'.format('Train' if train else 'Test'))
+
+        self.DataSet = DataSet
+        self.desired_magnification = desired_slide_magnification
+        self.tile_size = tile_size
+        self.test_fold = test_fold
+        self.train = train
+        self.print_time = print_timing
+        self.get_images = get_images
+        self.train_type = train_type
+        self.color_param = color_param
+
+        # Get DataSets location:
+        self.dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
+        print('Slide Data will be taken from these locations:')
+        print(self.dir_dict)
+        locations_list = []
+
+        for _, key in enumerate(self.dir_dict):
+            locations_list.append(self.dir_dict[key])
+
+            slide_meta_data_file = os.path.join(self.dir_dict[key], 'slides_data_' + key + '.xlsx')
+            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids', 'Grid_data.xlsx')
+
+            slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
+            grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
+            meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
+                                         **grid_meta_data_DF.set_index('file').to_dict()})
+
+            self.meta_data_DF = meta_data_DF if not hasattr(self, 'meta_data_DF') else self.meta_data_DF.append(
+                meta_data_DF)
+        self.meta_data_DF.reset_index(inplace=True)
+        self.meta_data_DF.rename(columns={'index': 'file'}, inplace=True)
+
+        if self.DataSet == 'LUNG':
+            # for lung, take only origin: lung
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
+            self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
+
+        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+        all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
+
+        # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
+        # Let's compute which slides are these:
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+
+        # Also remove slides without grid data:
+        slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == -1])
+        # Remove slides with 0 tiles:
+        slides_with_0_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == 0])
+
+        if 'bad segmentation' in self.meta_data_DF.columns:
+            slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1]) #RanS 9.5.21
+        else:
+            slides_with_bad_seg = set()
+
+        # Define number of tiles to be used
+        if train_type == 'REG':
+            n_minimal_tiles = n_tiles
+        else:
+            n_minimal_tiles = self.bag_size
+
+        slides_with_few_tiles = set(self.meta_data_DF.index[self.meta_data_DF['Legitimate tiles - ' + str(
+            self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] < n_minimal_tiles])
+        # FIXME: find a way to use slides with less than the minimal amount of slides. and than delete the following if.
+        if len(slides_with_few_tiles) > 0:
+            print(
+                '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
+                .format(len(slides_with_few_tiles), n_minimal_tiles))
+        valid_slide_indices = np.array(
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg))
+
+        # The train set should be a combination of all sets except the test set and validation set:
+        if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
+            fold_column_name = 'test fold idx breast'
+        else:
+            fold_column_name = 'test fold idx'
+
+        if self.train_type in ['REG', 'MIL']:
+            if self.train:
+                folds = list(self.meta_data_DF[fold_column_name].unique())
+                folds.remove(self.test_fold)
+                if 'test' in folds:
+                    folds.remove('test')
+                if 'val' in folds:
+                    folds.remove('val')
+            else:
+                folds = [self.test_fold]
+                folds.append('val')
+        elif self.train_type == 'Infer':
+            folds = infer_folds
+        else:
+            raise ValueError('Variable train_type is not defined')
+
+        self.folds = folds
+
+        correct_folds = self.meta_data_DF[fold_column_name][valid_slide_indices].isin(folds)
+        valid_slide_indices = np.array(correct_folds.index[correct_folds])
+
+        all_image_file_names = list(self.meta_data_DF['file'])
+
+        '''if DataSet == 'Breast':
+            all_image_path_names = [os.path.join(self.dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
+        else:
+            all_image_path_names = list(self.meta_data_DF['id'])'''
+
+        all_image_ids = list(self.meta_data_DF['id'])
+
+        all_in_fold = list(self.meta_data_DF[fold_column_name])
+        all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(
+            self.desired_magnification)])
+        #if self.DataSet != 'TCGA':
+        if 'TCGA' not in self.dir_dict:
+            self.DX = False
+        if self.DX:
+            all_is_DX_cut = list(self.meta_data_DF['DX'])
+
+        all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
+
+        if train_type == 'Infer':
+            self.valid_slide_indices = valid_slide_indices
+            self.all_magnifications = all_magnifications
+            self.all_is_DX_cut = all_is_DX_cut if self.DX else [True] * len(self.all_magnifications)
+            self.all_tissue_tiles = all_tissue_tiles
+            self.all_image_file_names = all_image_file_names
+            self.all_patient_barcodes = all_patient_barcodes
+
+        self.image_file_names = []
+        self.image_path_names = []
+        self.in_fold = []
+        self.tissue_tiles = []
+        self.target = []
+        self.magnification = []
+        self.slides = []
+        self.grid_lists = []
+        self.presaved_tiles = []
+
+        for _, index in enumerate(tqdm(valid_slide_indices)):
+            if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                self.image_file_names.append(all_image_file_names[index])
+                # self.image_path_names.append(all_image_path_names[index])
+                self.image_path_names.append(self.dir_dict[all_image_ids[index]])
+                self.in_fold.append(all_in_fold[index])
+                self.tissue_tiles.append(all_tissue_tiles[index])
+                self.target.append(all_targets[index])
+                self.magnification.append(all_magnifications[index])
+                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB')
+                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
+
+                # Preload slides - improves speed during training.
+                try:
+                    image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
+                    if self.presaved_tiles[-1]:
+                        tiles_dir = os.path.join(self.dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
+                        self.slides.append(tiles_dir)
+                        self.grid_lists.append(0)
+                    else:
+                        self.slides.append(openslide.open_slide(image_file))
+                        basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
+                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids',
+                                                 basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                        with open(grid_file, 'rb') as filehandle:
+                            grid_list = pickle.load(filehandle)
+                            self.grid_lists.append(grid_list)
+                except FileNotFoundError:
+                    raise FileNotFoundError(
+                        'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
+
+        # Setting the transformation:
+        self.transform = define_transformations(transform_type, self.train, self.tile_size, self.color_param)
+        if np.sum(self.presaved_tiles):
+            self.rand_crop = transforms.RandomCrop(self.tile_size)
+
+        if train_type == 'REG':
+            self.factor = n_tiles
+            self.real_length = int(self.__len__() / self.factor)
+        elif train_type == 'MIL':
+            self.factor = 1
+            self.real_length = self.__len__()
+        if train is False and test_time_augmentation:
+            self.factor = 4
+            self.real_length = int(self.__len__() / self.factor)
+
+    def __len__(self):
+        return len(self.target) * self.factor
+
+    def __getitem__(self, idx):
+        start_getitem = time.time()
+        idx = idx % self.real_length
+
+        if self.presaved_tiles[idx]:  # load presaved patches
+            time_tile_extraction = time.time()
+            idxs = sample(range(self.tissue_tiles[idx]), self.bag_size)
+            empty_image = Image.fromarray(np.uint8(np.zeros((self.tile_size, self.tile_size, 3))))
+            tiles = [empty_image] * self.bag_size
+            for ii, tile_ind in enumerate(idxs):
+                #tile_path = os.path.join(self.tiles_dir[idx], 'tile_' + str(tile_ind) + '.data')
+                tile_path = os.path.join(self.slides[idx], 'tile_' + str(tile_ind) + '.data')
+                with open(tile_path, 'rb') as fh:
+                    header = fh.readline()
+                    tile_bin = fh.read()
+                dtype, w, h, c = header.decode('ascii').strip().split()
+                tile = np.frombuffer(tile_bin, dtype=dtype).reshape((int(w), int(h), int(c)))
+                tile1 = self.rand_crop(Image.fromarray(tile))
+                tiles[ii] = tile1
+                time_tile_extraction = (time.time() - time_tile_extraction) / len(idxs)
+                time_list = [0, time_tile_extraction]
+        else:
+            slide = self.slides[idx]
+
+            tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
+                                            slide=slide,
+                                            how_many=self.bag_size,
+                                            magnification=self.magnification[idx],
+                                            #tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                            tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
+                                            # Fix boundaries with scale
+                                            print_timing=self.print_time,
+                                            desired_mag=self.desired_magnification)
+
+        label = [1] if self.target[idx] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        # X will hold the images after all the transformations
+        X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+
+        start_aug = time.time()
+        for i in range(self.bag_size):
+            X[i] = self.transform(tiles[i])
+
+        if self.get_images:
+            images = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
+            trans = transforms.Compose([transforms.CenterCrop(self.tile_size), transforms.ToTensor()])
+            for i in range(self.bag_size):
+                images[i] = trans(tiles[i])
+        else:
+            images = 0
+
+        aug_time = (time.time() - start_aug) / self.bag_size
+        total_time = time.time() - start_getitem
+        if self.print_time:
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+        else:
+            time_list = [0]
+
+        # TODO: check what this function does
+        debug_patches_and_transformations = False
+        if debug_patches_and_transformations and images != 0:
+            show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
+
+        return X, label, time_list, self.image_file_names[idx], images
+

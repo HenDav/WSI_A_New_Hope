@@ -66,4 +66,5 @@ if __name__ =='__main__':
     if args.sl2im:
         utils_data_managment.herohe_slides2images()
 
+
     print('Data Preparation sequence is Done !')
