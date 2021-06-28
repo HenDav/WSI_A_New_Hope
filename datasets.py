@@ -37,7 +37,9 @@ class WSI_Master_Dataset(Dataset):
                  test_time_augmentation: bool = False,
                  desired_slide_magnification: int = 20,
                  slide_repetitions: int = 1,
-                 loan: bool = False):
+                 loan: bool = False,
+                 er_eq_pr: bool = False
+                 ):
 
         # Check if the target receptor is available for the requested train DataSet:
         assert_dataset_target(DataSet, target_kind)
@@ -84,7 +86,19 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
-        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        if self.target_kind=='OR':
+            PR_targets = list(self.meta_data_DF['PR status'])
+            ER_targets = list(self.meta_data_DF['ER status'])
+            all_targets = ['Missing Data']*len(ER_targets)
+            for ii, (PR_target, ER_target) in enumerate(zip(PR_targets, ER_targets)):
+                if (PR_target == 'Positive' or ER_target == 'Positive'):
+                    all_targets[ii] = 'Positive'
+                elif (PR_target == 'Negative' or ER_target == 'Negative'): #avoid 'Missing Data'
+                    all_targets[ii] = 'Negative'
+        else:
+            all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
         all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
@@ -103,6 +117,12 @@ class WSI_Master_Dataset(Dataset):
         else:
             slides_with_bad_seg = set()
 
+        # train only on samples with ER=PR, RanS 27.6.21
+        if er_eq_pr and self.train:
+            slides_with_er_not_eq_pr = set(self.meta_data_DF.index[self.meta_data_DF['ER status'] != self.meta_data_DF['PR status']])
+        else:
+            slides_with_er_not_eq_pr = set()
+
         # Define number of tiles to be used
         if train_type == 'REG':
             n_minimal_tiles = n_tiles
@@ -117,7 +137,7 @@ class WSI_Master_Dataset(Dataset):
                 '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
         valid_slide_indices = np.array(
-            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg))
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr))
 
         # The train set should be a combination of all sets except the test set and validation set:
         if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
@@ -369,7 +389,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  color_param: float = 0.1,
                  n_tiles: int = 10,
                  desired_slide_magnification: int = 20,
-                 loan: bool = False
+                 loan: bool = False,
+                 er_eq_pr: bool = False
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -384,7 +405,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              train_type='REG',
                                              color_param=color_param,
                                              n_tiles=n_tiles,
-                                             desired_slide_magnification=desired_slide_magnification)
+                                             desired_slide_magnification=desired_slide_magnification,
+                                             er_eq_pr=er_eq_pr)
 
         self.loan = loan
         print(

@@ -17,13 +17,14 @@ else:
     subprocess.run(['python', 'train_reg.py',
                     '--test_fold', '2',
                     '--epochs', '2',
-                    '--dataset', 'PORTO_PDL1',
+                    #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
-                    #'--dataset', 'ABCTB',
+                    '--dataset', 'ABCTB',
                     #'--dataset', 'ABCTB_TCGA',
                     #'--target', 'ER',
+                    '--target', 'ER',
                     #'--target', 'Her2',
-                    '--target', 'PDL1',
+                    #'--target', 'PDL1',
                     #'--transform_type', 'bnfrs',
                     #'--transform_type', 'hedcfrs',
                     '--batch_size', '2',
@@ -35,14 +36,12 @@ else:
                     #'--transform_type', 'aug_receptornet',
                     #'--transform_type', 'rvf',
                     '--transform_type', 'pcbnfrsc',
-                    #'-fast',
                     '--mag', '10',
                     '--eval_rate', '10',
                     '-d',
-                    #'-time'
                     #'-im'
-                    #'--balanced_sampling'
-                    '--loan'
+                    #'--loan'
+                    '--er_eq_pr'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

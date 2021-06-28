@@ -170,8 +170,8 @@ if old:
 patient_level = True
 save_csv = True
 
-exp = 311
-fold = 3
+exp = 308
+fold = 1
 target = 'Her2'
 
 #inference_dir = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_DX_runs\exp' + str(exp) +r'\Inference'
@@ -182,7 +182,8 @@ epochs = list(np.arange(400, 1001, 100))
 #epochs = [1000]
 
 key_list = [''.join((target, '_fold', str(fold), '_exp', str(exp), '_epoch', str(epoch), '_test_500')) for epoch in epochs]
-val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']', target, '-Tiles_500.data')) for epoch in epochs]
+#val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', target, '-Tiles_500.data')) for epoch in epochs]
+val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']', '-Tiles_500.data')) for epoch in epochs]
 #key_list = [''.join(('exp', str(exp), '_fold', str(fold), '_epoch', str(epoch), '_test_500_herohe')) for epoch in epochs]
 #val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']-Tiles_500_herohe.data')) for epoch in epochs]
 inference_files = dict(zip(key_list, val_list))

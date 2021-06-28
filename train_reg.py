@@ -43,6 +43,7 @@ parser.add_argument('--c_param', default=0.1, type=float, help='color jitter par
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
+parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -392,7 +393,8 @@ if __name__ == '__main__':
                                          get_images=args.images,
                                          desired_slide_magnification=args.mag,
                                          DX=args.dx,
-                                         loan=args.loan
+                                         loan=args.loan,
+                                         er_eq_pr=args.er_eq_pr
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -405,7 +407,8 @@ if __name__ == '__main__':
                                         get_images=args.images,
                                         desired_slide_magnification=args.mag,
                                         DX=args.dx,
-                                        loan=args.loan
+                                        loan=args.loan,
+                                        er_eq_pr=args.er_eq_pr
                                         )
     sampler = None
     do_shuffle = True
