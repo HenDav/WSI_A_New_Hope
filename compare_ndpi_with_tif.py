@@ -7,15 +7,23 @@ from glob import glob
 import os
 import sys
 
+REMOVABLE = True
 
 if sys.platform == 'darwin':
     ndpi_slide_main_dir = r'All Data/ABCTB'
     tif_slide_main_dir = r'All Data/ABCTB_TIF'
     ndpi_slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
     tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
+    if REMOVABLE:
+        ndpi_slide_main_dir = r'/Volumes/McKinley/ABCTB'
+        tif_slide_main_dir = r'/Volumes/HD_5TB/Data/ABCTB_TIF'
+        slide_data_path = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/'
+        ndpi_slide_data_filename = r'slides_data_ABCTB_with_batch_num.xlsx'
+        tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
 elif sys.platform == 'linux':
     ndpi_slide_main_dir = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     tif_slide_main_dir = r'/mnt/gipmed_new/Data/ABCTB_TIF'
+    slide_data_path = tif_slide_main_dir
     ndpi_slide_data_filename = r'slides_data_ABCTB.xlsx'
     tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
 
