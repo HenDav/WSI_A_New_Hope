@@ -16,6 +16,7 @@ import numpy as np
 import sys
 import pandas as pd
 from sklearn.utils import resample
+import smtplib, ssl
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -42,6 +43,8 @@ parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validatio
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
+parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -51,6 +54,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     This function trains the model
     :return:
     """
+    if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
+        os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
     test_auc_list = []
@@ -171,7 +176,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         if e % args.eval_rate == 0:
             #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
-            # RanS 8.12.20, perform slide inference
+            # perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
             roc_auc_slide = np.nan
@@ -189,8 +194,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             utils.run_data(experiment=experiment, epoch=e)
 
             # Save model to file:
-            if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
-                os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
+            print('saving checkpoint to ', args.output_dir) #RanS 23.6.21
 
             try:
                 model_state_dict = model.module.state_dict()
@@ -206,8 +210,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tile_size': TILE_SIZE,
                         'tiles_per_bag': 1},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
-        #else:
-        #    acc_test, bacc_test = None, None
 
     all_writer.close()
     if print_timing:
@@ -392,6 +394,8 @@ if __name__ == '__main__':
                                          get_images=args.images,
                                          desired_slide_magnification=args.mag,
                                          DX=args.dx,
+                                         loan=args.loan,
+                                         er_eq_pr=args.er_eq_pr
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -404,6 +408,8 @@ if __name__ == '__main__':
                                         get_images=args.images,
                                         desired_slide_magnification=args.mag,
                                         DX=args.dx,
+                                        loan=args.loan,
+                                        er_eq_pr=args.er_eq_pr
                                         )
     sampler = None
     do_shuffle = True
@@ -421,6 +427,11 @@ if __name__ == '__main__':
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
                               num_workers=num_workers, pin_memory=True)
+
+    # RanS 20.6.21
+    if args.loan:
+        train_labels_df = pd.DataFrame({'slide_name': train_loader.dataset.image_file_names, 'label': train_loader.dataset.target})
+        test_labels_df = pd.DataFrame({'slide_name': test_loader.dataset.image_file_names, 'label': test_loader.dataset.target})
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -476,3 +487,23 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+
+    #finished training, send email if possible
+    if os.path.isfile('mail_cfg.txt'):
+        with open("mail_cfg.txt", "r") as f:
+            text = f.readlines()
+            receiver_email = text[0][:-1]
+            password = text[1]
+
+        port = 465  # For SSL
+        sender_email = "gipmed.python@gmail.com"
+
+        message = 'Subject: finished running experiment ' + str(experiment)
+
+        # Create a secure SSL context
+        context = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message)
+            print('email sent to ' + receiver_email)

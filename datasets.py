@@ -36,7 +36,10 @@ class WSI_Master_Dataset(Dataset):
                  n_tiles: int = 10,
                  test_time_augmentation: bool = False,
                  desired_slide_magnification: int = 20,
-                 slide_repetitions: int = 1):
+                 slide_repetitions: int = 1,
+                 loan: bool = False,
+                 er_eq_pr: bool = False
+                 ):
 
         # Check if the target receptor is available for the requested train DataSet:
         assert_dataset_target(DataSet, target_kind)
@@ -54,6 +57,7 @@ class WSI_Master_Dataset(Dataset):
         self.get_images = get_images
         self.train_type = train_type
         self.color_param = color_param
+        self.loan = loan
 
         # Get DataSets location:
         self.dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
@@ -82,7 +86,19 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
-        all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
+        if self.target_kind=='OR':
+            PR_targets = list(self.meta_data_DF['PR status'])
+            ER_targets = list(self.meta_data_DF['ER status'])
+            all_targets = ['Missing Data']*len(ER_targets)
+            for ii, (PR_target, ER_target) in enumerate(zip(PR_targets, ER_targets)):
+                if (PR_target == 'Positive' or ER_target == 'Positive'):
+                    all_targets[ii] = 'Positive'
+                elif (PR_target == 'Negative' or ER_target == 'Negative'): #avoid 'Missing Data'
+                    all_targets[ii] = 'Negative'
+        else:
+            all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+
         all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
@@ -101,6 +117,12 @@ class WSI_Master_Dataset(Dataset):
         else:
             slides_with_bad_seg = set()
 
+        # train only on samples with ER=PR, RanS 27.6.21
+        if er_eq_pr and self.train:
+            slides_with_er_not_eq_pr = set(self.meta_data_DF.index[self.meta_data_DF['ER status'] != self.meta_data_DF['PR status']])
+        else:
+            slides_with_er_not_eq_pr = set()
+
         # Define number of tiles to be used
         if train_type == 'REG':
             n_minimal_tiles = n_tiles
@@ -115,7 +137,7 @@ class WSI_Master_Dataset(Dataset):
                 '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
         valid_slide_indices = np.array(
-            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg))
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr))
 
         # The train set should be a combination of all sets except the test set and validation set:
         if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
@@ -195,6 +217,8 @@ class WSI_Master_Dataset(Dataset):
                 #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
 
                 # Preload slides - improves speed during training.
+                grid_file = []
+                image_file = []
                 try:
                     image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
                     if self.presaved_tiles[-1]:
@@ -204,6 +228,7 @@ class WSI_Master_Dataset(Dataset):
                     else:
                         self.slides.append(openslide.open_slide(image_file))
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
+
                         grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids',
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
@@ -211,7 +236,7 @@ class WSI_Master_Dataset(Dataset):
                             self.grid_lists.append(grid_list)
                 except FileNotFoundError:
                     raise FileNotFoundError(
-                        'Couldn\'t open slide {} or it\'s Grid file {}'.format(image_file, grid_file))
+                        'Couldn\'t open slide {} or its Grid file {}'.format(image_file, grid_file))
 
         # Setting the transformation:
         self.transform = define_transformations(transform_type, self.train, self.tile_size, self.color_param)
@@ -255,7 +280,7 @@ class WSI_Master_Dataset(Dataset):
         else:
             slide = self.slides[idx]
 
-            tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
+            tiles, time_list, label = _choose_data(grid_list=self.grid_lists[idx],
                                             slide=slide,
                                             how_many=self.bag_size,
                                             magnification=self.magnification[idx],
@@ -263,9 +288,11 @@ class WSI_Master_Dataset(Dataset):
                                             tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
                                             # Fix boundaries with scale
                                             print_timing=self.print_time,
-                                            desired_mag=self.desired_magnification)
+                                            desired_mag=self.desired_magnification,
+                                            loan=self.loan)
 
-        label = [1] if self.target[idx] == 'Positive' else [0]
+        if not self.loan:
+            label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
         # X will hold the images after all the transformations
@@ -361,7 +388,9 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  get_images: bool = False,
                  color_param: float = 0.1,
                  n_tiles: int = 10,
-                 desired_slide_magnification: int = 10
+                 desired_slide_magnification: int = 10,
+                 loan: bool = False,
+                 er_eq_pr: bool = False
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -376,8 +405,10 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              train_type='REG',
                                              color_param=color_param,
                                              n_tiles=n_tiles,
-                                             desired_slide_magnification=desired_slide_magnification)
+                                             desired_slide_magnification=desired_slide_magnification,
+                                             er_eq_pr=er_eq_pr)
 
+        self.loan = loan
         print(
             'Initiation of WSI({}) {} {} DataSet for {} is Complete. Magnification is X{}, {} Slides, Tiles of size {}^2. {} tiles in a bag, {} Transform. TestSet is fold #{}. DX is {}'
                 .format(self.train_type,
@@ -535,7 +566,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 tiles[ii] = tile1
         else:
             locs = [self.grid_lists[self.slide_num][loc] for loc in self.slide_grids[idx]]
-            tiles, time_list = _get_tiles(slide=self.current_slide,
+            tiles, time_list, _ = _get_tiles(slide=self.current_slide,
                                           #locations=self.slide_grids[idx],
                                           locations=locs,
                                           tile_size_level_0=self.level_0_tile_size,

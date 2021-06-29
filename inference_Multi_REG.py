@@ -13,18 +13,19 @@ from tqdm import tqdm
 import pickle
 import resnet_v2
 from collections import OrderedDict
+import smtplib, ssl
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
 parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1395, 1390], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, default=[1], help=' folds to infer')
+parser.add_argument('-f', '--folds', type=list, nargs="+", default=[1], help=' folds to infer')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed path of rons model') #RanS 16.3.21 r'/home/rschley/Pathnet/results/fold_1_ER_large/checkpoint/ckpt_epoch_1467.pth'
 args = parser.parse_args()
 
-args.folds = list(map(int, args.folds))
+args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
 
 # If args.experiment contains 1 number than all epochs are from the same experiments, BUT if it is bigger than 1 than all
 # the length of args.experiment should be equal to args.from_epoch
@@ -140,7 +141,7 @@ total_pos, total_neg = 0, 0
 correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, _, slide_file, _) in enumerate(tqdm(inf_loader)):
+    for batch_idx, (data, target, time_list, last_batch, _, slide_file, patient) in enumerate(tqdm(inf_loader)):
         if new_slide:
             scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             target_current = target
@@ -203,10 +204,10 @@ for model_num in range(NUM_MODELS):
         os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
 
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
-                             + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
+                             + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),
-                      np.squeeze(patch_scores[:, model_num,:]), all_slide_names]
+                      np.squeeze(patch_scores[:, model_num, :]), all_slide_names]
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)
@@ -218,3 +219,23 @@ for model_num in range(NUM_MODELS):
                   int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
                   len(all_labels[:, model_num])))
 print('Done !')
+
+# finished training, send email if possible
+if os.path.isfile('mail_cfg.txt'):
+    with open("mail_cfg.txt", "r") as f:
+        text = f.readlines()
+        receiver_email = text[0][:-1]
+        password = text[1]
+
+    port = 465  # For SSL
+    sender_email = "gipmed.python@gmail.com"
+
+    message = 'Subject: finished running experiment ' + str(args.experiment)
+
+    # Create a secure SSL context
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+        server.login(sender_email, password)
+        server.sendmail(sender_email, receiver_email, message)
+        print('email sent to ' + receiver_email)

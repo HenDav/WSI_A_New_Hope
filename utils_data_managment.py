@@ -202,7 +202,7 @@ def _make_HC_tiles_from_slide(file: str, meta_data_DF: pd.DataFrame, ROOT_DIR: s
     start1 = time.time()
 
     for ind, loc in enumerate(grid_list[from_tile: from_tile + num_tiles]):
-        image_tile, _ = utils._get_tiles(slide=slide,
+        image_tile, _, _ = utils._get_tiles(slide=slide,
                                           locations=[loc],
                                           tile_size_level_0=level_0_tile_size,
                                           adjusted_tile_sz=adjusted_tile_size,
@@ -452,7 +452,6 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         # Plot grid on thumbnail
         thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
                                   filename + '_thumb.jpg')
-                                  #filename + '_thumb.png') #temp
 
         grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
                                        'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'),
@@ -1124,45 +1123,6 @@ def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
     #seg_image = Image.blend(image, edge_image, 0.5)
 
     return seg_map_PIL, edge_image
-
-
-def TCGA_dirs_2_files():
-    dirs = utils._get_tcga_id_list()
-    print('Creating one directory for all TCGA slides...')
-    if not os.path.isdir('All Data'):
-        os.mkdir('All Data')
-    if not os.path.isdir('All Data/TCGA'):
-        os.mkdir('All Data/TCGA')
-
-    for _, dir in enumerate(tqdm(dirs)):
-        files = glob.glob(os.path.join('tcga-data', dir, '*.svs'))
-        for _, path_file in enumerate(files):
-            shutil.copy2(path_file, os.path.join('All Data/TCGA', path_file.split('/')[-1]))
-
-    print('Finished moving all TCGA data to folder \'All Data\TCGA\'')
-
-
-def update_dims():
-    print("Updating dims...")
-    DataSet = 'RedSquares'
-    ROOT_PATH = 'All Data'
-    #data_file = 'Data from gipdeep/slides_data_RedSquares.xlsx'
-    data_file = 'All Data/slides_data_RedSquares.xlsx'
-
-    meta_data_DF = pd.read_excel(data_file)
-    files = meta_data_DF.loc[meta_data_DF['id'] == DataSet]['file'].tolist()
-    for file in files:
-        print(file)
-        try:
-            slide = openslide.open_slide(os.path.join(ROOT_PATH, DataSet, file))
-        except FileNotFoundError:
-            continue
-        index = meta_data_DF[meta_data_DF['file'] == file].index.tolist()[0]
-        meta_data_DF.at[index, 'Height'] = slide.dimensions[1]
-        meta_data_DF.at[index, 'Width'] = slide.dimensions[0]
-
-    meta_data_DF.to_excel(data_file)
-    print('Finished updating dims')
 
 
 def _make_background_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
