@@ -760,9 +760,11 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
 
 def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
-    TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
+    #TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
+    TCGA_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/TCGA'
     ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
-    HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
+    #HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
+    HEROHE_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/HEROHE'
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
 

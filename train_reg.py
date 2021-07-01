@@ -76,7 +76,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     print('Start Training...')
     previous_epoch_loss = 1e5
 
-    for e in range(from_epoch, epoch + from_epoch):
+    for e in range(from_epoch, epoch):
         time_epoch_start = time.time()
 
         total, correct_pos, correct_neg = 0, 0, 0
