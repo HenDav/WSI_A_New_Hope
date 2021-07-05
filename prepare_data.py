@@ -1,8 +1,8 @@
 import utils_data_managment
 import argparse
 import os
-import glob
 from utils import get_cpu
+import smtplib, ssl
 
 parser = argparse.ArgumentParser(description='Data preparation script')
 
@@ -14,15 +14,14 @@ parser.add_argument('--stats', dest='stats', action='store_true', help='need to 
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='type of dataset to use (HEROHE/TCGA/LUNG)')
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
-parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile') #RanS 26.11.20
+parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile')
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
-parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 15.2.21
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
 parser.add_argument('--added_extension', type=str, default='', help='extension to be added to new slides_data file and Grids path')
 parser.add_argument('--SegData_path', type=str, default='', help='extension of the SegData path')
-parser.add_argument('--oversized_HC_tiles', action='store_true', help='create larger tiles to support random shift') #RanS 18.4.21
-parser.add_argument('--as_jpg', action='store_true', help='save tiles as jpg') #RanS 10.5.21
-#parser.add_argument('--wide_tile', action='store_true', help='use wide tiles for viewing') #RanS 11.5.21
+parser.add_argument('--oversized_HC_tiles', action='store_true', help='create larger tiles to support random shift')
+parser.add_argument('--as_jpg', action='store_true', help='save tiles as jpg')
 args = parser.parse_args()
 
 num_workers = get_cpu()
@@ -68,3 +67,23 @@ if __name__ =='__main__':
 
 
     print('Data Preparation sequence is Done !')
+
+    # finished training, send email if possible
+    if os.path.isfile('mail_cfg.txt'):
+        with open("mail_cfg.txt", "r") as f:
+            text = f.readlines()
+            receiver_email = text[0][:-1]
+            password = text[1]
+
+        port = 465  # For SSL
+        sender_email = "gipmed.python@gmail.com"
+
+        message = 'Subject: finished running prepare_data'
+
+        # Create a secure SSL context
+        context = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message)
+            print('email sent to ' + receiver_email)

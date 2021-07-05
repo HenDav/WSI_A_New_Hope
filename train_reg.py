@@ -94,7 +94,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             model.to(DEVICE)
 
             optimizer.zero_grad()
-            outputs = model(data)
+            outputs, _ = model(data)
 
             loss = criterion(outputs, target)
             loss.backward()
@@ -194,7 +194,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             utils.run_data(experiment=experiment, epoch=e)
 
             # Save model to file:
-            print('saving checkpoint to ', args.output_dir) #RanS 23.6.21
 
             try:
                 model_state_dict = model.module.state_dict()
@@ -210,6 +209,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tile_size': TILE_SIZE,
                         'tiles_per_bag': 1},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
+
+            print('saved checkpoint to', args.output_dir) #RanS 23.6.21
 
     all_writer.close()
     if print_timing:
@@ -231,7 +232,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE).squeeze(1)
             model.to(DEVICE)
 
-            outputs = model(data)
+            outputs, _ = model(data)
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)

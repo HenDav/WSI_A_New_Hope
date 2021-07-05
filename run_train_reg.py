@@ -1,6 +1,6 @@
 import subprocess
 
-infer = False
+infer = True
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -12,6 +12,7 @@ if infer:
                     '--num_tiles', '30',
                     '-ex', '321',
                     '--from_epoch', '0',
+                    '--save_features'
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',

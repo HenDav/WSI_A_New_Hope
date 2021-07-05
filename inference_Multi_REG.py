@@ -23,6 +23,7 @@ parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet 
 parser.add_argument('-f', '--folds', type=list, nargs="+", default=[1], help=' folds to infer')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed path of rons model') #RanS 16.3.21 r'/home/rschley/Pathnet/results/fold_1_ER_large/checkpoint/ckpt_epoch_1467.pth'
+parser.add_argument('--save_features', action='store_true', help='save features') #RanS 1.7.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
@@ -132,10 +133,11 @@ print('NUM_SLIDES: ', str(NUM_SLIDES)) #temp RanS 24.5.21
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
+features_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 512))
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
 patch_scores[:] = np.nan
+features_all[:] = np.nan
 slide_num = 0
-
 # The following 2 lines initialize variables to compute AUC for train dataset.
 total_pos, total_neg = 0, 0
 correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
@@ -143,7 +145,11 @@ correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, _, slide_file, patient) in enumerate(tqdm(inf_loader)):
         if new_slide:
-            scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
+            n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
+            #scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
+            scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
+            if args.save_features:
+                feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
             target_current = target
             slide_batch_num = 0
             new_slide = False
@@ -155,14 +161,16 @@ with torch.no_grad():
         for index, model in enumerate(models):
             model.to(DEVICE)
 
-            scores = model(data)
-            #print('socres:', str(scores)) #temp
-            #print('socres.dtype:', str(scores.dtype)) #temp
+            scores, features = model(data)
 
             scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
 
-            scores_0[index] = np.concatenate((scores_0[index], scores[:, 0].cpu().detach().numpy()))
-            scores_1[index] = np.concatenate((scores_1[index], scores[:, 1].cpu().detach().numpy()))
+            #scores_0[index] = np.concatenate((scores_0[index], scores[:, 0].cpu().detach().numpy()))
+            #scores_1[index] = np.concatenate((scores_1[index], scores[:, 1].cpu().detach().numpy()))
+            scores_0[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 0].cpu().detach().numpy() #RanS 1.7.21
+            scores_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 1].cpu().detach().numpy() # RanS 1.7.21
+            if args.save_features:
+                feature_arr[index][slide_batch_num*tiles_per_iter: slide_batch_num*tiles_per_iter + len(data), :] = features.cpu().detach().numpy() #RanS 1.7.21
 
         slide_batch_num += 1
 
@@ -181,6 +189,8 @@ with torch.no_grad():
                 predicted = current_slide_tile_scores.mean(1).argmax()
                 #print('len(scores_1[model_num]):', len(scores_1[model_num])) #temp
                 patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
+                if args.save_features:
+                    features_all[slide_num, model_num, :len(feature_arr[model_num])] = feature_arr[model_num] #RanS 1.7.21
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
                 #all_slide_names[slide_num] = os.path.basename(slide_file[0])
@@ -211,6 +221,17 @@ for model_num in range(NUM_MODELS):
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)
+
+    #RanS 1.7.21
+    if args.save_features:
+        try:
+            feature_file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
+                                     + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '_features.data')
+            with open(feature_file_name, 'wb') as filehandle:
+                pickle.dump(features_all, filehandle)
+        except:
+            print('failed to save features_all')
+
 
     experiment = args.experiment[model_num] if different_experiments else args.experiment[0]
     print('For model from Experiment {} and Epoch {}: {} / {} correct classifications'
