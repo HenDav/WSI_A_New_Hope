@@ -2,9 +2,10 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
-from random import sample
+from random import sample, choices
 import torch
 from torchvision import transforms
+import torchvision.transforms.functional as TF
 import time
 from torch.utils.data import Dataset
 from typing import List
@@ -16,6 +17,7 @@ from tqdm import tqdm
 import sys
 from math import isclose
 from PIL import Image
+from glob import glob
 
 
 class WSI_Master_Dataset(Dataset):
@@ -113,7 +115,7 @@ class WSI_Master_Dataset(Dataset):
             self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == 0])
 
         if 'bad segmentation' in self.meta_data_DF.columns:
-            slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1]) #RanS 9.5.21
+            slides_with_bad_seg = set(self.meta_data_DF.index[self.meta_data_DF['bad segmentation'] == 1])  #RanS 9.5.21
         else:
             slides_with_bad_seg = set()
 
@@ -882,4 +884,71 @@ class WSI_Segmentation_Master_Dataset(Dataset):
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
         return X, label, time_list, self.image_file_names[idx], images
+
+
+class Features_MILdataset(Dataset):
+    def __init__(self,
+                 data_location: str = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/',
+                 bag_size: int = 100,
+                 minimum_tiles_in_slide: int = 50,
+                 train: bool = True,
+                 print_timing: bool = False,
+                 slide_repetitions: int = 1
+                 ):
+
+        if not train:
+            data_location = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data/'
+
+        self.bag_size = bag_size
+        self.slide_names = []
+        self.labels = []
+        self.targets = []
+        self.features = []
+        self.num_tiles = []
+        self.scores = []
+        self.tile_scores = []
+        data_files = glob(os.path.join(data_location, '*.data'))
+
+        for file in data_files:
+            with open(os.path.join(data_location, file), 'rb') as filehandle:
+                inference_data = pickle.load(filehandle)
+
+            labels, targets, scores, patch_scores, slide_names, features = inference_data
+            num_slides, max_tile_num = features.shape[0], features.shape[2]
+
+            for slide_num in range(num_slides):
+                feature_1 = features[slide_num, :, :, 0]
+                nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
+                tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+                if tiles_in_slide < minimum_tiles_in_slide:
+                    continue
+                self.num_tiles.append(tiles_in_slide)
+                self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+                self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
+
+                self.slide_names.append(slide_names[slide_num])
+                self.labels.append(int(labels[slide_num]))
+                self.targets.append(int(targets[slide_num]))
+                self.scores.append(scores[slide_num])
+
+        print('Initialized {} Dataset with {} feature slides'.format('Train' if train else 'Test',
+                                                                     self.__len__()))
+
+    def __len__(self):
+        return len(self.slide_names)
+
+    def __getitem__(self, item):
+
+        tile_idx = choices(range(self.num_tiles[item]), k=self.bag_size)
+
+        return {'labels': self.labels[item],
+                'targets': self.targets[item],
+                'scores': self.scores[item],
+                'tile scores': self.tile_scores[item][tile_idx],
+                'slide name': self.slide_names[item],
+                'features': self.features[item][tile_idx],
+                'num tiles': self.num_tiles[item]
+                }
+
+
 
