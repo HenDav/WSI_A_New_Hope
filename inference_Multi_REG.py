@@ -128,28 +128,34 @@ new_slide = True
 NUM_MODELS = len(models)
 #NUM_SLIDES = len(inf_dset.valid_slide_indices)
 NUM_SLIDES = len(inf_dset.image_file_names) #RanS 24.5.21, valid_slide_indices always counts non-dx slides
+NUM_SLIDES_SAVE = 50
 print('NUM_SLIDES: ', str(NUM_SLIDES)) #temp RanS 24.5.21
 
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
-features_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 512))
+features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
 patch_scores[:] = np.nan
 features_all[:] = np.nan
 slide_num = 0
 # The following 2 lines initialize variables to compute AUC for train dataset.
 total_pos, total_neg = 0, 0
-correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
+#correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
+correct_pos = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
+correct_neg = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
 
 with torch.no_grad():
     for batch_idx, (data, target, time_list, last_batch, _, slide_file, patient) in enumerate(tqdm(inf_loader)):
         if new_slide:
             n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
             #scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
-            scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
+            #scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
+            scores_0 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)] # RanS 12.7.21
+            scores_1 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]  # RanS 12.7.21
             if args.save_features:
-                feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
+                #feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
+                feature_arr = [np.zeros((n_tiles, 512)) for ii in range(NUM_MODELS)]  # RanS 1.7.21
             target_current = target
             slide_batch_num = 0
             new_slide = False
@@ -190,7 +196,7 @@ with torch.no_grad():
                 #print('len(scores_1[model_num]):', len(scores_1[model_num])) #temp
                 patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
                 if args.save_features:
-                    features_all[slide_num, model_num, :len(feature_arr[model_num])] = feature_arr[model_num] #RanS 1.7.21
+                    features_all[slide_num % NUM_SLIDES_SAVE, model_num, :len(feature_arr[model_num])] = feature_arr[model_num] #RanS 1.7.21
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
                 #all_slide_names[slide_num] = os.path.basename(slide_file[0])
@@ -202,6 +208,42 @@ with torch.no_grad():
                     correct_neg[model_num] += 1
 
             slide_num += 1
+
+            # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
+            if args.save_features and slide_num % NUM_SLIDES_SAVE == 0:
+                feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+                                                 'Model_Epoch_' + str(args.from_epoch[model_num])
+                                                 + '-Folds_' + str(args.folds) + '_' + str(
+                                                     args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
+                inference_data = [all_labels[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
+                                  all_targets[slide_num-NUM_SLIDES_SAVE:slide_num],
+                                  all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
+                                  np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num, :]),
+                                  all_slide_names[slide_num-NUM_SLIDES_SAVE:slide_num],
+                                  features_all]
+                with open(feature_file_name, 'wb') as filehandle:
+                    pickle.dump(inference_data, filehandle)
+                print('saved output for ', str(slide_num), ' slides')
+                features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
+
+#save features for last slides
+if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
+    for model_num in range(NUM_MODELS):
+        feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+                                         'Model_Epoch_' + str(args.from_epoch[model_num])
+                                         + '-Folds_' + str(args.folds) + '_' + str(
+                                             args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
+        last_save = slide_num // NUM_SLIDES_SAVE * NUM_SLIDES_SAVE
+        inference_data = [all_labels[last_save:slide_num, model_num],
+                          all_targets[last_save:slide_num],
+                          all_scores[last_save:slide_num, model_num],
+                          np.squeeze(patch_scores[last_save:slide_num, model_num, :]),
+                          all_slide_names[last_save:slide_num],
+                          features_all[:slide_num-last_save]]
+        with open(feature_file_name, 'wb') as filehandle:
+            pickle.dump(inference_data, filehandle)
+        print('saved output for ', str(slide_num), ' slides')
+
 
 for model_num in range(NUM_MODELS):
     if different_experiments:
@@ -221,17 +263,6 @@ for model_num in range(NUM_MODELS):
 
     with open(file_name, 'wb') as filehandle:
         pickle.dump(inference_data, filehandle)
-
-    #RanS 1.7.21
-    if args.save_features:
-        try:
-            feature_file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
-                                     + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '_features.data')
-            with open(feature_file_name, 'wb') as filehandle:
-                pickle.dump(features_all, filehandle)
-        except:
-            print('failed to save features_all')
-
 
     experiment = args.experiment[model_num] if different_experiments else args.experiment[0]
     print('For model from Experiment {} and Epoch {}: {} / {} correct classifications'

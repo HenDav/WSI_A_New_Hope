@@ -14,7 +14,7 @@ parser.add_argument('--stats', dest='stats', action='store_true', help='need to 
 parser.add_argument('--hard_copy', dest='hard_copy', action='store_true', help='make hard copy of tiles?')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='type of dataset to use (HEROHE/TCGA/LUNG)')
 parser.add_argument('--data_root', type=str, default='All Data', help='location of data root folder')
-parser.add_argument('--tissue_coverage', type=float, default=0.5, help='min. tissue % for a valid tile')
+parser.add_argument('--tissue_coverage', type=float, default=0.3, help='min. tissue % for a valid tile')
 parser.add_argument('--sl2im', dest='sl2im', action='store_true', help='convert slides to png images?')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 parser.add_argument('--out_path', type=str, default='', help='path for output files')
