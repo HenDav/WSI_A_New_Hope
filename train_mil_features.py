@@ -17,26 +17,26 @@ import sys
 import pandas as pd
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=10, type=int, help='Epochs to run')
-parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
+#parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+#parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
+#parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
+#parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
+#parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+#parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
+#parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
+#parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('-e', '--epochs', default=500, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
-parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
-parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
-parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of bags in each minibatch')
-parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=100, help='Tiles Per Bag')
-parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
+parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=200, help='Tiles Per Bag')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('--model', default='nets_mil.MIL_Feature_Attention_MultiBag()', type=str, help='net to use')
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
-parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
+parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 
 args = parser.parse_args()
 
@@ -292,6 +292,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tiles_per_bag': args.tiles_per_bag},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
+            '''
             if e % 20 == 0 and args.images:
                 image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
                                         global_step=e, dataformats='NCHW')
@@ -300,6 +301,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 image_writer.add_images('Train Images/After Transforms (De-Normalized)',
                                         norm_img(data.squeeze().detach().cpu().numpy()), global_step=e,
                                         dataformats='NCHW')
+            '''
         else:
             acc_test, bacc_test = None, None
 
@@ -356,7 +358,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         writer_all.add_scalar('Test/Roc-Auc', roc_auc, epoch)
 
         '''print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, correct_labeling_test, len(data_loader.dataset)))'''
-        print('Tile AUC of {:.2f} over Test set'.format(roc_auc))
+        print('Slide AUC of {:.2f} over Test set'.format(roc_auc))
 
     model.train()
     '''
@@ -379,30 +381,32 @@ if __name__ == '__main__':
     cpu_available = utils.get_cpu()
 
     # Data type definition:
-    DATA_TYPE = 'WSI'
+    DATA_TYPE = 'Features'
 
     # Tile size definition:
     TILE_SIZE = 128
-    #TILES_PER_BAG = args.tiles_per_bag
-    #num_bags = args.num_bags
 
-    if sys.platform == 'linux' or sys.platform == 'win32':
+
+    if sys.platform == 'darwin':
+         train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features'
+         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
+    elif sys.platform == 'linux':
+        train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
+        test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
         TILE_SIZE = 256
-        #TILES_PER_BAG = args.tiles_per_bag
-        # data_path = '/home/womer/project/All Data'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
-                                                     transform_type=args.transform_type,
-                                                     tile_size=TILE_SIZE,
+        args.output_dir, experiment = utils.run_data(test_fold=1,
+                                                     transform_type=None,
+                                                     tile_size=0,
                                                      tiles_per_bag=args.tiles_per_bag,
                                                      num_bags=args.num_bags,
-                                                     DX=args.dx,
-                                                     DataSet_name=args.dataset,
-                                                     Receptor=args.target,
+                                                     DX=None,
+                                                     DataSet_name='None',
+                                                     Receptor='ER',
                                                      MultiSlide=True,
-                                                     DataSet_Slide_magnification=args.mag)
+                                                     DataSet_Slide_magnification=0)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx,\
         args.dataset, args.target, is_MultiSlide, args.model, args.mag = utils.run_data(experiment=args.experiment)
@@ -410,11 +414,14 @@ if __name__ == '__main__':
         experiment = args.experiment
 
     # Get data:
-    train_dset = datasets.Features_MILdataset(bag_size=args.tiles_per_bag)
-    test_dset = datasets.Features_MILdataset(train=False)
+    train_dset = datasets.Features_MILdataset(data_location=train_data_dir,
+                                              bag_size=args.tiles_per_bag)
+    test_dset = datasets.Features_MILdataset(data_location=test_data_dir,
+                                             bag_size=args.tiles_per_bag,
+                                             is_train=False)
 
-    train_loader = DataLoader(train_dset, batch_size=2, shuffle=False, num_workers=cpu_available, pin_memory=True)
-    test_loader = DataLoader(test_dset, batch_size=2, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
+    test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     '''
     # Save transformation data to 'run_data.xlsx'
@@ -428,14 +435,14 @@ if __name__ == '__main__':
         model.tiles_per_bag = args.tiles_per_bag
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
-    '''
+
     if args.experiment == 0:
         utils.run_data(experiment=experiment, model=model.model_name)
-        utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
+        utils.run_data(experiment=experiment, DataSet_size=(len(train_dset), len(test_dset)))
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
         utils.save_code_files(args, train_dset)
-    '''
+
     epoch = args.epochs
     from_epoch = args.from_epoch
 

@@ -916,7 +916,7 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
         )
 
     def forward(self, x, H=None, A=None):
-        if not self.infer:  # Training mode
+        if True: #not self.infer:  # Training mode
             if not self.features_only:
                 num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
 
@@ -933,7 +933,7 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
                     tiles_amount = H_shape[1]
                     DividedSlides_Flag = True
 
-                if tiles_amount != self.tiles_per_bag:
+                if tiles_amount != self.tiles_per_bag and self.infer == False:
                     raise Exception('Declared tiles per bag is different than the input (tiles_amount')
 
                 if x != None:
@@ -992,6 +992,146 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
         # is needed only for the training process.
         else:  # Inference mode
             if self.features_part:
+                raise Exception('wrong part')
+                num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+
+                if num_of_bags != 1:
+                    raise Exception('Inference mode supports only 1 bag(Slide) per Mini Batch')
+
+                x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+                H = self.feat_ext_part1(x)
+
+                A_V = self.attention_V(H)  # NxL
+                A_U = self.attention_U(H)  # NxL
+                A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+                A = torch.transpose(A, 1, 0)  # KxN
+
+                return H, A
+
+            else:
+                A_after_sftmx = F.softmax(A, dim=1)  # softmax over N
+                M = torch.mm(A_after_sftmx, H)
+                out = self.classifier(M)
+
+                return out, A_after_sftmx
+
+
+class MIL_Feature_2_Attention_MultiBag(nn.Module):
+    def __init__(self,
+                 tiles_per_bag: int = 500):
+        super(MIL_Feature_2_Attention_MultiBag, self).__init__()
+
+        self.model_name = THIS_FILE + 'MIL_Feature_2_Attention_MultiBag()'
+        print('Using model {}'.format(self.model_name))
+
+        self.features_only = True
+        self.infer = False
+        self.features_part = False
+
+        self.tiles_per_bag = tiles_per_bag
+        self.M = 512
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        if not self.features_only:  # if we're working only on features than we don't need the conv net
+            self.feat_ext_part1 = PreActResNets.MIL_PreActResNet50_Ron()
+
+        self.attention_V = nn.Sequential(
+            nn.Linear(self.M, self.L),
+            nn.Tanh()
+        )
+
+        self.attention_U = nn.Sequential(
+            nn.Linear(self.M, self.L),
+            nn.Sigmoid()
+        )
+
+        self.attention_weights = nn.Linear(self.L, self.K)
+
+        self.classifier = nn.Sequential(
+            # nn.Linear(self.M * self.K, 1),
+            # nn.Sigmoid()
+            nn.Linear(self.M * self.K, 2)
+        )
+
+    def forward(self, x, H=None, A=None):
+        if True: #not self.infer:  # Training mode
+            if not self.features_only:
+                num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
+
+                x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
+                H = self.feat_ext_part1(x)
+            else:
+                H_shape = H.shape
+                if len(H_shape) == 2:
+                    num_of_bags = 1
+                    tiles_amount = H_shape[0]
+                    DividedSlides_Flag = False
+                elif len(H_shape) == 3:
+                    num_of_bags = H_shape[0]
+                    tiles_amount = H_shape[1]
+                    DividedSlides_Flag = True
+
+                if tiles_amount != self.tiles_per_bag and self.infer == False:
+                    raise Exception('Declared tiles per bag is different than the input (tiles_amount')
+
+                if x != None:
+                    raise Exception('Model in features only mode expects to get x=None and H=features')
+
+            A_V = self.attention_V(H)  # NxL
+            A_U = self.attention_U(H)  # NxL
+            A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+            if DividedSlides_Flag:  # DividedSlides_Flag tells if all the feature from all slides are gathered together in the same dimension or divided between dimensions
+                A = torch.transpose(A, 2, 1)
+            else:
+                A = torch.transpose(A, 1, 0)  # KxN
+
+            # A = F.softmax(A, dim=1)  # softmax over N
+
+            if torch.cuda.is_available():
+                M = torch.zeros(0).cuda()
+                A_after_sftmx = torch.zeros(0).cuda()
+            else:
+                M = torch.zeros(0)
+                A_after_sftmx = torch.zeros(0)
+
+            '''# The following if statement is needed in cases where the accuracy checking (testing phase) is done in
+            # a 1 bag per mini-batch mode
+            if num_of_bags == 1 and not self.training:
+                A_after_sftmx = F.softmax(A, dim=1)
+                M = torch.mm(A_after_sftmx, H)
+
+            else:'''
+            if DividedSlides_Flag:
+                for i in range(num_of_bags):
+                    a = A[i, :, :]
+                    a = F.softmax(a, dim=1)
+
+                    h = H[i, :, :]
+                    m = torch.mm(a, h)
+                    M = torch.cat((M, m))
+
+                    A_after_sftmx = torch.cat((A_after_sftmx, a))
+            else:
+                for i in range(num_of_bags):
+                    first_tile_idx = i * self.tiles_per_bag
+                    a = A[:, first_tile_idx: first_tile_idx + self.tiles_per_bag]
+                    a = F.softmax(a, dim=1)
+
+                    h = H[first_tile_idx: first_tile_idx + self.tiles_per_bag, :]
+                    m = torch.mm(a, h)
+                    M = torch.cat((M, m))
+
+                    A_after_sftmx = torch.cat((A_after_sftmx, a))
+
+            out = self.classifier(M)
+            return out, A_after_sftmx
+
+        # In inference mode, there is no need to use more than one bag in each mini-batch because the data variability
+        # is needed only for the training process.
+        else:  # Inference mode
+            if self.features_part:
+                raise Exception('wrong part')
                 num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
 
                 if num_of_bags != 1:
