@@ -142,7 +142,7 @@ class WSI_Master_Dataset(Dataset):
             list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr))
 
         # The train set should be a combination of all sets except the test set and validation set:
-        if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
+        if self.DataSet == 'CAT' or self.DataSet == 'ABCTB_TCGA':
             fold_column_name = 'test fold idx breast'
         else:
             fold_column_name = 'test fold idx'
@@ -169,12 +169,6 @@ class WSI_Master_Dataset(Dataset):
         valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
         all_image_file_names = list(self.meta_data_DF['file'])
-
-        '''if DataSet == 'Breast':
-            all_image_path_names = [os.path.join(self.dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
-        else:
-            all_image_path_names = list(self.meta_data_DF['id'])'''
-
         all_image_ids = list(self.meta_data_DF['id'])
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
@@ -706,7 +700,7 @@ class WSI_Segmentation_Master_Dataset(Dataset):
             list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg))
 
         # The train set should be a combination of all sets except the test set and validation set:
-        if self.DataSet == 'Breast' or self.DataSet == 'ABCTB_TCGA':
+        if self.DataSet == 'CAT' or self.DataSet == 'ABCTB_TCGA':
             fold_column_name = 'test fold idx breast'
         else:
             fold_column_name = 'test fold idx'
@@ -734,17 +728,12 @@ class WSI_Segmentation_Master_Dataset(Dataset):
 
         all_image_file_names = list(self.meta_data_DF['file'])
 
-        '''if DataSet == 'Breast':
-            all_image_path_names = [os.path.join(self.dir_dict[ii], ii) for ii in self.meta_data_DF['id']]
-        else:
-            all_image_path_names = list(self.meta_data_DF['id'])'''
-
         all_image_ids = list(self.meta_data_DF['id'])
 
         all_in_fold = list(self.meta_data_DF[fold_column_name])
         all_tissue_tiles = list(self.meta_data_DF['Legitimate tiles - ' + str(self.tile_size) + ' compatible @ X' + str(
             self.desired_magnification)])
-        #if self.DataSet != 'TCGA':
+
         if 'TCGA' not in self.dir_dict:
             self.DX = False
         if self.DX:

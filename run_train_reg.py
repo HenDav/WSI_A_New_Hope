@@ -11,16 +11,18 @@ if infer:
                     '--dataset', 'ABCTB_TCGA',
                     '--num_tiles', '30',
                     '-ex', '321',
-                    '--from_epoch', '0',
+                    '--from_epoch', '0', '16'
+                    #'--save_features'
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',
-                    '--test_fold', '2',
+                    '--test_fold', '3',
                     '--epochs', '2',
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
-                    '--dataset', 'ABCTB',
+                    #'--dataset', 'ABCTB',
                     #'--dataset', 'ABCTB_TCGA',
+                    '--dataset', 'TCGA',
                     #'--target', 'ER',
                     '--target', 'ER',
                     #'--target', 'Her2',
@@ -38,10 +40,10 @@ else:
                     '--transform_type', 'pcbnfrsc',
                     '--mag', '10',
                     '--eval_rate', '10',
-                    '-d',
+                    #'-d',
                     #'-im'
                     #'--loan'
-                    '--er_eq_pr'
+                    #'--er_eq_pr'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

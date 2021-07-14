@@ -269,11 +269,12 @@ class PreActResNet_Ron(nn.Module):
         out = self.layer4(out)
         out = F.avg_pool2d(out, out.shape[3])
         out = out.view(out.size(0), -1)
-        #features = out
+        features = out
         #out = self.linear(self.dropout(out))
         out = self.linear(out)
 
-        return out
+        #return out
+        return out, features #RanS 1.7.21
 
 
 def PreActResNet50_Ron():

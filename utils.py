@@ -215,6 +215,14 @@ def _get_tiles(slide: openslide.OpenSlide,
         try:
             # When reading from OpenSlide the locations is as follows (col, row)
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+
+            #temp RanS 12.7.21
+            '''import matplotlib.pyplot as plt
+            q = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), 0, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+            plt.imshow(q)
+            print(slide.properties['aperio.MPP'])
+            print(slide.properties['aperio.AppMag'])
+            print('aa')'''
         except:
             print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
             print('taking blank patch instead')
@@ -760,11 +768,15 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
 
 def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
-    TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
-    ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
-    HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
+    #TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
+    TCGA_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/TCGA'
+    #ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
+    ABCTB_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB'
+    #HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
+    HEROHE_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/HEROHE'
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
+    CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -780,13 +792,18 @@ def get_datasets_dir_dict(Dataset: str):
         elif sys.platform == 'win32':  # GIPdeep
             dir_dict['TCGA'] = TCGA_ran_path
             dir_dict['ABCTB'] = ABCTB_ran_path
-    elif Dataset == 'Breast':
-        if sys.platform == 'linux':  # GIPdeep
-            for ii in np.arange(1, 4):
-                dir_dict['CARMEL' + str(ii)] = r'/mnt/gipnetapp_public/sgils/BCF scans/Carmel Slides/Batch_' + str(ii)
 
+    elif Dataset == 'CARMEL':
+        if sys.platform == 'linux':  # GIPdeep
+            for ii in np.arange(1, 9):
+                dir_dict['CARMEL' + str(ii)] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + str(ii), 'CARMEL' + str(ii))
+
+    elif Dataset == 'CAT':
+        if sys.platform == 'linux':  # GIPdeep
+            for ii in np.arange(1, 9):
+                dir_dict['CARMEL' + str(ii)] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + str(ii), 'CARMEL' + str(ii))
             dir_dict['TCGA'] = TCGA_gipdeep_path
-            dir_dict['HEROHE'] = HEROHE_gipdeep_path
+            #dir_dict['HEROHE'] = HEROHE_gipdeep_path
             dir_dict['ABCTB'] = ABCTB_gipdeep_path
 
         elif sys.platform == 'win32':  #Ran local
@@ -874,12 +891,10 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('For PORTO_PDL1 DataSet, target should be PDL1')
     elif DataSet == 'HEROHE' and target_kind != 'Her2':
         raise ValueError('for HEROHE DataSet, target should be Her2')
-    elif (DataSet == 'TCGA' or DataSet[:6] == 'CARMEL' or DataSet == 'Breast') and target_kind not in ['ER', 'PR', 'Her2']:
-        raise ValueError('target should be one of: ER, PR, Her2')
+    elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+        raise ValueError('target should be one of: ER, PR, Her2, OR')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
-    elif DataSet == 'Breast' and target_kind != 'Her2':
-        raise ValueError('HEROHE is part of DataSet Breast so target must be Her2 ')
     elif DataSet == 'SHEBA' and target_kind != 'Onco':
         raise ValueError('for SHEBA DataSet, target should be Onco')
 

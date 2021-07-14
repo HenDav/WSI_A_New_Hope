@@ -17,6 +17,7 @@ import sys
 import pandas as pd
 from sklearn.utils import resample
 import smtplib, ssl
+import psutil
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -76,7 +77,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     print('Start Training...')
     previous_epoch_loss = 1e5
 
-    for e in range(from_epoch, epoch + from_epoch):
+    for e in range(from_epoch, epoch):
         time_epoch_start = time.time()
 
         total, correct_pos, correct_neg = 0, 0, 0
@@ -86,46 +87,41 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         slide_names = []
         print('Epoch {}:'.format(e))
+
+        # RanS 11.7.21
+        process = psutil.Process(os.getpid())
+        print('RAM usage:', process.memory_info().rss/1e9, 'GB')
+
         model.train()
         for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):
             train_start = time.time()
-
             data, target = data.to(DEVICE), target.to(DEVICE).squeeze(1)
             model.to(DEVICE)
-
             optimizer.zero_grad()
-            outputs = model(data)
-
+            outputs, _ = model(data)
             loss = criterion(outputs, target)
             loss.backward()
             optimizer.step()
-
             train_loss += loss.item()
-
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
-
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
             true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
             slide_names.extend(slide_names_batch)
-
             total += target.size(0)
             total_pos_train += target.eq(1).sum().item()
             total_neg_train += target.eq(0).sum().item()
             correct_labeling += predicted.eq(target).sum().item()
             correct_pos += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg += predicted[target.eq(0)].eq(0).sum().item()
-
             #all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
-
             # RanS 28.1.21
             if DEVICE.type == 'cuda' and print_timing:
                 res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
                 #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
                 all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
                 all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
-
             train_time = time.time() - train_start
             if print_timing:
                 time_stamp = batch_idx + e * len(dloader_train)
@@ -141,26 +137,20 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[:, 0].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Augmentation [Sec]', time_list[:, 1].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[:, 2].mean().item(), time_stamp)
-
         time_epoch = (time.time() - time_epoch_start) / 60
         if print_timing:
             time_writer.add_scalar('Time/Full Epoch [min]', time_epoch, e)
-
         train_acc = 100 * correct_labeling / total
-
         #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
         balanced_acc_train = 100. * ((correct_pos + EPS) / (total_pos_train + EPS) + (correct_neg + EPS) / (total_neg_train + EPS)) / 2
-
         roc_auc_train = np.nan
         if not all(true_targets_train == true_targets_train[0]):  #more than one label
             fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
             roc_auc_train = auc(fpr_train, tpr_train)
-
         all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
         all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
-
         #print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
         print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train AUC per patch: {:.2f} , Time: {:.0f} m'
               .format(e,
@@ -171,9 +161,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                       # int(correct_labeling),
                       # len(train_loader),
                       time_epoch))
-
         previous_epoch_loss = train_loss
-
         if e % args.eval_rate == 0:
             #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # perform slide inference
@@ -189,18 +177,13 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 test_auc_mean = np.mean(test_auc_list)
                 test_auc_list.pop(0)
                 utils.run_data(experiment=experiment, test_mean_auc=test_auc_mean)
-
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
-
             # Save model to file:
-            print('saving checkpoint to ', args.output_dir) #RanS 23.6.21
-
             try:
                 model_state_dict = model.module.state_dict()
             except AttributeError:
                 model_state_dict = model.state_dict()
-
             torch.save({'epoch': e,
                         'model_state_dict': model_state_dict,
                         'optimizer_state_dict': optimizer.state_dict(),
@@ -210,6 +193,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'tile_size': TILE_SIZE,
                         'tiles_per_bag': 1},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
+            print('saved checkpoint to', args.output_dir) #RanS 23.6.21
+
 
     all_writer.close()
     if print_timing:
@@ -231,7 +216,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE).squeeze(1)
             model.to(DEVICE)
 
-            outputs = model(data)
+            outputs, _ = model(data)
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)

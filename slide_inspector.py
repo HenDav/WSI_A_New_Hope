@@ -79,7 +79,7 @@ def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag, grid_only):
             print('no valid patches found for slide ', fn)
             success_flag = False
 
-        tiles, time_list = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
+        tiles, time_list, _ = _choose_data(grid_list, slide, n_patches, mag, patch_size, False, desired_mag)
 
         for ii in range(n_patches):
             grid[ii].imshow(tiles[ii])

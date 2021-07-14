@@ -786,8 +786,10 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
     slide_files_mrxs = glob.glob(os.path.join(data_path, '*.mrxs'))
     slide_files_jpg = glob.glob(os.path.join(data_path, '*.jpg'))
     slide_files_tiff = glob.glob(os.path.join(data_path, '*.tiff'))
-    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_jpg + slide_files_tiff
-    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power', 'tiff': 'tiff.Software'} #RanS 25.3.21, dummy for tiff
+    slide_files_tif = glob.glob(os.path.join(data_path, '*.tif'))
+    slide_files = slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_files_jpg + slide_files_tiff + slide_files_tif
+    mag_dict = {'.svs': 'aperio.AppMag', '.ndpi': 'hamamatsu.SourceLens', '.mrxs': 'openslide.objective-power',
+                'tiff': 'tiff.Software', 'tif': 'tiff.ResolutionUnit'} #RanS 25.3.21, dummy for tiff, tif
 
     error_list = []
 
@@ -848,6 +850,8 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
             try:
                 if DataSet == 'SHEBA':
                     objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
+                if DataSet == 'ABCTB_TIF':
+                    objective_pwr = 40  # RanS 13.7.21, no mag data in slide file
                 else:
                     objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
             except KeyError as err:
