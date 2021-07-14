@@ -7,15 +7,23 @@ from glob import glob
 import os
 import sys
 
+REMOVABLE = True
 
 if sys.platform == 'darwin':
     ndpi_slide_main_dir = r'All Data/ABCTB'
     tif_slide_main_dir = r'All Data/ABCTB_TIF'
     ndpi_slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
     tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
+    if REMOVABLE:
+        ndpi_slide_main_dir = r'/Volumes/McKinley/ABCTB'
+        tif_slide_main_dir = r'/Volumes/HD_5TB/Data/ABCTB_TIF'
+        slide_data_path = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/'
+        ndpi_slide_data_filename = r'slides_data_ABCTB_with_batch_num.xlsx'
+        tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
 elif sys.platform == 'linux':
     ndpi_slide_main_dir = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     tif_slide_main_dir = r'/mnt/gipmed_new/Data/ABCTB_TIF'
+    slide_data_path = tif_slide_main_dir
     ndpi_slide_data_filename = r'slides_data_ABCTB.xlsx'
     tif_slide_data_filename = r'slides_data_ABCTB_TIF.xlsx'
 
@@ -46,7 +54,7 @@ for tif_filename in tif_slide_filenames:
     data_for_DF['ER status'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['ER status'].item()
     data_for_DF['PR status'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['PR status'].item()
     data_for_DF['Her2 status'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['Her2 status'].item()
-    data_for_DF['test fold idx test'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['test fold idx test'].item()
+    data_for_DF['test fold idx breast'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['test fold idx breast'].item()
     data_for_DF['test fold idx'] = ndpi_slide_data_DF[ndpi_slide_data_DF['file'] == basic_slide_name]['test fold idx'].item()
     data_for_DF['Manipulated Objective Power'] = 10
     data_for_DF['Width'] = tif_slide.dimensions[0]
@@ -89,6 +97,10 @@ for tif_filename in tif_slide_filenames:
     tif_slide_data_DF.to_excel(os.path.join(tif_slide_main_dir, tif_slide_data_filename))
     print('For slide {}, Difference: {}'.format(tif_filename, diff_sum))
 tif_slide_data_DF['DX'] = tif_slide_data_DF['DX'].astype('bool')
-tif_slide_data_DF.set_index('file')
+tif_slide_data_DF['Height'] = tif_slide_data_DF['Height'].astype('int')
+tif_slide_data_DF['Width'] = tif_slide_data_DF['Width'].astype('int')
+tif_slide_data_DF['Manipulated Objective Power'] = tif_slide_data_DF['Manipulated Objective Power'].astype('int')
+
+tif_slide_data_DF.set_index('file', inplace=True)
 tif_slide_data_DF.to_excel(os.path.join(tif_slide_main_dir, tif_slide_data_filename))
 print('Done')
