@@ -215,6 +215,14 @@ def _get_tiles(slide: openslide.OpenSlide,
         try:
             # When reading from OpenSlide the locations is as follows (col, row)
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+
+            #temp RanS 12.7.21
+            '''import matplotlib.pyplot as plt
+            q = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), 0, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+            plt.imshow(q)
+            print(slide.properties['aperio.MPP'])
+            print(slide.properties['aperio.AppMag'])
+            print('aa')'''
         except:
             print('failed to read slide ' + slide._filename + ' in location ' + str(loc[1]) + ',' + str(loc[0]))
             print('taking blank patch instead')

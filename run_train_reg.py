@@ -1,6 +1,6 @@
 import subprocess
 
-infer = True
+infer = False
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -16,7 +16,7 @@ if infer:
                     ])
 else:
     subprocess.run(['python', 'train_reg.py',
-                    '--test_fold', '2',
+                    '--test_fold', '3',
                     '--epochs', '2',
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',

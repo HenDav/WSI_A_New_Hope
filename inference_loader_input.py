@@ -171,9 +171,9 @@ if old:
 patient_level = True
 save_csv = True
 
-exp = 334
-fold = 4
-target = 'Her2'
+exp = '_o321'
+fold = 5
+target = 'PR'
 
 #inference_dir = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_DX_runs\exp' + str(exp) +r'\Inference'
 #inference_dir = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\ER\exp' + str(exp) +r'\Inference'
