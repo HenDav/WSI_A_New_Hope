@@ -851,7 +851,7 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
                 if DataSet == 'SHEBA':
                     objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
                 if DataSet == 'ABCTB_TIF':
-                    objective_pwr = 40  # RanS 13.7.21, no mag data in slide file
+                    objective_pwr = 10  # RanS 13.7.21, no mag data in slide file
                 else:
                     objective_pwr = int(float(slide.properties[mag_dict[data_format]]))
             except KeyError as err:

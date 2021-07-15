@@ -225,6 +225,7 @@ with torch.no_grad():
                     pickle.dump(inference_data, filehandle)
                 print('saved output for ', str(slide_num), ' slides')
                 features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
+                features_all[:] = np.nan
 
 #save features for last slides
 if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
