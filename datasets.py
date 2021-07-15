@@ -880,15 +880,17 @@ class Features_MILdataset(Dataset):
                  data_location: str = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/',
                  bag_size: int = 100,
                  minimum_tiles_in_slide: int = 50,
-                 train: bool = True,
+                 is_train: bool = True,
+                 is_per_patient: bool = False,
+                 is_all_tiles: bool = False,
                  print_timing: bool = False,
                  slide_repetitions: int = 1
                  ):
 
-        if not train:
-            data_location = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data/'
-
+        self.is_train, self.is_per_patient, self.is_all_tiles = is_train, is_per_patient, is_all_tiles
         self.bag_size = bag_size
+        self.train_type = 'Features'
+
         self.slide_names = []
         self.labels = []
         self.targets = []
@@ -896,9 +898,19 @@ class Features_MILdataset(Dataset):
         self.num_tiles = []
         self.scores = []
         self.tile_scores = []
-        data_files = glob(os.path.join(data_location, '*.data'))
+        self.patient_data = {}
+        self.bad_patient_list = []
+        bad_slides, total_slides = 0, 0
+        patient_list = []
 
-        for file in data_files:
+        data_files = glob(os.path.join(data_location, '*.data'))
+        if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
+            data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data'))
+        if os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data') in data_files:
+            data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
+
+
+        for file in tqdm(data_files):
             with open(os.path.join(data_location, file), 'rb') as filehandle:
                 inference_data = pickle.load(filehandle)
 
@@ -906,38 +918,106 @@ class Features_MILdataset(Dataset):
             num_slides, max_tile_num = features.shape[0], features.shape[2]
 
             for slide_num in range(num_slides):
+                total_slides += 1
                 feature_1 = features[slide_num, :, :, 0]
                 nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
                 tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+
                 if tiles_in_slide < minimum_tiles_in_slide:
                     continue
-                self.num_tiles.append(tiles_in_slide)
-                self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
-                self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
 
-                self.slide_names.append(slide_names[slide_num])
-                self.labels.append(int(labels[slide_num]))
-                self.targets.append(int(targets[slide_num]))
-                self.scores.append(scores[slide_num])
+                if is_per_patient:
+                    patient = slide_names[slide_num].split('.')[0]
+                    if patient.split('-')[0] == 'TCGA':
+                        patient = '-'.join(patient.split('-')[:3])
+                    patient_list.append(patient)
 
-        print('Initialized {} Dataset with {} feature slides'.format('Train' if train else 'Test',
-                                                                     self.__len__()))
+                    if patient in self.patient_data.keys():
+                        patient_dict = self.patient_data[patient]
+                        patient_same_target = True if int(targets[slide_num]) == patient_dict['target'] else False  # Checking the the patient target is not changing between slides
+                        if patient in self.bad_patient_list:
+                            bad_slides += 1
+                            continue
+                        if not patient_same_target:
+                            bad_slides = 1 + len(self.patient_data[patient]['slides'])  # we skip mofre than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dicr
+                            self.patient_data.pop(patient)
+                            self.bad_patient_list.append(patient)
+                            continue
+
+                        patient_dict['num tiles'].append(tiles_in_slide)
+                        patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
+                        patient_dict['labels'].append(int(labels[slide_num]))
+                        patient_dict['slides'].append(slide_names[slide_num])
+                        patient_dict['scores'].append(scores[slide_num])
+
+                        features_old = patient_dict['features']
+                        features_new = features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)
+                        patient_dict['features'] = np.concatenate((features_old, features_new), axis=0)
+
+                    else:
+                        patient_dict = {'num tiles': [tiles_in_slide],
+                                        'features': features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32),
+                                        'tile scores': patch_scores[slide_num, :tiles_in_slide],
+                                        'labels': [int(labels[slide_num])],
+                                        'target': int(targets[slide_num]),
+                                        'slides': [slide_names[slide_num]],
+                                        'scores': [scores[slide_num]]
+                                        }
+
+                        self.patient_data[patient] = patient_dict
+
+                else:
+                    self.num_tiles.append(tiles_in_slide)
+                    self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+                    self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
+                    self.slide_names.append(slide_names[slide_num])
+                    self.labels.append(int(labels[slide_num]))
+                    self.targets.append(int(targets[slide_num]))
+                    self.scores.append(scores[slide_num])
+
+        if is_per_patient:
+            self.patient_keys = list(self.patient_data.keys())
+            print('Skipped {}/{} slides for {}/{} patients'.format(bad_slides, total_slides, len(self.bad_patient_list), len(set(patient_list))))
+        if self.is_per_patient:
+            print('Initialized {} Dataset with {} feature slides in {} patients'.format('Train' if is_train else 'Test',
+                                                                                        total_slides - bad_slides,
+                                                                                        self.__len__()))
+        else:
+            print('Initialized {} Dataset with {} feature slides'.format('Train' if is_train else 'Test',
+                                                                         self.__len__()))
 
     def __len__(self):
-        return len(self.slide_names)
+        if self.is_per_patient:
+            return len(self.patient_keys)
+        else:
+            return len(self.slide_names)
 
     def __getitem__(self, item):
+        if self.is_per_patient:
+            patient_data = self.patient_data[self.patient_keys[item]]
+            num_tiles = int(np.array(patient_data['num tiles']).sum())
 
-        tile_idx = choices(range(self.num_tiles[item]), k=self.bag_size)
+            tile_idx = list(range(num_tiles)) if self.is_all_tiles else choices(range(num_tiles), k=self.bag_size)
 
-        return {'labels': self.labels[item],
-                'targets': self.targets[item],
-                'scores': self.scores[item],
-                'tile scores': self.tile_scores[item][tile_idx],
-                'slide name': self.slide_names[item],
-                'features': self.features[item][tile_idx],
-                'num tiles': self.num_tiles[item]
-                }
+            return {'labels': np.array(patient_data['labels']).mean(),
+                    'targets': patient_data['target'],
+                    'scores': np.array(patient_data['scores']).mean(),
+                    'tile scores': patient_data['tile scores'][tile_idx],
+                    'features': patient_data['features'][tile_idx],
+                    'num tiles': num_tiles
+                    }
+
+        else:
+            tile_idx = choices(range(self.num_tiles[item]), k=self.bag_size)
+
+            return {'labels': self.labels[item],
+                    'targets': self.targets[item],
+                    'scores': self.scores[item],
+                    'tile scores': self.tile_scores[item][tile_idx],
+                    'slide name': self.slide_names[item],
+                    'features': self.features[item][tile_idx],
+                    'num tiles': self.num_tiles[item]
+                    }
 
 
 
