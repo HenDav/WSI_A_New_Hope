@@ -900,7 +900,7 @@ class Features_MILdataset(Dataset):
         self.tile_scores = []
         self.patient_data = {}
         self.bad_patient_list = []
-        bad_slides, total_slides = 0, 0
+        bad_slides, total_slides, bad_num_of_good_tiles = 0, 0, 0
         patient_list = []
 
         data_files = glob(os.path.join(data_location, '*.data'))
@@ -909,6 +909,20 @@ class Features_MILdataset(Dataset):
         if os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data') in data_files:
             data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
 
+        if sys.platform == 'darwin':
+            grid_location_dict = {'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
+                                  'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
+        elif sys.platform == 'linux':
+            grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
+                                  'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
+
+
+        grid_DF = pd.DataFrame()
+        for key in grid_location_dict.keys():
+            new_grid_DF = pd.read_excel(grid_location_dict[key])
+            grid_DF = pd.concat([grid_DF, new_grid_DF])
+
+        grid_DF.set_index('file', inplace=True)
 
         for file in tqdm(data_files):
             with open(os.path.join(data_location, file), 'rb') as filehandle:
@@ -922,6 +936,11 @@ class Features_MILdataset(Dataset):
                 feature_1 = features[slide_num, :, :, 0]
                 nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
                 tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+
+                tiles_in_slide_from_grid_data = grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10']
+                if tiles_in_slide_from_grid_data < tiles_in_slide:
+                    bad_num_of_good_tiles += 1
+                    tiles_in_slide = tiles_in_slide_from_grid_data
 
                 if tiles_in_slide < minimum_tiles_in_slide:
                     continue
@@ -975,6 +994,7 @@ class Features_MILdataset(Dataset):
                     self.targets.append(int(targets[slide_num]))
                     self.scores.append(scores[slide_num])
 
+        print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
         if is_per_patient:
             self.patient_keys = list(self.patient_data.keys())
             print('Skipped {}/{} slides for {}/{} patients'.format(bad_slides, total_slides, len(self.bad_patient_list), len(set(patient_list))))
@@ -1008,7 +1028,7 @@ class Features_MILdataset(Dataset):
                     }
 
         else:
-            tile_idx = choices(range(self.num_tiles[item]), k=self.bag_size)
+            tile_idx = list(range(self.num_tiles[item])) if self.is_all_tiles else choices(range(self.num_tiles[item]), k=self.bag_size)
 
             return {'labels': self.labels[item],
                     'targets': self.targets[item],

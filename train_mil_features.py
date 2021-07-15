@@ -6,6 +6,7 @@ import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
 import nets_mil
+from PreActResNets import PreActResNet50_Ron
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -15,6 +16,7 @@ from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
 import pandas as pd
+import copy
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 #parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -30,13 +32,15 @@ parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue t
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of bags in each minibatch')
-parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=200, help='Tiles Per Bag')
+parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=100, help='Tiles Per Bag')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
 parser.add_argument('--model', default='nets_mil.MIL_Feature_Attention_MultiBag()', type=str, help='net to use')
+#parser.add_argument('--model', default='nets_mil.MIL_Feature_3_Attention_MultiBag()', type=str, help='net to use')
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
+parser.add_argument('-ll', dest='last_layer', action='store_true', help='get last layer and freeze it ?')
 
 args = parser.parse_args()
 
@@ -390,9 +394,12 @@ if __name__ == '__main__':
     if sys.platform == 'darwin':
          train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features'
          test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
+         basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
+         args.last_layer = True
     elif sys.platform == 'linux':
         train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
         test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
+        basic_model_location = r''
         TILE_SIZE = 256
 
     # Saving/Loading run meta data to/from file:
@@ -431,7 +438,20 @@ if __name__ == '__main__':
 
     # Load model
     model = eval(args.model)
-    if model.model_name == 'nets_mil.MIL_Feature_Attention_MultiBag()':
+    if args.last_layer:  # This part will load the last linear layer from the REG model into the last layer (classifier part) of the attention module
+        basic_model_data = torch.load(basic_model_location, map_location='cpu')['model_state_dict']
+        basic_model = PreActResNet50_Ron()
+        basic_model.load_state_dict(basic_model_data)
+
+        last_linear_layer_data = copy.deepcopy(basic_model.linear.state_dict())
+        model.classifier.load_state_dict(last_linear_layer_data)
+
+        for p in model.classifier.parameters():  # This part will freeze the classifier part so it won't change during training
+            p.requires_grad = False
+
+    if model.model_name in ['nets_mil.MIL_Feature_Attention_MultiBag()',
+                            'nets_mil.MIL_Feature_2_Attention_MultiBag()',
+                            'nets_mil.MIL_Feature_3_Attention_MultiBag()']:
         model.tiles_per_bag = args.tiles_per_bag
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
@@ -464,14 +484,7 @@ if __name__ == '__main__':
 
     if DEVICE.type == 'cuda':
         cudnn.benchmark = True
-    '''
-    if args.experiment is not 0:
-        optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])
-        for state in optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(DEVICE)
-    '''
+
     criterion = nn.CrossEntropyLoss()
 
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

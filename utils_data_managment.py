@@ -820,7 +820,7 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         error_DF = pd.DataFrame(error_list)
         error_DF.to_excel(os.path.join(out_path, 'Segmentation_Errors.xlsx'))
         print('Segmentation Process finished WITH EXCEPTIONS!!!!')
-        print('Check "Segmenatation_Errors.xlsx" file for details...')
+        print('Check \"{}\" file for details...'.format(os.path.join(out_path, 'Segmentation_Errors.xlsx')))
     else:
         print('Segmentation Process finished without exceptions!')
 

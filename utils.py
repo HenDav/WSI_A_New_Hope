@@ -1047,7 +1047,11 @@ def extract_tile_scores_for_slide(all_features, models):
         last_layer_weights = model.classifier[0].weight.detach().cpu().numpy()
         f = last_layer_weights[1] - last_layer_weights[0]
         mult = np.matmul(f, all_features)
-        tile_scores_list.append(mult[:, index])
+
+        if len(mult.shape) == 1:
+            tile_scores_list.append(mult)
+        else:
+            tile_scores_list.append(mult[:, index])
 
     return tile_scores_list
 
@@ -1094,6 +1098,7 @@ def extract_tile_scores_for_slide_1(all_features, models, Output_Dirs, Epochs, d
 '''
 
 def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores, all_slides_weights, models, Output_Dirs, Epochs, data_path):
+
     # Save slide scores to file:
     for num_model in range(len(models)):
         if type(Output_Dirs) is str:
@@ -1121,6 +1126,21 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
 
             last_layer_bias_DF = pd.DataFrame([last_layer_bias_diff])
             last_layer_bias_DF.to_excel(full_model_bias_filename)
+
+        if type(all_slides_tile_scores) == dict:
+            all_slides_tile_scores_REG = all_slides_tile_scores['REG']
+            all_slides_final_scores_REG = all_slides_final_scores['REG']
+            all_slides_tile_scores = all_slides_tile_scores['MIL']
+            all_slides_final_scores = all_slides_final_scores['MIL']
+
+            all_slides_tile_scores_REG_DF = pd.DataFrame(all_slides_tile_scores_REG[num_model]).transpose()
+            all_slides_final_scores_REG_DF = pd.DataFrame(all_slides_final_scores_REG[num_model]).transpose()
+
+            tile_scores_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_scores_REG.xlsx')
+            slide_score_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'slide_scores_REG.xlsx')
+
+            all_slides_tile_scores_REG_DF.to_excel(tile_scores_file_name_REG)
+            all_slides_final_scores_REG_DF.to_excel(slide_score_file_name_REG)
 
         all_slides_tile_scores_DF = pd.DataFrame(all_slides_tile_scores[num_model]).transpose()
         all_slides_final_scores_DF = pd.DataFrame(all_slides_final_scores[num_model]).transpose()
