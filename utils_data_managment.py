@@ -1004,6 +1004,12 @@ def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bo
         image_array = np.array(image.convert('CMYK'))[:, :, 1]  # RanS 9.12.20
     else:
         image_array = np.array(image.convert('CMYK'))[:, :, 1] #RanS 9.12.20
+
+    #RanS 18.7.21 - make almost total black into total white to ignore black areas in otsu
+    image_array_rgb = np.array(image)
+    image_is_black = np.prod(image_array_rgb, axis=2) < 20**3
+    image_array[image_is_black] = 0
+
     # otsu Thresholding:
     #use_otsu3 = True
     '''if use_otsu3:
