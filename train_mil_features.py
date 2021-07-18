@@ -19,7 +19,7 @@ import pandas as pd
 import copy
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
-#parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 #parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
 #parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
@@ -392,19 +392,32 @@ if __name__ == '__main__':
 
 
     if sys.platform == 'darwin':
-         train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features'
-         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
-         basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
-         args.last_layer = True
+        if args.test_fold == 1:
+            train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features'
+            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
+        elif args.test_fold == 2:
+             train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ran_299/Train'
+             test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ran_299/Test'
+
+        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
+        traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
+        #args.last_layer = True
+
     elif sys.platform == 'linux':
-        train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
-        test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
-        basic_model_location = r''
+        if args.test_fold == 1:
+            train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
+            test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
+            basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+        elif args.test_fold == 2:
+            train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
+            test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
+            basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+
         TILE_SIZE = 256
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir, experiment = utils.run_data(test_fold=1,
+        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
                                                      transform_type=None,
                                                      tile_size=0,
                                                      tiles_per_bag=args.tiles_per_bag,
@@ -439,6 +452,7 @@ if __name__ == '__main__':
     # Load model
     model = eval(args.model)
     if args.last_layer:  # This part will load the last linear layer from the REG model into the last layer (classifier part) of the attention module
+        print('Copying and freezeing last layer from model \"{}\"'.format(basic_model_location))
         basic_model_data = torch.load(basic_model_location, map_location='cpu')['model_state_dict']
         basic_model = PreActResNet50_Ron()
         basic_model.load_state_dict(basic_model_data)

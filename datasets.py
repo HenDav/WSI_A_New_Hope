@@ -883,6 +883,7 @@ class Features_MILdataset(Dataset):
                  is_train: bool = True,
                  is_per_patient: bool = False,
                  is_all_tiles: bool = False,
+                 fixed_tile_num: int = None,
                  print_timing: bool = False,
                  slide_repetitions: int = 1
                  ):
@@ -900,6 +901,7 @@ class Features_MILdataset(Dataset):
         self.tile_scores = []
         self.patient_data = {}
         self.bad_patient_list = []
+        self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
         bad_slides, total_slides, bad_num_of_good_tiles = 0, 0, 0
         patient_list = []
 
@@ -969,6 +971,10 @@ class Features_MILdataset(Dataset):
                         patient_dict['slides'].append(slide_names[slide_num])
                         patient_dict['scores'].append(scores[slide_num])
 
+                        # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
+                        if self.fixed_tile_num is not None:
+                            tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
+
                         features_old = patient_dict['features']
                         features_new = features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)
                         patient_dict['features'] = np.concatenate((features_old, features_new), axis=0)
@@ -986,6 +992,10 @@ class Features_MILdataset(Dataset):
                         self.patient_data[patient] = patient_dict
 
                 else:
+                    # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
+                    if self.fixed_tile_num is not None:
+                        tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
+
                     self.num_tiles.append(tiles_in_slide)
                     self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
                     self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
