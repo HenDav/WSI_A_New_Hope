@@ -26,6 +26,7 @@ from shutil import copy2
 from datetime import date
 import platform
 import inspect
+import torch.nn.functional as F
 
 #if sys.platform == 'win32':
 #    os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran')
@@ -1188,3 +1189,17 @@ def gather_per_patient_data(all_targets, all_scores_for_class_1, all_patient_bar
         all_scores_for_class_1_per_patient.append(scores_mean)
 
     return all_targets_per_patient, all_scores_for_class_1_per_patient
+
+class FocalLoss(torch.nn.Module):
+    def __init__(self, weight=None, gamma=2):
+        super(FocalLoss, self).__init__()
+        w = weight if weight is not None else torch.FloatTensor([1., 1.])
+        self.register_buffer("weight", w)
+        #self.weight = w #RanS 18.7.21
+        self.gamma = gamma
+
+    def forward(self, input, target):
+        ce = F.cross_entropy(input, target.long(), reduction='none')
+        pt = torch.exp(-ce)
+        ce *= torch.matmul(torch.nn.functional.one_hot(target.long(), num_classes=2).float(), self.weight)
+        return ((1 - pt) ** self.gamma * ce).mean()
