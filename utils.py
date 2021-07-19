@@ -789,7 +789,8 @@ def get_datasets_dir_dict(Dataset: str):
     if Dataset == 'ABCTB_TCGA':
         if sys.platform == 'linux':  # GIPdeep
             dir_dict['TCGA'] = TCGA_gipdeep_path
-            dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            #dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            dir_dict['ABCTB'] = ABCTB_TIF_gipdeep_path
         elif sys.platform == 'win32':  # GIPdeep
             dir_dict['TCGA'] = TCGA_ran_path
             dir_dict['ABCTB'] = ABCTB_ran_path
@@ -805,7 +806,8 @@ def get_datasets_dir_dict(Dataset: str):
                 dir_dict['CARMEL' + str(ii)] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + str(ii), 'CARMEL' + str(ii))
             dir_dict['TCGA'] = TCGA_gipdeep_path
             #dir_dict['HEROHE'] = HEROHE_gipdeep_path
-            dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            #dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            dir_dict['ABCTB'] = ABCTB_TIF_gipdeep_path
 
         elif sys.platform == 'win32':  #Ran local
             dir_dict['TCGA'] = TCGA_ran_path
