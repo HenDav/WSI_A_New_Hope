@@ -375,7 +375,11 @@ def run_data(experiment: str = None,
              transformation_string: str = None,
              Receptor: str = None,
              MultiSlide: bool = False,
-             test_mean_auc: float = None):
+             test_mean_auc: float = None,
+             is_per_patient: bool = False,
+             is_last_layer_freeze: bool = False,
+             is_repeating_data: bool = False,
+             data_limit: int = None):
     """
     This function writes the run data to file
     :param experiment:
@@ -426,7 +430,11 @@ def run_data(experiment: str = None,
                     'Model': 'None',
                     'Last Epoch': 0,
                     'Transformation String': 'None',
-                    'Desired Slide Magnification': DataSet_Slide_magnification
+                    'Desired Slide Magnification': DataSet_Slide_magnification,
+                    'Per Patient Training': is_per_patient,
+                    'Last Layer Freeze': is_last_layer_freeze,
+                    'Repeating Data': is_repeating_data,
+                    'Data Limit': data_limit
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -1044,7 +1052,11 @@ def extract_tile_scores_for_slide(all_features, models):
         model = models[index]
 
         # Compute for each tile the multiplication between it's feature vector and the last layer weight difference vector:
-        last_layer_weights = model.classifier[0].weight.detach().cpu().numpy()
+        try:  # In case this part in not packed in Sequential we'll need this try statement
+            last_layer_weights = model.classifier[0].weight.detach().cpu().numpy()
+        except TypeError:
+            last_layer_weights = model.classifier.weight.detach().cpu().numpy()
+
         f = last_layer_weights[1] - last_layer_weights[0]
         mult = np.matmul(f, all_features)
 
@@ -1121,7 +1133,11 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
                                                 'Epoch_' + str(epoch),
                                                 model_bias_filename)
         if not os.path.isfile(full_model_bias_filename):
-            last_layer_bias = model.classifier[0].bias.detach().cpu().numpy()
+            try:  # In case this part in not packed in Sequential we'll need this try statement
+                last_layer_bias = model.classifier[0].bias.detach().cpu().numpy()
+            except TypeError:
+                last_layer_bias = model.classifier.bias.detach().cpu().numpy()
+
             last_layer_bias_diff = last_layer_bias[1] - last_layer_bias[0]
 
             last_layer_bias_DF = pd.DataFrame([last_layer_bias_diff])

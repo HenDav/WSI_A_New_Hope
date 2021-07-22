@@ -1168,8 +1168,11 @@ def _make_background_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extensio
             tissue_grid_list = pickle.load(filehandle)
 
         background_tiles = list(set(basic_grid) - set(tissue_grid_list))
+        tile_nums = len(background_tiles)
         with open(background_grid_file, 'wb') as filehandle:
             pickle.dump(background_tiles, filehandle)
+
+    return tile_nums, total_tiles
 
 
 def make_background_grid(DataSet: str = 'TCGA',
@@ -1213,15 +1216,36 @@ def make_background_grid(DataSet: str = 'TCGA',
     print('Starting Non Tissue Grid production...')
     print()
 
+    tile_nums = []
+    total_tiles = []
+
     for file in files:
-        _make_background_grid_for_image(file=file,
-                                        meta_data_DF=slides_meta_data_DF,
-                                        ROOT_DIR=ROOT_DIR,
-                                        added_extension=added_extension,
-                                        DataSet=DataSet,
-                                        different_SegData_path_extension=different_SegData_path_extension,
-                                        tissue_coverage=tissue_coverage,
-                                        tile_sz=tile_sz,
-                                        desired_magnification=desired_magnification)
+        tile_nums1, total_tiles1 = _make_background_grid_for_image(file=file,
+                                                                   meta_data_DF=slides_meta_data_DF,
+                                                                   ROOT_DIR=ROOT_DIR,
+                                                                   added_extension=added_extension,
+                                                                   DataSet=DataSet,
+                                                                   different_SegData_path_extension=different_SegData_path_extension,
+                                                                   tissue_coverage=tissue_coverage,
+                                                                   tile_sz=tile_sz,
+                                                                   desired_magnification=desired_magnification)
+
+        tile_nums.append(tile_nums1)
+        total_tiles.append(total_tiles1)
+
+    meta_data_DF.loc[files, 'BackGround tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = tile_nums
+    meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
+
+    meta_data_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Non_Tissue_Grids' + added_extension, 'Grid_data.xlsx'))
+
+    # Save Grids creation MetaData to file
+    bacground_grid_productoin_meta_data_dict = {'Creation Date': str(date.today()),
+                                                'Tissue Coverage': tissue_coverage,
+                                                'Segmantation Path': os.path.join(ROOT_DIR, DataSet,
+                                                                                  'SegData' + different_SegData_path_extension)
+                                      }
+
+    grid_production_DF = pd.DataFrame([bacground_grid_productoin_meta_data_dict]).transpose()
+    grid_production_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Non_Tissue_Grids' + added_extension, 'production_meta_data.xlsx'))
 
     print('Finished BackGround Grid production phase !')

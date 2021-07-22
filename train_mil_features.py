@@ -19,17 +19,18 @@ import pandas as pd
 import copy
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
-parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 #parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
 #parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 #parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-#parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
+parser.add_argument('-tar', '--target', type=str, default='PR', help='DataSet to use')
+parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=500, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
+parser.add_argument('-ppt', dest='per_patient_training', action='store_true', help='will the data be taken per patient (or per slides) ?')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of bags in each minibatch')
 parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=100, help='Tiles Per Bag')
@@ -40,7 +41,9 @@ parser.add_argument('--model', default='nets_mil.MIL_Feature_Attention_MultiBag(
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
-parser.add_argument('-ll', dest='last_layer', action='store_true', help='get last layer and freeze it ?')
+parser.add_argument('-llf', dest='last_layer_freeze', action='store_true', help='get last layer and freeze it ?')
+parser.add_argument('-dl', '--data_limit', type=int, default=None, help='Data Limit to a specified number of feature tiles')
+parser.add_argument('-repData', dest='repeating_data', action='store_false', help='sample data with repeat ?')
 
 args = parser.parse_args()
 
@@ -390,28 +393,55 @@ if __name__ == '__main__':
     # Tile size definition:
     TILE_SIZE = 128
 
+    '''
+    # These lines are for debugging:
+    if sys.platform == 'darwin':
+        args.last_layer_freeze = True
+        args.per_patient_training = True
+        args.data_limit = 500
+    '''
 
     if sys.platform == 'darwin':
-        if args.test_fold == 1:
-            train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features'
-            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
-        elif args.test_fold == 2:
-             train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ran_299/Train'
-             test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ran_299/Test'
+        if args.target == 'ER':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
+                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Train'
+                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
+            elif args.test_fold == 2:
+                Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
+                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Train'
+                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
 
-        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
-        traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
-        #args.last_layer = True
+            basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
+            traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
+        if args.target == 'PR':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
+                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Train'
+                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
+
+
+                #args.last_layer_freeze = True
 
     elif sys.platform == 'linux':
-        if args.test_fold == 1:
-            train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
-            test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
-            basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
-        elif args.test_fold == 2:
-            train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
-            test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
-            basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+        if args.target == 'ER':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
+                train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
+                test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
+                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+            elif args.test_fold == 2:
+                Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
+                train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
+                test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
+                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+        elif args.target == 'PR':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
+                train_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Train'
+                test_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Test'
+                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_309-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
 
         TILE_SIZE = 256
 
@@ -423,10 +453,14 @@ if __name__ == '__main__':
                                                      tiles_per_bag=args.tiles_per_bag,
                                                      num_bags=args.num_bags,
                                                      DX=None,
-                                                     DataSet_name='None',
-                                                     Receptor='ER',
+                                                     DataSet_name=Dataset_name,
+                                                     is_per_patient=args.per_patient_training,
+                                                     is_last_layer_freeze=args.last_layer_freeze,
+                                                     is_repeating_data=args.repeating_data,
+                                                     Receptor=args.target + '_Features',
                                                      MultiSlide=True,
-                                                     DataSet_Slide_magnification=0)
+                                                     DataSet_Slide_magnification=0,
+                                                     data_limit=args.data_limit)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx,\
         args.dataset, args.target, is_MultiSlide, args.model, args.mag = utils.run_data(experiment=args.experiment)
@@ -435,23 +469,38 @@ if __name__ == '__main__':
 
     # Get data:
     train_dset = datasets.Features_MILdataset(data_location=train_data_dir,
-                                              bag_size=args.tiles_per_bag)
+                                              is_per_patient=args.per_patient_training,
+                                              is_repeating_tiles=args.repeating_data,
+                                              bag_size=args.tiles_per_bag,
+                                              target=args.target,
+                                              is_train=True,
+                                              data_limit=args.data_limit)
+
     test_dset = datasets.Features_MILdataset(data_location=test_data_dir,
+                                             is_per_patient=args.per_patient_training,
                                              bag_size=args.tiles_per_bag,
+                                             target=args.target,
                                              is_train=False)
 
     train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
-    '''
-    # Save transformation data to 'run_data.xlsx'
-    transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
-    utils.run_data(experiment=experiment, transformation_string=transformation_string)
-    '''
-
     # Load model
     model = eval(args.model)
-    if args.last_layer:  # This part will load the last linear layer from the REG model into the last layer (classifier part) of the attention module
+    if args.experiment != 0:  # In case we continue from an already trained model, than load the previous model and optimizer data:
+        print('Loading pre-saved model...')
+        model_data_loaded = torch.load(os.path.join(args.output_dir,
+                                                    'Model_CheckPoints',
+                                                    'model_data_Epoch_' + str(args.from_epoch) + '.pt'),
+                                       map_location='cpu')
+
+        model.load_state_dict(model_data_loaded['model_state_dict'])
+
+        from_epoch = args.from_epoch + 1
+        print()
+        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
+
+    elif args.last_layer_freeze:  # This part will load the last linear layer from the REG model into the last layer (classifier part) of the attention module
         print('Copying and freezeing last layer from model \"{}\"'.format(basic_model_location))
         basic_model_data = torch.load(basic_model_location, map_location='cpu')['model_state_dict']
         basic_model = PreActResNet50_Ron()
@@ -468,8 +517,7 @@ if __name__ == '__main__':
                             'nets_mil.MIL_Feature_3_Attention_MultiBag()']:
         model.tiles_per_bag = args.tiles_per_bag
 
-    # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
-
+    # Save model data and DataSet size (and some other dataset data) to run_data.xlsx file (Only if this is a new run).
     if args.experiment == 0:
         utils.run_data(experiment=experiment, model=model.model_name)
         utils.run_data(experiment=experiment, DataSet_size=(len(train_dset), len(test_dset)))
@@ -480,20 +528,6 @@ if __name__ == '__main__':
     epoch = args.epochs
     from_epoch = args.from_epoch
 
-    # In case we continue from an already trained model, than load the previous model and optimizer data:
-    '''
-    if args.experiment != 0:
-        print('Loading pre-saved model...')
-        model_data_loaded = torch.load(os.path.join(args.output_dir,
-                                                    'Model_CheckPoints',
-                                                    'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
-
-        model.load_state_dict(model_data_loaded['model_state_dict'])
-
-        from_epoch = args.from_epoch + 1
-        print()
-        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
-    '''
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':

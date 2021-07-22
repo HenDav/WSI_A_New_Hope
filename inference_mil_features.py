@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=339, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=374, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[480, 485, 490, 495, 500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -45,26 +45,30 @@ TILE_SIZE = 128
 
 # Load saved model:
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, test_fold, _, _, _, _, _, _, _, _, model_name, _ = utils.run_data(experiment=args.experiment)
+output_dir, test_fold, _, _, _, _, _, _, target, _, model_name, _ = utils.run_data(experiment=args.experiment)
 
 if sys.platform == 'darwin':
-    if test_fold == 1:
-         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/test_data'
-    elif test_fold == 2:
-        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ran_299/Test'
+    if target in ['ER', 'ER_Features']:
+        if test_fold == 1:
+            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
+        elif test_fold == 2:
+            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
+    elif target in ['PR', 'PR_Features']:
+        if test_fold == 1:
+            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
 
-        #args.save_tile_scores = True
+    #args.save_tile_scores = True
 
 elif sys.platform == 'linux':
     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
     TILE_SIZE = 256
 
-
 # Get data:
 inf_dset = datasets.Features_MILdataset(data_location=test_data_dir,
-                                        is_train=False,
-                                        is_per_patient=True,
-                                        is_all_tiles=True)
+                                        target=target,
+                                        is_per_patient=False if args.save_tile_scores else True,
+                                        is_all_tiles=True,
+                                        is_train=False)
 
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
