@@ -163,7 +163,7 @@ with torch.no_grad():
             new_slide = False
 
         data = data.squeeze(0)
-
+        print("data.shape: ", str(data.shape)) #temp RanS 22.7.21
         data, target = data.to(DEVICE), target.to(DEVICE)
 
         for index, model in enumerate(models):
