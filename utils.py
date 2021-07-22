@@ -19,7 +19,7 @@ from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
 from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
-import nets
+from nets import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
@@ -279,60 +279,6 @@ def _get_tiles(slide: openslide.OpenSlide,
     return tiles_PIL, time_list, labels
 
 
-'''def _get_grid_list(file_name: str, magnification: int = 20, tile_size: int = 256, desired_mag: int = 20):
-    """
-    This function returns the grid location of tile for a specific slide.
-    :param file_name:
-    :return:
-    """
-
-    #BASIC_OBJ_POWER = 20
-    #adjusted_tile_size = tile_size * (magnification // BASIC_OBJ_POWER)
-    adjusted_tile_size = int(tile_size * (magnification / desired_mag))  # RanS 8.2.21
-    basic_grid_file_name = 'grid_tlsz' + str(adjusted_tile_size) + '.data'
-
-    # open grid list:
-    grid_file = os.path.join(file_name.split('/')[0], file_name.split('/')[1], basic_grid_file_name)
-    with open(grid_file, 'rb') as filehandle:
-        # read the data as binary data stream
-        grid_list = pickle.load(filehandle)
-
-        return grid_list'''
-
-
-'''def _get_slide(path: 'str', data_format: str = 'TCGA') -> openslide.OpenSlide:
-    """
-    This function returns an OpenSlide object from the file within the directory
-    :param path:
-    :return:
-    """
-    if data_format == 'TCGA':
-        # file = next(os.walk(path))[2]  # TODO: this line can be erased since we dont use file. also check the except part...
-        # if '.DS_Store' in file: file.remove('.DS_Store')
-        slide = None
-        try:
-            # slide = openslide.open_slide(os.path.join(path, file[0]))
-            slide = openslide.open_slide(glob.glob(os.path.join(path, '*.svs'))[0])
-        except:
-            print('Cannot open slide at location: {}'.format(path))
-    elif data_format == 'ABCTB' or data_format == 'MIRAX':
-        slide = None
-        try:
-            slide = openslide.open_slide(path)
-        except:
-            print('Cannot open slide at location: {}'.format(path))
-
-    return slide'''
-
-
-'''def _get_tcga_id_list(path: str = 'tcga-data'):
-    """
-    This function returns the id of all images in the TCGA data directory given by 'path'
-    :return:
-    """
-    return next(os.walk(path))[1]'''
-
-
 def device_gpu_cpu():
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -432,6 +378,10 @@ def run_data(experiment: str = None,
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
             os.mkdir('runs')
+
+        #RanS 19.7.21, instead of in save_code_files which is buggy
+        if not os.path.isdir(location):
+            os.mkdir(location)
 
         run_DF.to_excel(run_file_name)
         print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
@@ -769,11 +719,8 @@ def define_transformations(transform_type, train, tile_size, color_param=0.1):
 
 def get_datasets_dir_dict(Dataset: str):
     dir_dict = {}
-    #TCGA_gipdeep_path = r'/home/womer/project/All Data/TCGA'
     TCGA_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/TCGA'
-    #ABCTB_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     ABCTB_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB'
-    #HEROHE_gipdeep_path = r'/home/womer/project/All Data/HEROHE'
     HEROHE_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/HEROHE'
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
@@ -860,7 +807,8 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'ABCTB':
         if sys.platform == 'linux':  # GIPdeep Run from local files
-            dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            #dir_dict['ABCTB'] = ABCTB_gipdeep_path
+            dir_dict['ABCTB'] = ABCTB_TIF_gipdeep_path
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['ABCTB'] = ABCTB_ran_path
@@ -1032,7 +980,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
     data_DF = pd.DataFrame([data_dict]).transpose()
 
     if not os.path.isdir(args.output_dir):
-        os.mkdir(args.output_dir)
+        #os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
     data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
     # Get all .py files in the code path:

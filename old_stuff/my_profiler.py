@@ -21,9 +21,9 @@ else:
 slide1 = openslide.OpenSlide(fn1)
 slide2 = openslide.OpenSlide(fn2)
 
-cProfile.run('my_read_region(slide1)', 'slide1_stats')
+cProfile.run('my_read_region(slide1)', '../slide1_stats')
 
-cProfile.run('my_read_region(slide2)', 'slide2_stats')
+cProfile.run('my_read_region(slide2)', '../slide2_stats')
 
 print('finished!')
 

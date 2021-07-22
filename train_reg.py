@@ -5,7 +5,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets, PreActResNets, resnet_v2
+import PreActResNets, resnet_v2
+from nets import nets
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -434,7 +435,7 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
-        utils.save_code_files(args, train_dset)
+        #utils.save_code_files(args, train_dset) #cancelled RanS 19.7.21, this is buggy
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -473,9 +474,10 @@ if __name__ == '__main__':
                     state[k] = v.to(DEVICE)
 
     if args.focal:
-        criterion = nn.CrossEntropyLoss()
-    else:
         criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
+        criterion.to(DEVICE) #RanS 20.7.21
+    else:
+        criterion = nn.CrossEntropyLoss()
 
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
 

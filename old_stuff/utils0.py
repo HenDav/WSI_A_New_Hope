@@ -826,7 +826,7 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
     :return:
     """
 
-    run_file_name = 'runs/run_data.xlsx'
+    run_file_name = '../runs/run_data.xlsx'
     if os.path.isfile(run_file_name):
         try:
             run_DF = pd.read_excel(run_file_name)
@@ -866,8 +866,8 @@ def run_data(experiment: str = None, test_fold: int = 1, transformations: bool =
                     'Transformation String': 'None'
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
-        if not os.path.isdir('runs'):
-            os.mkdir('runs')
+        if not os.path.isdir('../runs'):
+            os.mkdir('../runs')
 
         run_DF.to_excel(run_file_name)
         print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
@@ -984,7 +984,7 @@ class WSI_MILdataset(Dataset):
                  DX : bool = False,
                  get_images: bool = False):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
@@ -1375,7 +1375,7 @@ class Infer_WSI_MILdataset(Dataset):
                  DX: bool = False,
                  num_tiles: int = 500):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
@@ -1578,7 +1578,7 @@ class WSI_REGdataset(Dataset):
                  transform : bool = False,
                  DX : bool = False):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
@@ -1794,7 +1794,7 @@ class WSI_MIL2_dataset(Dataset):
                  transform : bool = False,
                  DX : bool = False):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
@@ -2036,7 +2036,7 @@ class WSI_MIL3_dataset(Dataset):
                  transform : bool = False,
                  DX : bool = False):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 
@@ -2271,7 +2271,7 @@ class WSI_MIL_OFTest_dataset(Dataset):
                  DX : bool = False,
                  get_images: bool = False):
 
-        self.ROOT_PATH = 'All Data'
+        self.ROOT_PATH = '../All Data'
         if DataSet == 'LUNG':
             self.ROOT_PATH = '/home/rschley/All_Data/LUNG'
 

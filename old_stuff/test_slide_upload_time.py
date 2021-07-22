@@ -15,7 +15,7 @@ dset = datasets.WSI_REGdataset(DataSet='ABCTB',
 dset_loader = DataLoader(dset, batch_size=10)
 
 
-writer = all_writer = SummaryWriter(os.path.join('runs', 'time_measurements', dset.DataSet))
+writer = all_writer = SummaryWriter(os.path.join('../runs', 'time_measurements', dset.DataSet))
 
 for batch_idx, (_, _, time_list, _, _) in enumerate(tqdm(dset_loader)):
     open_slide, extract_tiles, aug_time, total_time = time_list

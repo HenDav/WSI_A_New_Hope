@@ -4,16 +4,13 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
-import nets_mil
-import nets
-import PreActResNets
+from nets import nets
 from tqdm import tqdm
 import time
 import argparse
-from sklearn.metrics import roc_curve, auc
 import numpy as np
 import sys
-import utils_multi_ops
+from old_stuff import utils_multi_ops
 from typing import List
 
 

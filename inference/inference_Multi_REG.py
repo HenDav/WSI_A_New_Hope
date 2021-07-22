@@ -2,7 +2,7 @@ import utils
 from torch.utils.data import DataLoader
 import torch
 import datasets
-import nets
+from nets import nets
 import PreActResNets
 import numpy as np
 from sklearn.metrics import roc_curve, auc
@@ -112,6 +112,8 @@ if sys.platform == 'linux':
 elif sys.platform == 'win32':
     TILE_SIZE = 256
 
+#tiles_per_iter = 1 #temp RanS 22.7.21
+
 inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
                                   tiles_per_iter=tiles_per_iter,
@@ -211,7 +213,7 @@ with torch.no_grad():
 
             # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
             if args.save_features and slide_num % NUM_SLIDES_SAVE == 0:
-                feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+                feature_file_name = os.path.join(data_path, output_dir, '',
                                                  'Model_Epoch_' + str(args.from_epoch[model_num])
                                                  + '-Folds_' + str(args.folds) + '_' + str(
                                                      args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
@@ -230,7 +232,7 @@ with torch.no_grad():
 #save features for last slides
 if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
     for model_num in range(NUM_MODELS):
-        feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+        feature_file_name = os.path.join(data_path, output_dir, '',
                                          'Model_Epoch_' + str(args.from_epoch[model_num])
                                          + '-Folds_' + str(args.folds) + '_' + str(
                                              args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
@@ -253,10 +255,10 @@ for model_num in range(NUM_MODELS):
     fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
-    if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
-        os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+    if not os.path.isdir(os.path.join(data_path, output_dir, '')):
+        os.mkdir(os.path.join(data_path, output_dir, ''))
 
-    file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
+    file_name = os.path.join(data_path, output_dir, '', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),
@@ -274,8 +276,8 @@ for model_num in range(NUM_MODELS):
 print('Done !')
 
 # finished training, send email if possible
-if os.path.isfile('mail_cfg.txt'):
-    with open("mail_cfg.txt", "r") as f:
+if os.path.isfile('../mail_cfg.txt'):
+    with open("../mail_cfg.txt", "r") as f:
         text = f.readlines()
         receiver_email = text[0][:-1]
         password = text[1]
