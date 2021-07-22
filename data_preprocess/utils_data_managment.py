@@ -48,15 +48,15 @@ def check_level1_mag():
 
 
 def herohe_slides2images():
-    slide_files_mrxs = glob.glob(os.path.join('All Data', 'HEROHE', '*.mrxs'))
+    slide_files_mrxs = glob.glob(os.path.join('../All Data', 'HEROHE', '*.mrxs'))
     for _, file in enumerate(tqdm(slide_files_mrxs)):
         file = file.split('/')[-1][:-5]
         slide_2_image(file)
 
 
 def slide_2_image(slide_name: str, DataSet: str = 'HEROHE'):
-    slide_file = os.path.join('All Data', DataSet, slide_name + '.mrxs')
-    segMap_file = os.path.join('All Data', DataSet, 'SegData', 'SegMaps', slide_name + '_SegMap.png')
+    slide_file = os.path.join('../All Data', DataSet, slide_name + '.mrxs')
+    segMap_file = os.path.join('../All Data', DataSet, 'SegData', 'SegMaps', slide_name + '_SegMap.png')
 
     segMap = np.array(Image.open(segMap_file))
     (rows, cols) = np.where(segMap == 255)
@@ -70,10 +70,10 @@ def slide_2_image(slide_name: str, DataSet: str = 'HEROHE'):
     window_size = ((max_row - min_row) * scale, (max_col - min_col) * scale)
 
     image = img.read_region((top_left[1], top_left[0]), 1, (window_size[1], window_size[0])).convert('RGB')
-    if not os.path.isdir(os.path.join('All Data', DataSet, 'images')):
-        os.mkdir(os.path.join('All Data', DataSet, 'images'))
+    if not os.path.isdir(os.path.join('../All Data', DataSet, 'images')):
+        os.mkdir(os.path.join('../All Data', DataSet, 'images'))
 
-    image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.jpg'))
+    image.save(os.path.join('../All Data', DataSet, 'images', slide_name + '.jpg'))
     #image.save(os.path.join('All Data', DataSet, 'images', slide_name + '.png'))
 
 

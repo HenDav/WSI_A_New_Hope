@@ -209,8 +209,8 @@ class WSI_Master_Dataset(Dataset):
                 self.tissue_tiles.append(all_tissue_tiles[index])
                 self.target.append(all_targets[index])
                 self.magnification.append(all_magnifications[index])
-                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB')
-                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
+                #self.presaved_tiles.append(all_image_ids[index] == 'ABCTB') #cancelled RanS 19.7.21 - use tif instead of tiles
+                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
 
                 # Preload slides - improves speed during training.
                 grid_file = []
@@ -255,6 +255,8 @@ class WSI_Master_Dataset(Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
+
+        #self.tile_size = 10000 #temp RanS 22.7.21
 
         if self.presaved_tiles[idx]:  # load presaved patches
             time_tile_extraction = time.time()

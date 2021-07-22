@@ -2,18 +2,12 @@ import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch
-import nets_mil
-import nets_mil_1
-from nets_mil import ResNet34_GN_GatedAttention
 import numpy as np
-from sklearn.metrics import roc_curve, auc, roc_auc_score
-from matplotlib import pyplot as plt
+from sklearn.metrics import roc_curve, auc
 import os
 import sys
 import argparse
 from tqdm import tqdm
-import pickle
-from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
 parser.add_argument('-ex', '--experiment', type=int, default=[303], help='Continue train of this experiment')

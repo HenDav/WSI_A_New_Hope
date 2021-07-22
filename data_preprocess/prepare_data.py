@@ -1,4 +1,4 @@
-import utils_data_managment
+from data_preprocess import utils_data_managment
 import argparse
 import os
 from utils import get_cpu
@@ -69,8 +69,8 @@ if __name__ =='__main__':
     print('Data Preparation sequence is Done !')
 
     # finished training, send email if possible
-    if os.path.isfile('mail_cfg.txt'):
-        with open("mail_cfg.txt", "r") as f:
+    if os.path.isfile('../mail_cfg.txt'):
+        with open("../mail_cfg.txt", "r") as f:
             text = f.readlines()
             receiver_email = text[0][:-1]
             password = text[1]

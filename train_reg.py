@@ -5,7 +5,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets, PreActResNets, resnet_v2
+import PreActResNets, resnet_v2
+from nets import nets
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -46,6 +47,8 @@ parser.add_argument('-im', dest='images', action='store_true', help='save data i
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
 parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
+parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
+
 args = parser.parse_args()
 
 EPS = 1e-7
@@ -432,7 +435,7 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
-        utils.save_code_files(args, train_dset)
+        #utils.save_code_files(args, train_dset) #cancelled RanS 19.7.21, this is buggy
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -470,7 +473,12 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
-    criterion = nn.CrossEntropyLoss()
+    if args.focal:
+        criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
+        criterion.to(DEVICE) #RanS 20.7.21
+    else:
+        criterion = nn.CrossEntropyLoss()
+
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
 
     #finished training, send email if possible

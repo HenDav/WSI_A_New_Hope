@@ -1,5 +1,3 @@
-import pyvips
-import openslide
 import numpy as np
 from utils import get_optimal_slide_level
 from tqdm import tqdm
@@ -11,13 +9,14 @@ from utils import get_cpu
 import sys
 import multiprocessing
 from functools import partial
-import resource
-
 
 if os.path.isdir('/Volumes/McKinley') and os.path.isdir('/Volumes/HD_5TB'):
     REMOVABLE = True
 
 if sys.platform == 'darwin':
+    import openslide
+    import pyvips
+    import resource
     original_path = r'All Data/ABCTB'
     slide_data_path = original_path
     slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
@@ -48,6 +47,9 @@ if sys.platform == 'darwin':
     MAX_FILES, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 
 elif sys.platform == 'linux':
+    import openslide
+    import pyvips
+    import resource
     original_path = r'/mnt/gipnetapp_public/sgils/Breast/ABCTB/ABCTB'
     slide_data_path = original_path
     slide_data_filename = r'slides_data_ABCTB.xlsx'
@@ -63,6 +65,27 @@ elif sys.platform == 'linux':
 
     #resource.setrlimit(resource.RLIMIT_NOFILE, (65536, -1))
     MAX_FILES, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+
+elif sys.platform == 'win32':
+    orig_path = os.environ['PATH']
+    vipshome = r'C:\ran_programs\vips-dev-8.11\bin'
+    os.environ['PATH'] = vipshome + ';' + orig_path
+    #with os.add_dll_directory(r'C:\ran_programs\vips-dev-8.11\bin'):
+    import pyvips
+    os.environ['PATH'] = orig_path
+    #openslide_home = r'C:\ran_programs\Anaconda3\openslide_bin_ran'
+    #os.environ['PATH'] = openslide_home + ';' + orig_path
+    with os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran'):
+        import openslide
+
+    original_path = r'D:\ABCTB\Batch1'
+    slide_data_filename = r'slides_data_ABCTB_conversion.xlsx'
+    #new_slides_path = r'E:\ABCTB_TIFF\Batch1'
+    new_slides_path = r'C:\temp'
+
+    #resource.setrlimit(resource.RLIMIT_NOFILE, (20480, -1))
+    #MAX_FILES, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    MAX_FILES = 1e9
 
 print('Max file number is: {}'.format(MAX_FILES))
 

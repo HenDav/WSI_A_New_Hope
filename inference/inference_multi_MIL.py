@@ -2,18 +2,13 @@ import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch
-import nets_mil
-import nets_mil_1
-from nets_mil import ResNet34_GN_GatedAttention
 import numpy as np
-from sklearn.metrics import roc_curve, auc, roc_auc_score
-from matplotlib import pyplot as plt
+from sklearn.metrics import roc_curve, auc
 import os
 import sys
 import argparse
 from tqdm import tqdm
 import pickle
-from sklearn.utils import resample
 
 parser = argparse.ArgumentParser(description='WSI_MIL Slide inference')
 parser.add_argument('-ex', '--experiment', type=int, default=[304], help='Continue train of this experiment')
@@ -230,10 +225,10 @@ for model_num in range(NUM_MODELS):
     roc_auc = auc(fpr, tpr)
 
     # Save roc_curve to file:
-    if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
-        os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+    if not os.path.isdir(os.path.join(data_path, output_dir, '')):
+        os.mkdir(os.path.join(data_path, output_dir, ''))
 
-    file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
+    file_name = os.path.join(data_path, output_dir, '', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '-Tiles_' + str(args.num_tiles) + '.data')
 
     inference_data = [fpr, tpr, fpr_patient, tpr_patient, all_labels[:, model_num], all_targets, all_scores_for_class_1[:, model_num], total_pos,

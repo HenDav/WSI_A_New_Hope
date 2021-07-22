@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import nets
+from nets import nets
 import torchvision.models as models
 import os
 import PreActResNets
