@@ -5,8 +5,6 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import PreActResNets, resnet_v2
-from nets import nets
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -19,6 +17,7 @@ import pandas as pd
 from sklearn.utils import resample
 import smtplib, ssl
 import psutil
+import nets, PreActResNets, resnet_v2
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')

@@ -1,8 +1,9 @@
 import pickle
 import os
 
-dirname = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\ER\exp293\Inference'
-fname = 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500_features_slides_100.data'
+dirname = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs\Her2\exp308\Inference\features'
+fname = 'Model_Epoch_1000-Folds_[1]_Her2-Tiles_500_features_slides_700.data'
+#fname = 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_Her2-Tiles_500_features_slides_3000.data'
 
 with open(os.path.join(dirname, fname), 'rb') as filehandle:
     inference_data = pickle.load(filehandle)

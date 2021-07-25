@@ -4,7 +4,6 @@ from matplotlib import image as plt_image
 import os
 import pandas as pd
 import glob
-import pickle
 from random import sample
 import random
 import torch
@@ -14,17 +13,16 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-from HED_space import HED_color_jitter
+#from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
-from nets import nets
+from nets_mil import ResNet50_GN_GatedAttention, ReceptorNet
+import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
 from datetime import date
-import platform
 import inspect
 import torch.nn.functional as F
 

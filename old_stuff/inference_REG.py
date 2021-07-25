@@ -2,10 +2,8 @@ import utils
 from torch.utils.data import DataLoader
 import torch
 import datasets
-from nets import nets
-import PreActResNets
 import numpy as np
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve
 import os
 import sys
 import argparse

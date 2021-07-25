@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
-from nets import nets
+import nets
 from tqdm import tqdm
 import time
 import argparse
