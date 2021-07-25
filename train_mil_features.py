@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-import nets_mil
-from PreActResNets import PreActResNet50_Ron
+from nets import nets_mil
+from nets.PreActResNets import PreActResNet50_Ron
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('-tar', '--target', type=str, default='PR', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='Her2', help='DataSet to use')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=500, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
@@ -414,11 +414,17 @@ if __name__ == '__main__':
 
             basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
             traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
-        if args.target == 'PR':
+        elif args.target == 'PR':
             if args.test_fold == 1:
                 Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
                 train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Train'
                 test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
+
+        elif args.target == 'Her2':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
+                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Train'
+                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
 
 
                 #args.last_layer_freeze = True
@@ -435,12 +441,20 @@ if __name__ == '__main__':
                 train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
                 test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
                 basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+
         elif args.target == 'PR':
             if args.test_fold == 1:
                 Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
                 train_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Train'
                 test_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Test'
                 basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_309-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
+        elif args.target == 'Her2':
+            if args.test_fold == 1:
+                Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
+                train_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Train'
+                test_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Test'
+                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_308-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
 
         TILE_SIZE = 256
@@ -474,13 +488,15 @@ if __name__ == '__main__':
                                               bag_size=args.tiles_per_bag,
                                               target=args.target,
                                               is_train=True,
-                                              data_limit=args.data_limit)
+                                              data_limit=args.data_limit,
+                                              test_fold=args.test_fold)
 
     test_dset = datasets.Features_MILdataset(data_location=test_data_dir,
                                              is_per_patient=args.per_patient_training,
                                              bag_size=args.tiles_per_bag,
                                              target=args.target,
-                                             is_train=False)
+                                             is_train=False,
+                                             test_fold=args.test_fold)
 
     train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from nets import nets
 import torchvision.models as models
 import os
-import PreActResNets
+import nets.PreActResNets
 
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 

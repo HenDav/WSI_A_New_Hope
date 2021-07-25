@@ -14,11 +14,11 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-from HED_space import HED_color_jitter
+#from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-from nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
+from nets.nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
 from nets import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
@@ -987,7 +987,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
 
     data_DF = pd.DataFrame([data_dict]).transpose()
 
-    if not os.path.isdir(args.output_dir):
+    if not os.path.isdir(code_files_path):
         #os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
     data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))

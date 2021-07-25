@@ -1077,6 +1077,7 @@ class Features_MILdataset(Dataset):
                  target: str = 'ER',
                  is_train: bool = False,
                  data_limit: int = None,  # if 'None' than there will be no data limit. If a number is specified than it'll be the data limit
+                 test_fold: int = None,
                  print_timing: bool = False,
                  slide_repetitions: int = 1
                  ):
@@ -1096,7 +1097,7 @@ class Features_MILdataset(Dataset):
         self.bad_patient_list = []
         self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
         slides_from_same_patient_with_different_target_values, total_slides, bad_num_of_good_tiles = 0, 0, 0
-        slides_with_not_enough_tiles = 0
+        slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0
         patient_list = []
 
         data_files = glob(os.path.join(data_location, '*.data'))
@@ -1111,25 +1112,22 @@ class Features_MILdataset(Dataset):
                 'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
                 'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
             '''
-            if target == 'ER_Features' or (target == 'PR_Features' and is_train is True):
+            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
                 grid_location_dict = {'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
                                       'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
-            elif target in ['PR', 'PR_Features']:
-                grid_location_dict = {
-                    'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
-                    'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_TIF_Grid_data.xlsx'}
+            else:
+                raise Exception("Need to write which dictionaries to use in this receptor case")
 
         elif sys.platform == 'linux':
             '''
             grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
                                   'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
             '''
-            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features'] and is_train is True):
+            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
                 grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
                                       'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
-            elif target in ['PR', 'PR_Features']:
-                grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
-                                      'ABCTB': r'/mnt/gipmed_new/Data/ABCTB_TIF/Grids/Grid_data.xlsx'}
+            else:
+                raise Exception("Need to write which dictionaries to use in this receptor case")
 
         grid_DF = pd.DataFrame()
         for key in grid_location_dict.keys():
@@ -1146,11 +1144,13 @@ class Features_MILdataset(Dataset):
             num_slides, max_tile_num = features.shape[0], features.shape[2]
 
             for slide_num in range(num_slides):
-                # Skip slides for PR Fold 1 .tif which has bad segmnetation and were missed in feature extraction phase
-                if slide_names[slide_num] in ['01-07-112.171.LB.B3.tif', '01-08-043.605.EX.B1.tif', '01-08-112.173.EX.A1.tif',
-                                              '06-07-002.245.EX.1C.tif', '06-07-005.436.EX.1I.tif', '06-07-007.134.EX.2A.tif',
-                                              '06-07-009.181.EX.3A.tif']:
-                    continue
+                # Skip slides that were extracted from ABCTB_TIF and have a "bad segmentation" marker in GridData.xlsx file
+                try:
+                    if grid_DF.loc[slide_names[slide_num], 'bad segmentation'] == 1:
+                        slides_with_bad_segmentation += 1
+                        continue
+                except KeyError:
+                    print()
 
                 total_slides += 1
                 feature_1 = features[slide_num, :, :, 0]
@@ -1227,6 +1227,7 @@ class Features_MILdataset(Dataset):
                     self.scores.append(scores[slide_num])
 
         print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
+        print('There are {}/{} slides with \"bad segmentation\" '.format(slides_with_bad_segmentation, total_slides))
         print('There are {}/{} slides with less than {} tiles '.format(slides_with_not_enough_tiles, total_slides, minimum_tiles_in_slide))
         if is_per_patient:
             self.patient_keys = list(self.patient_data.keys())
