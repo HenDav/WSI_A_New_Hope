@@ -2,7 +2,7 @@ import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch
-import  nets.nets_mil
+import nets_mil
 from tqdm import tqdm
 import argparse
 import os
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=374, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=375, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[480, 485, 490, 495, 500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -56,6 +56,9 @@ if sys.platform == 'darwin':
     elif target in ['PR', 'PR_Features']:
         if test_fold == 1:
             test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
+    elif target in ['Her2', 'Her2_Features']:
+        if test_fold == 1:
+            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
 
     #args.save_tile_scores = True
 
@@ -68,7 +71,8 @@ inf_dset = datasets.Features_MILdataset(data_location=test_data_dir,
                                         target=target,
                                         is_per_patient=False if args.save_tile_scores else True,
                                         is_all_tiles=True,
-                                        is_train=False)
+                                        is_train=False,
+                                        test_fold=test_fold)
 
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
