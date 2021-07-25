@@ -256,7 +256,7 @@ class WSI_Master_Dataset(Dataset):
         start_getitem = time.time()
         idx = idx % self.real_length
 
-        #self.tile_size = 10000 #temp RanS 22.7.21
+        #self.tile_size = 1000000 #temp RanS 22.7.21
 
         if self.presaved_tiles[idx]:  # load presaved patches
             time_tile_extraction = time.time()

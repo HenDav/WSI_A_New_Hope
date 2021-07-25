@@ -2,10 +2,8 @@ import utils
 from torch.utils.data import DataLoader
 import torch
 import datasets
-from nets import nets
-import PreActResNets
 import numpy as np
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve
 import os
 import sys
 import argparse
@@ -163,7 +161,7 @@ with torch.no_grad():
             new_slide = False
 
         data = data.squeeze(0)
-
+        #print("data.shape: ", str(data.shape)) #temp RanS 22.7.21
         data, target = data.to(DEVICE), target.to(DEVICE)
 
         for index, model in enumerate(models):
@@ -213,18 +211,19 @@ with torch.no_grad():
 
             # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
             if args.save_features and slide_num % NUM_SLIDES_SAVE == 0:
-                feature_file_name = os.path.join(data_path, output_dir, '',
-                                                 'Model_Epoch_' + str(args.from_epoch[model_num])
-                                                 + '-Folds_' + str(args.folds) + '_' + str(
-                                                     args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
-                inference_data = [all_labels[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
-                                  all_targets[slide_num-NUM_SLIDES_SAVE:slide_num],
-                                  all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
-                                  np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num, :]),
-                                  all_slide_names[slide_num-NUM_SLIDES_SAVE:slide_num],
-                                  features_all]
-                with open(feature_file_name, 'wb') as filehandle:
-                    pickle.dump(inference_data, filehandle)
+                for model_num in range(NUM_MODELS):
+                    feature_file_name = os.path.join(data_path, output_dir, '',
+                                                     'Model_Epoch_' + str(args.from_epoch[model_num])
+                                                     + '-Folds_' + str(args.folds) + '_' + str(
+                                                         args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
+                    inference_data = [all_labels[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
+                                      all_targets[slide_num-NUM_SLIDES_SAVE:slide_num],
+                                      all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
+                                      np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num, :]),
+                                      all_slide_names[slide_num-NUM_SLIDES_SAVE:slide_num],
+                                      features_all]
+                    with open(feature_file_name, 'wb') as filehandle:
+                        pickle.dump(inference_data, filehandle)
                 print('saved output for ', str(slide_num), ' slides')
                 features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
                 features_all[:] = np.nan
@@ -276,8 +275,8 @@ for model_num in range(NUM_MODELS):
 print('Done !')
 
 # finished training, send email if possible
-if os.path.isfile('../mail_cfg.txt'):
-    with open("../mail_cfg.txt", "r") as f:
+if os.path.isfile('mail_cfg.txt'):
+    with open("mail_cfg.txt", "r") as f:
         text = f.readlines()
         receiver_email = text[0][:-1]
         password = text[1]

@@ -4,7 +4,6 @@ from matplotlib import image as plt_image
 import os
 import pandas as pd
 import glob
-import pickle
 from random import sample
 import random
 import torch
@@ -18,13 +17,12 @@ from zipfile import BadZipFile
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-from nets.nets_mil import ResNet34_GN_GatedAttention, ResNet50_GN_GatedAttention, ReceptorNet
-from nets import nets
+from nets_mil import ResNet50_GN_GatedAttention, ReceptorNet
+import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
 from shutil import copy2
 from datetime import date
-import platform
 import inspect
 import torch.nn.functional as F
 
@@ -987,7 +985,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
 
     data_DF = pd.DataFrame([data_dict]).transpose()
 
-    if not os.path.isdir(code_files_path):
+    if not os.path.isdir(args.output_dir):
         #os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
     data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))

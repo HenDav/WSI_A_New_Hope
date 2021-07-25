@@ -5,7 +5,7 @@ from cycler import cycler
 import numpy as np
 import pandas as pd
 import os
-from inference.inference_loader_input import inference_files, inference_dir, save_csv, patient_level, inference_name
+from inference_loader_input import inference_files, inference_dir, save_csv, patient_level, inference_name
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
                                     '#f781bf', '#a65628', '#984ea3',
