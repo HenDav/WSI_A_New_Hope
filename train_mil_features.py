@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch
 import torch.optim as optim
-from nets import nets_mil
-from nets.PreActResNets import PreActResNet50_Ron
+import nets_mil
+from PreActResNets import PreActResNet50_Ron
 from tqdm import tqdm
 import time
 from torch.utils.tensorboard import SummaryWriter
@@ -550,5 +550,6 @@ if __name__ == '__main__':
         cudnn.benchmark = True
 
     criterion = nn.CrossEntropyLoss()
+
 
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)

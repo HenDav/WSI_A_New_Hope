@@ -985,7 +985,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
 
     data_DF = pd.DataFrame([data_dict]).transpose()
 
-    if not os.path.isdir(args.output_dir):
+    if not os.path.isdir(code_files_path):
         #os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
     data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))

@@ -249,6 +249,9 @@ class PreActResNet_Ron(nn.Module):
         self.linear = nn.Linear(128*block.expansion, num_classes)
         self.model_name = ''
 
+        # is_HeatMap is used when we want to create a heatmap and we need to fkip the order of the last two layers
+        self.is_HeatMap = False  # Omer 26/7/2021
+
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
@@ -262,19 +265,41 @@ class PreActResNet_Ron(nn.Module):
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
-        out = self.conv1(x)
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        out = F.avg_pool2d(out, out.shape[3])
-        out = out.view(out.size(0), -1)
-        features = out
-        #out = self.linear(self.dropout(out))
-        out = self.linear(out)
 
-        #return out
-        return out, features #RanS 1.7.21
+        if self.is_HeatMap:
+            if nn.Module.training is True:
+                raise Exception('Pay Attention that the model in not in eval mode')
+
+            print('Input size to Conv-Net is of size {}'.format(x.shape))
+            out = self.conv1(x)
+            out = self.layer1(out)
+            out = self.layer2(out)
+            out = self.layer3(out)
+            out = self.layer4(out)
+
+            print('OutPut size from Conv-Net is of size {}'.format(out.shape))
+            out = F.avg_pool2d(out, out.shape[3])
+            print('OutPut size after pooling layer is of size {}'.format(out.shape))
+            out = out.view(out.size(0), -1)
+            features = out
+
+            out = self.linear(out)
+            return out, features  # RanS 1.7.21
+
+        else:
+            out = self.conv1(x)
+            out = self.layer1(out)
+            out = self.layer2(out)
+            out = self.layer3(out)
+            out = self.layer4(out)
+            out = F.avg_pool2d(out, out.shape[3])
+            out = out.view(out.size(0), -1)
+            features = out
+            #out = self.linear(self.dropout(out))
+            out = self.linear(out)
+
+            #return out
+            return out, features #RanS 1.7.21
 
 
 def PreActResNet50_Ron():

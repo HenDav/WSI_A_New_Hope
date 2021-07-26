@@ -611,6 +611,187 @@ class Infer_Dataset(WSI_Master_Dataset):
         return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
 
 
+class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 tile_size: int = 256,
+                 tiles_per_iter: int = 500,
+                 target_kind: str = 'ER',
+                 folds: List = [1],
+                 dx: bool = False,
+                 desired_slide_magnification: int = 10,
+                 num_background_tiles: int = 200
+                 ):
+        super(Full_Slide_Inference_Dataset, self).__init__(DataSet=DataSet,
+                                                           tile_size=tile_size,
+                                                           bag_size=None,
+                                                           target_kind=target_kind,
+                                                           test_fold=1,
+                                                           infer_folds=folds,
+                                                           train=True,
+                                                           print_timing=False,
+                                                           transform_type='none',
+                                                           DX=dx,
+                                                           get_images=False,
+                                                           train_type='Infer',
+                                                           desired_slide_magnification=desired_slide_magnification)
+
+        self.tiles_per_iter = tiles_per_iter
+        self.folds = folds
+        self.magnification = []
+        self.num_tiles = []
+        self.slide_grids = []
+        self.equivalent_grid = []
+        self.equivalent_grid_size = []
+        self.is_tissue_tiles = []
+        self.is_last_batch = []
+
+        ind = 0
+        for _, slide_num in enumerate(self.valid_slide_indices):
+            if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
+                # Recreate the basic slide grids:
+                height = int(self.meta_data_DF.loc[slide_num, 'Height'])
+                width = int(self.meta_data_DF.loc[slide_num, 'Width'])
+                objective_power = self.meta_data_DF.loc[slide_num, 'Manipulated Objective Power']
+
+                adjusted_tile_size_at_level_0 = int(self.tile_size * (int(objective_power) / self.desired_magnification))
+                equivalent_rows = int(np.ceil(height / adjusted_tile_size_at_level_0))
+                equivalent_cols = int(np.ceil(width / adjusted_tile_size_at_level_0))
+                basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in
+                              range(0, width, adjusted_tile_size_at_level_0)]
+                equivalent_grid_dimensions = (equivalent_rows, equivalent_cols)
+                self.equivalent_grid_size.append(equivalent_grid_dimensions)
+
+                if len(basic_grid) != self.meta_data_DF.loc[slide_num, 'Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.desired_magnification)].item():
+                    raise Exception('Total tile num do not fit')
+
+                self.magnification.extend([self.all_magnifications[slide_num]])
+
+                basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
+                grid_file = os.path.join(self.image_path_names[ind], 'Grids',
+                                         basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+
+                #which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
+
+                with open(grid_file, 'rb') as filehandle:
+                    tissue_grid_list = pickle.load(filehandle)
+                # Compute wich tiles are background tiles and pick "num_background_tiles" from them.
+                non_tissue_grid_list = list(set(basic_grid) - set(tissue_grid_list))
+                selected_non_tissue_grid_list = sample(non_tissue_grid_list, num_background_tiles)
+                # Combine the list of selected non tissue tiles with the list of all tiles:
+                combined_grid_list = selected_non_tissue_grid_list + tissue_grid_list
+                combined_equivalent_grid_list = map_original_grid_list_to_equiv_grid_list(adjusted_tile_size_at_level_0, combined_grid_list)
+                # We'll also create a list that says which tiles are tissue tiles:
+                is_tissue_tile = [False] * len(selected_non_tissue_grid_list) + [True] * len(tissue_grid_list)
+
+                self.num_tiles.append(len(combined_grid_list))
+
+                chosen_locations_chunks = chunks(combined_grid_list, self.tiles_per_iter)
+                self.slide_grids.extend(chosen_locations_chunks)
+
+                chosen_locations_equivalent_grid_chunks = chunks(combined_equivalent_grid_list, self.tiles_per_iter)
+                self.equivalent_grid.extend(chosen_locations_equivalent_grid_chunks)
+
+                is_tissue_tile_chunks = chunks(is_tissue_tile, self.tiles_per_iter)
+                self.is_tissue_tiles.extend(is_tissue_tile_chunks)
+                self.is_last_batch.extend([False] * (len(chosen_locations_chunks) - 1))
+                self.is_last_batch.append(True)
+
+                ind += 1
+
+        # The following properties will be used in the __getitem__ function
+        #self.tiles_to_go = None
+        #self.new_slide = True
+        self.slide_num = -1
+        self.current_file = None
+        print(
+            'Initiation of WSI INFERENCE for {} DataSet and {} of folds {} is Complete. {} Slides, Working on Tiles of size {}^2 with X{} magnification. {} tiles per iteration, {} iterations to complete full inference'
+                .format(self.DataSet,
+                        self.target_kind,
+                        str(self.folds),
+                        len(self.image_file_names),
+                        self.tile_size,
+                        self.desired_magnification,
+                        self.tiles_per_iter,
+                        self.__len__()))
+
+    def __len__(self):
+        return int(np.ceil(np.array(self.num_tiles) / self.tiles_per_iter).sum())
+
+    def __getitem__(self, idx):
+        start_getitem = time.time()
+        if idx == 0 or (idx > 0 and self.is_last_batch[idx - 1]):
+            #self.new_slide = True
+            self.slide_num += 1
+
+
+            #self.new_slide = False
+
+            #self.tiles_to_go = self.num_tiles[self.slide_num]
+
+            if sys.platform == 'win32':
+                image_file = os.path.join(self.image_path_names[self.slide_num],
+                                          self.image_file_names[self.slide_num])
+                self.current_slide = openslide.open_slide(image_file)
+            else:
+                self.current_slide = self.slides[self.slide_num]
+
+            self.initial_num_patches = self.num_tiles[self.slide_num]
+
+            # RanS 11.3.21
+            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+
+            level, best_next_level = -1, -1
+            for index, downsample in enumerate(self.current_slide.level_downsamples):
+                if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                    level = index
+                    level_downsample = 1
+                    break
+
+                elif downsample < desired_downsample:
+                    best_next_level = index
+                    level_downsample = int(
+                        desired_downsample / self.current_slide.level_downsamples[best_next_level])
+
+            self.adjusted_tile_size = self.tile_size * level_downsample
+            self.best_slide_level = level if level > best_next_level else best_next_level
+            self.level_0_tile_size = int(desired_downsample) * self.tile_size
+
+        label = [1] if self.target[self.slide_num] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        tiles, time_list = _get_tiles(slide=self.current_slide,
+                                      locations=self.slide_grids[idx],
+                                      tile_size_level_0=self.level_0_tile_size,
+                                      adjusted_tile_sz=self.adjusted_tile_size,
+                                      output_tile_sz=self.tile_size,
+                                      best_slide_level=self.best_slide_level)
+
+        X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
+
+        start_aug = time.time()
+        for i in range(len(tiles)):
+            X[i] = self.transform(tiles[i])
+
+        aug_time = time.time() - start_aug
+        total_time = time.time() - start_getitem
+        if self.print_time:
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+        else:
+            time_list = [0]
+
+        debug_patches_and_transformations = False
+        if debug_patches_and_transformations:
+            images = torch.zeros_like(X)
+            trans = transforms.Compose(
+                [transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
+
+            for i in range(self.tiles_per_iter):
+                images[i] = trans(tiles[i])
+            show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
+
+        return X, label, time_list, self.is_last_batch[idx], self.initial_num_patches, self.current_slide._filename, self.equivalent_grid[idx], self.is_tissue_tiles[idx], self.equivalent_grid_size[self.slide_num]
+
 
 class Infer_Dataset_Background(WSI_Master_Dataset):
     """
@@ -1273,6 +1454,4 @@ class Features_MILdataset(Dataset):
                     'features': self.features[item][tile_idx],
                     'num tiles': self.num_tiles[item]
                     }
-
-
 
