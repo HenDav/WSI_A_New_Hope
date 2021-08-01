@@ -4,10 +4,11 @@ import re, glob
 inference_files = {}
 
 is_herohe = False
-exp = 358
-fold = 1
+exp = 303
+fold = 5
 target = 'ER'
-dataset = 'CARMEL'
+#dataset = 'CARMEL'
+dataset = 'ABCTB_TCGA'
 
 if is_herohe or dataset == 'CARMEL':
     patient_level = False

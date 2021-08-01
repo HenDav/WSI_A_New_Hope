@@ -96,12 +96,6 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
     :return: 
     """""
 
-    # Create alternative slides_data file (if needed):
-    #cancelled RanS 10.5.21, slides_data isn't changed
-    #if added_extension != '':
-    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
-
-    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
     slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
     grid_data_file = os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx')
 
@@ -344,12 +338,6 @@ def make_grid(DataSet: str = 'TCGA',
     :return: 
     """""
 
-    # Create alternative slides_data file (if needed):
-    #cancelled RanS 10.5.21, no change is amde to slides_data
-    #if added_extension != '':
-    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
-
-    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
     slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
 
     slides_meta_data_DF = pd.read_excel(slides_data_file)
@@ -562,9 +550,10 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['PORTO_HE'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
     META_DATA_FILE['PORTO_PDL1'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
-    META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
+    META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx'
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
     META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
+    META_DATA_FILE['LEUKEMIA'] = 'barcode_list.xlsx'
 
     #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     data_file = os.path.join(out_path, DataSet, SLIDES_DATA_FILE) #RanS 15.2.21
@@ -614,6 +603,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Image File'].astype(str) #RanS 16.12.20
     elif DataSet == 'SHEBA':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Code'].astype(str)  # RanS 16.12.20
+    elif DataSet == 'LEUKEMIA':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['MarrowID'].astype(str)  # RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -779,7 +770,8 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         code_files_path = os.path.join(out_path_dataset, 'SegData', 'Code')
         py_files = glob.glob('*.py')
         for _, file in enumerate(py_files):
-            copy2(file, code_files_path)
+            #copy2(file, code_files_path)
+            copy2(file, os.path.join(code_files_path,os.path.basename(file)))
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))

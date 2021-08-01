@@ -164,6 +164,22 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                       # len(train_loader),
                       time_epoch))
         previous_epoch_loss = train_loss
+
+        # Update 'Last Epoch' at run_data.xlsx file:
+        utils.run_data(experiment=experiment, epoch=e)
+
+        # Save model to file:
+        try:
+            model_state_dict = model.module.state_dict()
+        except AttributeError:
+            model_state_dict = model.state_dict()
+        torch.save({'epoch': e,
+                    'model_state_dict': model_state_dict,
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'tile_size': TILE_SIZE,
+                    'tiles_per_bag': 1},
+                   os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Last_Epoch.pt'))
+
         if e % args.eval_rate == 0:
             #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # perform slide inference
@@ -179,8 +195,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 test_auc_mean = np.mean(test_auc_list)
                 test_auc_list.pop(0)
                 utils.run_data(experiment=experiment, test_mean_auc=test_auc_mean)
-            # Update 'Last Epoch' at run_data.xlsx file:
-            utils.run_data(experiment=experiment, epoch=e)
+
             # Save model to file:
             try:
                 model_state_dict = model.module.state_dict()
@@ -434,7 +449,7 @@ if __name__ == '__main__':
         utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
-        #utils.save_code_files(args, train_dset) #cancelled RanS 19.7.21, this is buggy
+        utils.save_code_files(args, train_dset)
 
     epoch = args.epochs
     from_epoch = args.from_epoch
@@ -442,13 +457,19 @@ if __name__ == '__main__':
     # In case we continue from an already trained model, than load the previous model and optimizer data:
     if args.experiment != 0:
         print('Loading pre-saved model...')
-        model_data_loaded = torch.load(os.path.join(args.output_dir,
-                                                    'Model_CheckPoints',
-                                                    'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
-
+        if from_epoch == 0: #RanS 25.7.21, load last epoch
+            model_data_loaded = torch.load(os.path.join(args.output_dir,
+                                                        'Model_CheckPoints',
+                                                        'model_data_Last_Epoch.pt'),
+                                           map_location='cpu')
+            from_epoch = model_data_loaded['epoch'] + 1
+        else:
+            model_data_loaded = torch.load(os.path.join(args.output_dir,
+                                                        'Model_CheckPoints',
+                                                        'model_data_Epoch_' + str(args.from_epoch) + '.pt'), map_location='cpu')
+            from_epoch = args.from_epoch + 1
         model.load_state_dict(model_data_loaded['model_state_dict'])
 
-        from_epoch = args.from_epoch + 1
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 

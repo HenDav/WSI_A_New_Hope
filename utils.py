@@ -992,7 +992,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
     # Get all .py files in the code path:
     py_files = glob.glob('*.py')
     for _, file in enumerate(py_files):
-        copy2(file, code_files_path)
+        copy2(file, os.path.join(code_files_path, os.path.basename(file)))
 
 def extract_tile_scores_for_slide(all_features, models):
     # Save tile scores and last models layer bias difference to file:

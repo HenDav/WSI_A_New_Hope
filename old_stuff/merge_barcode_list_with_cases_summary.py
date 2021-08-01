@@ -1,20 +1,16 @@
 import pandas as pd
-import openslide
 import os
 
-slides_file = r'/home/womer/project/All Data/slides_data.xlsx'
-out_file = r'/home/rschley/code/WSI_MIL/general_try4/slides_data_with_date.xlsx'
+dn = r'C:\ran_data\BoneMarrow'
+file1 = r'ALL_cases_summary_16-06-21_boxes2-4.xlsx'
+file2 = r'barcode_list_box1.xlsx'
 
-slides_df = pd.read_excel(slides_file)
+df1 = pd.read_excel(os.path.join(dn,file1), sheet_name=1)
+df2 = pd.read_excel(os.path.join(dn,file2))
+df1['merge_name'] = df1['merge_name'].astype(str)
+df2['merge_name'] = df2['merge_name'].astype(str)
 
-slides_df['Date'] = 'not extracted from metadata'
-for index, slide in slides_df.iterrows():
-    try:
-        file_path = os.path.join(r'/home/womer/project/All Data', slide['id'], slide['file'])
-        img = openslide.open_slide(file_path)
-        slides_df.loc[index, 'Date'] = img.properties['aperio.Date']
-    except:
-        pass
+df_m = pd.merge(df1, df2,how='outer',on='merge_name')
+df_m.to_excel(os.path.join(dn, 'out.xlsx'))
 
-slides_df.to_excel(out_file)
 print('finished')
