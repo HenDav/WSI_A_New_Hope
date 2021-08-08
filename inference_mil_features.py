@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=375, help='Continue train of this experiment')
-parser.add_argument('-fe', '--from_epoch', type=int, default=[480, 485, 490, 495, 500], help='Use this epoch model for inference')
+parser.add_argument('-ex', '--experiment', type=int, default=338, help='Continue train of this experiment')
+parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
 #parser.add_argument('-ds', '--dataset', type=str, default='HEROHE', help='DataSet to use')
@@ -60,7 +60,7 @@ if sys.platform == 'darwin':
         if test_fold == 1:
             test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
 
-    #args.save_tile_scores = True
+    args.save_tile_scores = True
 
 elif sys.platform == 'linux':
     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
@@ -84,11 +84,15 @@ if args.save_tile_scores and len(args.from_epoch) > 1:
     raise Exception('When saving tile scores, there should be only one model')
 
 if args.save_tile_scores:
-    all_slides_weights_list = []
+    all_slides_weights_before_sftmx_list = []
+    all_slides_weights_after_sftmx_list = []
+    #all_slides_weights_list = []
     all_slides_tile_scores_list = []
     all_slides_scores_list = []
 
-    all_slides_weights_list.append({})
+    all_slides_weights_before_sftmx_list.append({})
+    all_slides_weights_after_sftmx_list.append({})
+    #all_slides_weights_list.append({})
     all_slides_tile_scores_list.append({})
     all_slides_scores_list.append({})
 
@@ -127,10 +131,11 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                 scores_reg.append(minibatch['scores'].mean().cpu().item())
 
             data, target = data.to(DEVICE), target.to(DEVICE)
-            outputs, weights = model(x=None, H=data)
+            outputs, weights_after_sftmx, weights_before_softmax = model(x=None, H=data)
             #print(data.shape, target.shape, outputs.shape, weights.shape)
 
-            weights = weights.cpu().detach().numpy()
+            weights_after_sftmx = weights_after_sftmx.cpu().detach().numpy()
+            weights_before_sftmx = weights_before_softmax.cpu().detach().numpy()
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
@@ -155,13 +160,20 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                     new_slide_tile_scores_list[:len(slide_tile_scores_list[0]), ] = slide_tile_scores_list[0]
                     slide_tile_scores_list[0] = new_slide_tile_scores_list
 
-                if weights.shape[1] != 500:
+                if weights_after_sftmx.shape[1] != 500:
                     new_weights = np.zeros((1, 500))
-                    new_weights[:, :weights.shape[1]] = weights
-                    weights = new_weights
+                    new_weights[:, :weights_after_sftmx.shape[1]] = weights_after_sftmx
+                    weights_after_sftmx = new_weights
+
+                if weights_before_sftmx.shape[1] != 500:
+                    new_weights = np.zeros((1, 500))
+                    new_weights[:, :weights_before_sftmx.shape[1]] = weights_before_sftmx
+                    weights_before_sftmx = new_weights
 
                 all_slides_tile_scores_list[model_num][slide_name[0]] = slide_tile_scores_list[0]
-                all_slides_weights_list[model_num][slide_name[0]] = weights.reshape(weights.shape[1], )
+                all_slides_weights_before_sftmx_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
+                all_slides_weights_after_sftmx_list[model_num][slide_name[0]] = weights_after_sftmx.reshape(weights_after_sftmx.shape[1], )
+                #all_slides_weights_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
                 all_slides_scores_list[model_num][slide_name[0]] = outputs[:, 1].cpu().detach().numpy()
 
             scores_mil = np.concatenate((scores_mil, outputs[:, 1].cpu().detach().numpy()))
@@ -186,7 +198,8 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                                 'REG': all_slides_tile_scores_list_ran}
 
         utils.save_all_slides_and_models_data(all_tile_scores_dict, all_slides_score_dict,
-                                              all_slides_weights_list, [model], output_dir, args.from_epoch, '')
+                                              all_slides_weights_before_sftmx_list, all_slides_weights_after_sftmx_list,
+                                              [model], output_dir, args.from_epoch, '')
     if model_num == 0:
         fpr_reg, tpr_reg, _ = roc_curve(true_targets, np.array(scores_reg))
         roc_auc_reg = auc(fpr_reg, tpr_reg)

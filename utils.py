@@ -212,9 +212,16 @@ def _get_tiles(slide: openslide.OpenSlide,
                             'Left': loc[1]}
 
         try:
+            '''
+            # FIXME: shifting the origin by 1.5 tiles
+            new_loc_init['Top'] -= (128 + 256) * round(adjusted_tile_sz/output_tile_sz)
+            new_loc_init['Left'] -= (128 + 256) * round(adjusted_tile_sz/output_tile_sz)'''
+            # FIXME:
+            #image = slide.read_region(location=(20000, 20000), level=0, size=(4096, 4096)).convert('RGB')
+            #image = slide.read_region(location=(8000, 20000), level=0, size=(4096, 4096)).convert('RGB')
+            #image = Image.fromarray(np.ones([adjusted_tile_sz, adjusted_tile_sz, 3], dtype=np.uint8) * 255)
             # When reading from OpenSlide the locations is as follows (col, row)
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
-
             #temp RanS 12.7.21
             '''import matplotlib.pyplot as plt
             q = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), 0, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
@@ -263,6 +270,8 @@ def _get_tiles(slide: openslide.OpenSlide,
             plt.imshow(image)
 
         if adjusted_tile_sz != output_tile_sz:
+            # FIXME:
+            #image = image.resize((2048, 2048))
             image = image.resize((output_tile_sz, output_tile_sz))
 
         tiles_PIL[idx] = image
@@ -1058,7 +1067,9 @@ def extract_tile_scores_for_slide_1(all_features, models, Output_Dirs, Epochs, d
     return tile_scores_list
 '''
 
-def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores, all_slides_weights, models, Output_Dirs, Epochs, data_path):
+def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores,
+                                    all_slides_weights_before_softmax, all_slides_weights_after_softmax,
+                                    models, Output_Dirs, Epochs, data_path):
 
     # Save slide scores to file:
     for num_model in range(len(models)):
@@ -1109,15 +1120,18 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
 
         all_slides_tile_scores_DF = pd.DataFrame(all_slides_tile_scores[num_model]).transpose()
         all_slides_final_scores_DF = pd.DataFrame(all_slides_final_scores[num_model]).transpose()
-        all_slides_weights_DF = pd.DataFrame(all_slides_weights[num_model]).transpose()
+        all_slides_weights_before_sofrmax_DF = pd.DataFrame(all_slides_weights_before_softmax[num_model]).transpose()
+        all_slides_weights_after_softmax_DF = pd.DataFrame(all_slides_weights_after_softmax[num_model]).transpose()
 
         tile_scores_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_scores.xlsx')
         slide_score_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'slide_scores.xlsx')
-        tile_weights_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights.xlsx')
+        tile_weights_before_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights_before_softmax.xlsx')
+        tile_weights_after_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights_after_softmax.xlsx')
 
         all_slides_tile_scores_DF.to_excel(tile_scores_file_name)
         all_slides_final_scores_DF.to_excel(slide_score_file_name)
-        all_slides_weights_DF.to_excel(tile_weights_file_name)
+        all_slides_weights_before_sofrmax_DF.to_excel(tile_weights_before_softmax_file_name)
+        all_slides_weights_after_softmax_DF.to_excel(tile_weights_after_softmax_file_name)
 
         print('Tile scores for model {}/{} has been saved !'.format(num_model + 1, len(models)))
 
@@ -1187,3 +1201,57 @@ class FocalLoss(torch.nn.Module):
         pt = torch.exp(-ce)
         ce *= torch.matmul(torch.nn.functional.one_hot(target.long(), num_classes=2).float(), self.weight)
         return ((1 - pt) ** self.gamma * ce).mean()
+
+
+class EmbbedSquare(object):
+    def __init__(self, size=16, stride=8, pad=4, color='Testing'):
+        self.size = size
+        self.stride = stride
+        self.pad = pad
+        self.normalized_square = torch.zeros(1, 3, self.size, self.size)
+
+        if color == 'Black':
+            self.normalized_square[:, 0, :, :], \
+            self.normalized_square[:, 1, :, :], \
+            self.normalized_square[:, 2, :, :] = -7.9982, -4.7133, -11.8895  # Value of BLACK pixel after normalization
+        elif color == 'White':
+            self.normalized_square[:, 0, :, :], \
+            self.normalized_square[:, 1, :, :], \
+            self.normalized_square[:, 2, :, :] = 0.8907, 0.9977, 0.8170  # Value of WHITE pixel after normalization
+        elif color == 'Testing':
+            self.normalized_square = torch.ones(1, 3, self.size, self.size) * 255
+        else:
+            raise Exception('Color choice do not match to any of the options (White/ Black)')
+
+    def __call__(self, image):
+        if type(image) != torch.Tensor or image.shape != torch.Size([1, 3, 256, 256]):
+            raise Exception('Image is not in correct format or size')
+
+        _, _, size, _ = image.shape
+
+        new_image = torch.zeros((1, 3, size + 2 * self.pad, size + 2 * self.pad))
+        new_image[:, :, self.pad:self.pad + size, self.pad:self.pad + size] = image
+
+        init = {'Row': 0,
+                'Col': 0}
+
+        total_jumps = size // self.stride
+        output_images = []
+        for row_idx in range(0, total_jumps):
+            init['Row'] = row_idx * self.stride
+            init['Col'] = 0
+            for col_idx in range(0, total_jumps):
+                image_output = torch.clone(new_image)
+                init['Col'] = col_idx * self.stride
+                image_output[:, :, init['Row']:self.size + init['Row'], init['Col']:self.size + init['Col']] = self.normalized_square
+
+                # Now we have to cut the padding:
+                image_output = image_output[:, :, self.pad: + self.pad + size, self.pad: + self.pad + size]
+
+                # And add the output image to the list of ready images with the cutout:
+                output_images.append(image_output)
+
+        return output_images
+
+
+

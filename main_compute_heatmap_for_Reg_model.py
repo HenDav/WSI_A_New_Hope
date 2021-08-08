@@ -5,7 +5,7 @@ The computation uses a trained model and works.
 """
 
 import PreActResNets
-from datasets import Infer_Dataset
+from datasets import Full_Slide_Inference_Dataset
 import torch
 from torch.utils.data import DataLoader
 import utils
@@ -38,6 +38,7 @@ model_data_loaded = torch.load(os.path.join(args.output_dir, 'Model_CheckPoints'
 model.load_state_dict(model_data_loaded['model_state_dict'])
 model.eval()
 model.is_HeatMap = True
+model.to(DEVICE)
 
 TILE_SIZE = 128
 args.dataset = 'TCGA'
@@ -46,48 +47,44 @@ if sys.platform == 'linux':
     TILE_SIZE = 1024
 
 
-inf_dset = Infer_Dataset(DataSet=args.dataset,
-                         tile_size=TILE_SIZE,
-                         tiles_per_iter=1,
-                         target_kind=args.target,
-                         folds=args.test_fold,
-                         num_tiles=args.num_tiles,
-                         desired_slide_magnification=args.mag
-                         )
+inf_dset = Full_Slide_Inference_Dataset(DataSet=args.dataset,
+                                        tile_size=TILE_SIZE,
+                                        tiles_per_iter=1,
+                                        target_kind=args.target,
+                                        folds=args.test_fold,
+                                        desired_slide_magnification=args.mag
+                                        )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
-new_slide = True
-
 NUM_SLIDES = len(inf_dset.image_file_names)
-print('NUM_SLIDES: ', str(NUM_SLIDES))
 
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES)), np.zeros((NUM_SLIDES))
-patch_scores = np.empty((NUM_SLIDES, args.num_tiles))
+#patch_scores = np.empty((NUM_SLIDES, args.num_tiles))
+#patch_scores[:] = np.nan
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
-patch_scores[:] = np.nan
 slide_num = 0
 # The following 2 lines initialize variables to compute AUC for train dataset.
 total_pos, total_neg = 0, 0
 
+new_slide = True
 with torch.no_grad():
-    for batch_idx, (data, target, time_list, last_batch, _, slide_file, patient) in enumerate(tqdm(inf_loader)):
+    for batch_idx, MiniBatch_Dict in enumerate(tqdm(inf_loader)):
+        # Unpacking the data:
+        data = MiniBatch_Dict['Data']
+        target = MiniBatch_Dict['Label']
+        last_batch = MiniBatch_Dict['Is Last Batch']
+        slide_file = MiniBatch_Dict['Slide Filename']
+
         if new_slide:
-            n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
-            #scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
-            #scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
-            scores_0 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)] # RanS 12.7.21
-            scores_1 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]  # RanS 12.7.21
-            if args.save_features:
-                #feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
-                feature_arr = [np.zeros((n_tiles, 512)) for ii in range(NUM_MODELS)]  # RanS 1.7.21
-            target_current = target
-            slide_batch_num = 0
             new_slide = False
+            n_tiles = inf_loader.dataset.num_tiles[slide_num]
 
         data = data.squeeze(0)
         #print("data.shape: ", str(data.shape)) #temp RanS 22.7.21
         data, target = data.to(DEVICE), target.to(DEVICE)
 
+        tile_sized_heatmap = model(data)
 
+        print()
 

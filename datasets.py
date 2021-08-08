@@ -165,6 +165,9 @@ class WSI_Master_Dataset(Dataset):
 
         self.folds = folds
 
+        if type(folds) is int:
+            folds = [folds]
+
         correct_folds = self.meta_data_DF[fold_column_name][valid_slide_indices].isin(folds)
         valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
@@ -724,9 +727,7 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
             #self.new_slide = True
             self.slide_num += 1
 
-
             #self.new_slide = False
-
             #self.tiles_to_go = self.num_tiles[self.slide_num]
 
             if sys.platform == 'win32':
@@ -753,19 +754,22 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                     level_downsample = int(
                         desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
+
+            #self.tile_size = 1024  # FIXME: if you want to more on 256 tiles or 1024
             self.adjusted_tile_size = self.tile_size * level_downsample
+
             self.best_slide_level = level if level > best_next_level else best_next_level
             self.level_0_tile_size = int(desired_downsample) * self.tile_size
 
         label = [1] if self.target[self.slide_num] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
-        tiles, time_list = _get_tiles(slide=self.current_slide,
-                                      locations=self.slide_grids[idx],
-                                      tile_size_level_0=self.level_0_tile_size,
-                                      adjusted_tile_sz=self.adjusted_tile_size,
-                                      output_tile_sz=self.tile_size,
-                                      best_slide_level=self.best_slide_level)
+        tiles, time_list, _ = _get_tiles(slide=self.current_slide,
+                                         locations=self.slide_grids[idx],
+                                         tile_size_level_0=self.level_0_tile_size,
+                                         adjusted_tile_sz=self.adjusted_tile_size,
+                                         output_tile_sz=self.tile_size,
+                                         best_slide_level=self.best_slide_level)
 
         X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
 
@@ -790,8 +794,19 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                 images[i] = trans(tiles[i])
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
-        return X, label, time_list, self.is_last_batch[idx], self.initial_num_patches, self.current_slide._filename, self.equivalent_grid[idx], self.is_tissue_tiles[idx], self.equivalent_grid_size[self.slide_num]
-
+        #return X, label, time_list, self.is_last_batch[idx], self.initial_num_patches, self.current_slide._filename, self.equivalent_grid[idx], self.is_tissue_tiles[idx], self.equivalent_grid_size[self.slide_num]
+        return {'Data': X,
+                'Label': label,
+                'Time List': time_list,
+                'Is Last Batch': self.is_last_batch[idx],
+                'Initial Num Tiles': self.initial_num_patches,
+                'Slide Filename': self.current_slide._filename,
+                'Equivalent Grid': self.equivalent_grid[idx],
+                'Is Tissue Tiles': self.is_tissue_tiles[idx],
+                'Equivalent Grid Size': self.equivalent_grid_size[self.slide_num],
+                'Level 0 Locations': self.slide_grids[idx],
+                'Original Data': transforms.ToTensor()(tiles[0])
+                }
 
 class Infer_Dataset_Background(WSI_Master_Dataset):
     """
@@ -1371,6 +1386,7 @@ class Features_MILdataset(Dataset):
                         patient_dict['num tiles'].append(tiles_in_slide)
                         patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
                         patient_dict['labels'].append(int(labels[slide_num]))
+                        patient_dict['target'].append(int(targets[slide_num]))
                         patient_dict['slides'].append(slide_names[slide_num])
                         patient_dict['scores'].append(scores[slide_num])
 
