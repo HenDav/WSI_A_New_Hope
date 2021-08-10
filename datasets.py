@@ -165,6 +165,9 @@ class WSI_Master_Dataset(Dataset):
 
         self.folds = folds
 
+        if type(folds) is int:
+            folds = [folds]
+
         correct_folds = self.meta_data_DF[fold_column_name][valid_slide_indices].isin(folds)
         valid_slide_indices = np.array(correct_folds.index[correct_folds])
 
@@ -618,6 +621,201 @@ class Infer_Dataset(WSI_Master_Dataset):
         #return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21
         return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
 
+
+class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 tile_size: int = 256,
+                 tiles_per_iter: int = 500,
+                 target_kind: str = 'ER',
+                 folds: List = [1],
+                 dx: bool = False,
+                 desired_slide_magnification: int = 10,
+                 num_background_tiles: int = 200
+                 ):
+        super(Full_Slide_Inference_Dataset, self).__init__(DataSet=DataSet,
+                                                           tile_size=tile_size,
+                                                           bag_size=None,
+                                                           target_kind=target_kind,
+                                                           test_fold=1,
+                                                           infer_folds=folds,
+                                                           train=True,
+                                                           print_timing=False,
+                                                           transform_type='none',
+                                                           DX=dx,
+                                                           get_images=False,
+                                                           train_type='Infer',
+                                                           desired_slide_magnification=desired_slide_magnification)
+
+        self.tiles_per_iter = tiles_per_iter
+        self.folds = folds
+        self.magnification = []
+        self.num_tiles = []
+        self.slide_grids = []
+        self.equivalent_grid = []
+        self.equivalent_grid_size = []
+        self.is_tissue_tiles = []
+        self.is_last_batch = []
+
+        ind = 0
+        for _, slide_num in enumerate(self.valid_slide_indices):
+            if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
+                # Recreate the basic slide grids:
+                height = int(self.meta_data_DF.loc[slide_num, 'Height'])
+                width = int(self.meta_data_DF.loc[slide_num, 'Width'])
+                objective_power = self.meta_data_DF.loc[slide_num, 'Manipulated Objective Power']
+
+                adjusted_tile_size_at_level_0 = int(self.tile_size * (int(objective_power) / self.desired_magnification))
+                equivalent_rows = int(np.ceil(height / adjusted_tile_size_at_level_0))
+                equivalent_cols = int(np.ceil(width / adjusted_tile_size_at_level_0))
+                basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in
+                              range(0, width, adjusted_tile_size_at_level_0)]
+                equivalent_grid_dimensions = (equivalent_rows, equivalent_cols)
+                self.equivalent_grid_size.append(equivalent_grid_dimensions)
+
+                if len(basic_grid) != self.meta_data_DF.loc[slide_num, 'Total tiles - ' + str(self.tile_size) + ' compatible @ X' + str(self.desired_magnification)].item():
+                    raise Exception('Total tile num do not fit')
+
+                self.magnification.extend([self.all_magnifications[slide_num]])
+
+                basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
+                grid_file = os.path.join(self.image_path_names[ind], 'Grids',
+                                         basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+
+                #which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
+
+                with open(grid_file, 'rb') as filehandle:
+                    tissue_grid_list = pickle.load(filehandle)
+                # Compute wich tiles are background tiles and pick "num_background_tiles" from them.
+                non_tissue_grid_list = list(set(basic_grid) - set(tissue_grid_list))
+                selected_non_tissue_grid_list = sample(non_tissue_grid_list, num_background_tiles)
+                # Combine the list of selected non tissue tiles with the list of all tiles:
+                combined_grid_list = selected_non_tissue_grid_list + tissue_grid_list
+                combined_equivalent_grid_list = map_original_grid_list_to_equiv_grid_list(adjusted_tile_size_at_level_0, combined_grid_list)
+                # We'll also create a list that says which tiles are tissue tiles:
+                is_tissue_tile = [False] * len(selected_non_tissue_grid_list) + [True] * len(tissue_grid_list)
+
+                self.num_tiles.append(len(combined_grid_list))
+
+                chosen_locations_chunks = chunks(combined_grid_list, self.tiles_per_iter)
+                self.slide_grids.extend(chosen_locations_chunks)
+
+                chosen_locations_equivalent_grid_chunks = chunks(combined_equivalent_grid_list, self.tiles_per_iter)
+                self.equivalent_grid.extend(chosen_locations_equivalent_grid_chunks)
+
+                is_tissue_tile_chunks = chunks(is_tissue_tile, self.tiles_per_iter)
+                self.is_tissue_tiles.extend(is_tissue_tile_chunks)
+                self.is_last_batch.extend([False] * (len(chosen_locations_chunks) - 1))
+                self.is_last_batch.append(True)
+
+                ind += 1
+
+        # The following properties will be used in the __getitem__ function
+        #self.tiles_to_go = None
+        #self.new_slide = True
+        self.slide_num = -1
+        self.current_file = None
+        print(
+            'Initiation of WSI INFERENCE for {} DataSet and {} of folds {} is Complete. {} Slides, Working on Tiles of size {}^2 with X{} magnification. {} tiles per iteration, {} iterations to complete full inference'
+                .format(self.DataSet,
+                        self.target_kind,
+                        str(self.folds),
+                        len(self.image_file_names),
+                        self.tile_size,
+                        self.desired_magnification,
+                        self.tiles_per_iter,
+                        self.__len__()))
+
+    def __len__(self):
+        return int(np.ceil(np.array(self.num_tiles) / self.tiles_per_iter).sum())
+
+    def __getitem__(self, idx, location: List = None):
+        start_getitem = time.time()
+        if idx == 0 or (idx > 0 and self.is_last_batch[idx - 1]):
+            #self.new_slide = True
+            self.slide_num += 1
+
+            #self.new_slide = False
+            #self.tiles_to_go = self.num_tiles[self.slide_num]
+
+            if sys.platform == 'win32':
+                image_file = os.path.join(self.image_path_names[self.slide_num],
+                                          self.image_file_names[self.slide_num])
+                self.current_slide = openslide.open_slide(image_file)
+            else:
+                self.current_slide = self.slides[self.slide_num]
+
+            self.initial_num_patches = self.num_tiles[self.slide_num]
+
+            # RanS 11.3.21
+            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+
+            level, best_next_level = -1, -1
+            for index, downsample in enumerate(self.current_slide.level_downsamples):
+                if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                    level = index
+                    level_downsample = 1
+                    break
+
+                elif downsample < desired_downsample:
+                    best_next_level = index
+                    level_downsample = int(
+                        desired_downsample / self.current_slide.level_downsamples[best_next_level])
+
+            self.tile_size = 2048  # FIXME: if you want 256 tiles or 1024
+            self.adjusted_tile_size = self.tile_size * level_downsample
+
+            self.best_slide_level = level if level > best_next_level else best_next_level
+            self.level_0_tile_size = int(desired_downsample) * self.tile_size
+
+        label = [1] if self.target[self.slide_num] == 'Positive' else [0]
+        label = torch.LongTensor(label)
+
+        tile_locations = self.slide_grids[idx] if location is None else location
+
+        tiles, time_list, _ = _get_tiles(slide=self.current_slide,
+                                         locations=tile_locations,
+                                         tile_size_level_0=self.level_0_tile_size,
+                                         adjusted_tile_sz=self.adjusted_tile_size,
+                                         output_tile_sz=self.tile_size,
+                                         best_slide_level=self.best_slide_level)
+
+        X = torch.zeros([len(tiles), 3, self.tile_size, self.tile_size])
+
+        start_aug = time.time()
+        for i in range(len(tiles)):
+            X[i] = self.transform(tiles[i])
+
+        aug_time = time.time() - start_aug
+        total_time = time.time() - start_getitem
+        if self.print_time:
+            time_list = (time_list[0], time_list[1], aug_time, total_time)
+        else:
+            time_list = [0]
+
+        debug_patches_and_transformations = False
+        if debug_patches_and_transformations:
+            images = torch.zeros_like(X)
+            trans = transforms.Compose(
+                [transforms.CenterCrop(self.tile_size), transforms.ToTensor()])  # RanS 21.12.20
+
+            for i in range(self.tiles_per_iter):
+                images[i] = trans(tiles[i])
+            show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
+
+        #return X, label, time_list, self.is_last_batch[idx], self.initial_num_patches, self.current_slide._filename, self.equivalent_grid[idx], self.is_tissue_tiles[idx], self.equivalent_grid_size[self.slide_num]
+        return {'Data': X,
+                'Label': label,
+                'Time List': time_list,
+                'Is Last Batch': self.is_last_batch[idx],
+                'Initial Num Tiles': self.initial_num_patches,
+                'Slide Filename': self.current_slide._filename,
+                'Equivalent Grid': self.equivalent_grid[idx],
+                'Is Tissue Tiles': self.is_tissue_tiles[idx],
+                'Equivalent Grid Size': self.equivalent_grid_size[self.slide_num],
+                'Level 0 Locations': self.slide_grids[idx],
+                'Original Data': transforms.ToTensor()(tiles[0])
+                }
 
 
 class Infer_Dataset_Background(WSI_Master_Dataset):
@@ -1085,6 +1283,7 @@ class Features_MILdataset(Dataset):
                  target: str = 'ER',
                  is_train: bool = False,
                  data_limit: int = None,  # if 'None' than there will be no data limit. If a number is specified than it'll be the data limit
+                 test_fold: int = None,
                  print_timing: bool = False,
                  slide_repetitions: int = 1
                  ):
@@ -1104,7 +1303,7 @@ class Features_MILdataset(Dataset):
         self.bad_patient_list = []
         self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
         slides_from_same_patient_with_different_target_values, total_slides, bad_num_of_good_tiles = 0, 0, 0
-        slides_with_not_enough_tiles = 0
+        slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0
         patient_list = []
 
         data_files = glob(os.path.join(data_location, '*.data'))
@@ -1119,25 +1318,22 @@ class Features_MILdataset(Dataset):
                 'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
                 'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
             '''
-            if target == 'ER_Features' or (target == 'PR_Features' and is_train is True):
+            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
                 grid_location_dict = {'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
                                       'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
-            elif target in ['PR', 'PR_Features']:
-                grid_location_dict = {
-                    'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
-                    'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_TIF_Grid_data.xlsx'}
+            else:
+                raise Exception("Need to write which dictionaries to use in this receptor case")
 
         elif sys.platform == 'linux':
             '''
             grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
                                   'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
             '''
-            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features'] and is_train is True):
+            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
                 grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
                                       'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
-            elif target in ['PR', 'PR_Features']:
-                grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
-                                      'ABCTB': r'/mnt/gipmed_new/Data/ABCTB_TIF/Grids/Grid_data.xlsx'}
+            else:
+                raise Exception("Need to write which dictionaries to use in this receptor case")
 
         grid_DF = pd.DataFrame()
         for key in grid_location_dict.keys():
@@ -1154,11 +1350,13 @@ class Features_MILdataset(Dataset):
             num_slides, max_tile_num = features.shape[0], features.shape[2]
 
             for slide_num in range(num_slides):
-                # Skip slides for PR Fold 1 .tif which has bad segmnetation and were missed in feature extraction phase
-                if slide_names[slide_num] in ['01-07-112.171.LB.B3.tif', '01-08-043.605.EX.B1.tif', '01-08-112.173.EX.A1.tif',
-                                              '06-07-002.245.EX.1C.tif', '06-07-005.436.EX.1I.tif', '06-07-007.134.EX.2A.tif',
-                                              '06-07-009.181.EX.3A.tif']:
-                    continue
+                # Skip slides that were extracted from ABCTB_TIF and have a "bad segmentation" marker in GridData.xlsx file
+                try:
+                    if grid_DF.loc[slide_names[slide_num], 'bad segmentation'] == 1:
+                        slides_with_bad_segmentation += 1
+                        continue
+                except KeyError:
+                    print()
 
                 total_slides += 1
                 feature_1 = features[slide_num, :, :, 0]
@@ -1198,6 +1396,7 @@ class Features_MILdataset(Dataset):
                         patient_dict['num tiles'].append(tiles_in_slide)
                         patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
                         patient_dict['labels'].append(int(labels[slide_num]))
+                        patient_dict['target'].append(int(targets[slide_num]))
                         patient_dict['slides'].append(slide_names[slide_num])
                         patient_dict['scores'].append(scores[slide_num])
 
@@ -1235,6 +1434,7 @@ class Features_MILdataset(Dataset):
                     self.scores.append(scores[slide_num])
 
         print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
+        print('There are {}/{} slides with \"bad segmentation\" '.format(slides_with_bad_segmentation, total_slides))
         print('There are {}/{} slides with less than {} tiles '.format(slides_with_not_enough_tiles, total_slides, minimum_tiles_in_slide))
         if is_per_patient:
             self.patient_keys = list(self.patient_data.keys())
@@ -1280,3 +1480,91 @@ class Features_MILdataset(Dataset):
                     'features': self.features[item][tile_idx],
                     'num tiles': self.num_tiles[item]
                     }
+
+
+class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
+    """
+    This Class provides tile extraction for ONE specific slide WITHOUT using the legitimate tile grid
+    """
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 slidename: str = '',
+                 target_kind: str = 'ER',
+                 folds: List = [1],
+                 tile_size: int = 256,
+                 desired_slide_magnification: int = 10
+                 ):
+        super(One_Full_Slide_Inference_Dataset, self).__init__(DataSet=DataSet,
+                                                               tile_size=256,
+                                                               bag_size=None,
+                                                               target_kind=target_kind,
+                                                               test_fold=1,
+                                                               infer_folds=folds,
+                                                               train=True,
+                                                               print_timing=False,
+                                                               transform_type='none',
+                                                               get_images=False,
+                                                               train_type='Infer',
+                                                               desired_slide_magnification=desired_slide_magnification)
+
+        self.tile_size = tile_size
+
+        slide_idx = np.where(np.array(self.all_image_file_names) == slidename)[0][0]
+
+        height = int(self.meta_data_DF.loc[slide_idx, 'Height'])
+        width = int(self.meta_data_DF.loc[slide_idx, 'Width'])
+        objective_power = self.meta_data_DF.loc[slide_idx, 'Manipulated Objective Power']
+
+        adjusted_tile_size_at_level_0 = int(self.tile_size * (int(objective_power) / self.desired_magnification))
+        equivalent_rows = int(np.ceil(height / adjusted_tile_size_at_level_0))
+        equivalent_cols = int(np.ceil(width / adjusted_tile_size_at_level_0))
+
+        self.delta_pixel = int(objective_power / self.desired_magnification)
+
+        self.equivalent_grid_size = (equivalent_rows, equivalent_cols)
+        self.magnification = self.all_magnifications[slide_idx]
+        self.slide_name = self.all_image_file_names[slide_idx]
+        self.slide = self.slides[slide_idx]
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, location: List = None):
+        desired_downsample = self.magnification / self.desired_magnification
+
+        level, best_next_level = -1, -1
+        for index, downsample in enumerate(self.slide.level_downsamples):
+            if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                level = index
+                level_downsample = 1
+                break
+
+            elif downsample < desired_downsample:
+                best_next_level = index
+                level_downsample = int(
+                    desired_downsample / self.slide.level_downsamples[best_next_level])
+
+        self.adjusted_tile_size = self.tile_size * level_downsample
+
+        self.best_slide_level = level if level > best_next_level else best_next_level
+        self.level_0_tile_size = int(desired_downsample) * self.tile_size
+
+        tiles, time_list, _ = _get_tiles(slide=self.slide,
+                                         locations=location,
+                                         tile_size_level_0=self.level_0_tile_size,
+                                         adjusted_tile_sz=self.adjusted_tile_size,
+                                         output_tile_sz=self.tile_size,
+                                         best_slide_level=self.best_slide_level)
+
+
+        # Converting the tiles to Tensor:
+        X, original_data = [], []
+        for tile in tiles:
+            original_data.append(transforms.ToTensor()(tile))
+            X.append(torch.reshape(self.transform(tile), (1, self.transform(tile).size(0), self.transform(tile).size(1), self.transform(tile).size(2))))
+
+        return {'Data': X,
+                'Slide Filename': self.slide._filename,
+                'Equivalent Grid Size': self.equivalent_grid_size,
+                'Original Data': original_data
+                }

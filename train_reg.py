@@ -101,6 +101,11 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             model.to(DEVICE)
             optimizer.zero_grad()
             outputs, _ = model(data)
+
+            if batch_idx == 0:
+                all_writer.add_graph(model, data)
+                print('added model to writer')
+
             loss = criterion(outputs, target)
             loss.backward()
             optimizer.step()

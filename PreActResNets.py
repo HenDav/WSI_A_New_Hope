@@ -249,6 +249,9 @@ class PreActResNet_Ron(nn.Module):
         self.linear = nn.Linear(128*block.expansion, num_classes)
         self.model_name = ''
 
+        # is_HeatMap is used when we want to create a heatmap and we need to fkip the order of the last two layers
+        self.is_HeatMap = False  # Omer 26/7/2021
+
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
@@ -262,19 +265,83 @@ class PreActResNet_Ron(nn.Module):
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape
             x = torch.reshape(x, (num_of_bags * tiles_amount, 3, tiles_size, tiles_size))
 
-        out = self.conv1(x)
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        out = F.avg_pool2d(out, out.shape[3])
-        out = out.view(out.size(0), -1)
-        features = out
-        #out = self.linear(self.dropout(out))
-        out = self.linear(out)
 
-        #return out
-        return out, features #RanS 1.7.21
+        if self.is_HeatMap:
+            if self.training is True:
+                raise Exception('Pay Attention that the model in not in eval mode')
+
+            #print('Input size to Conv-Net is of size {}'.format(x.shape))
+            out = self.conv1(x)
+            out = self.layer1(out)
+            out = self.layer2(out)
+            out = self.layer3(out)
+            out = self.layer4(out)
+
+            #print('OutPut size from Conv-Net is of size {}'.format(out.shape))
+            if x.shape[2] <= 256 or x.shape[2] == 1024 or x.shape[2] == 2048:  # If input is in the original tile size dimensions (using <= and not == for the case tile is 128 pixels)
+                image_to_compute_MilWeights = F.avg_pool2d(out, kernel_size=32, stride=1, padding=16, count_include_pad=False)
+                initial_image_size = out.shape[2]
+                out_for_dict = out
+                #vectored_image = out.view(out.size(2) * out.size(3), -1)
+                vectored_image = torch.transpose(torch.reshape(out.squeeze(0), (out.size(1), out.size(2) * out.size(3))), 1, 0)
+                vectored_heat_image_2_channels = self.linear(vectored_image)
+                vectored_heat_image = vectored_heat_image_2_channels[:, 1] - vectored_heat_image_2_channels[:, 0]
+                small_heat_map = vectored_heat_image.view(1, 1, initial_image_size, initial_image_size)
+
+                # Upsampling the heat map:
+                large_heat_map = F.interpolate(small_heat_map, size=x.shape[2], mode='bilinear')
+
+                # Computing the scores:
+                out = F.avg_pool2d(out, out.shape[3])
+                features = out.view(out.size(0), -1)
+                out = self.linear(features)
+
+                data_dict_4_gil = {'linear_weights': self.linear.weight.numpy(),
+                                   'linear_bias': self.linear.bias.numpy(),
+                                   'heat_map': small_heat_map.squeeze().numpy(),
+                                   'feature_map': out_for_dict.squeeze(0).numpy(),
+                                   }
+                out_data_dict = {'Large Heat Map': large_heat_map,
+                                 'Small Heat Map': small_heat_map,
+                                 'Scores': out,
+                                 'Data 4 Gil': data_dict_4_gil,
+                                 'Features': features,
+                                 'Large Image for MIL Weights': image_to_compute_MilWeights,
+                                 'Large Image for MIL Weights Without Averaging Sliding Window': out_for_dict}
+                return out_data_dict
+
+            else:
+                raise Exception('Need to correct the code')
+                '''initial_image_size = out.shape[2]
+                out = F.avg_pool2d(out, kernel_size=32, stride=1)  # using a kernel of size 32 since this is the size of last image before changing to features
+                features = out.view(out.size(2) * out.size(3), -1)
+                vectored_tile_heat_map_2_channels = self.linear(features)
+                vectored_tile_heat_map = vectored_tile_heat_map_2_channels[:, 1] - vectored_tile_heat_map_2_channels[:, 0]
+                image_tile_heatmap = vectored_tile_heat_map.view(1, 1, out.shape[2], out.shape[2])
+                large_heat_map = F.upsample(image_tile_heatmap, size=initial_image_size)
+
+                return large_heat_map'''
+
+        else:
+            out = self.conv1(x)
+            out = self.layer1(out)
+            out = self.layer2(out)
+            out = self.layer3(out)
+            out = self.layer4(out)
+            # The following lines (commented) are needed when trying to plot the model graph using summarywriter
+            '''print(type(out.shape[3]), out.shape[3])
+            print(type(out.shape))
+            if type(out.shape[3]) == torch.Tensor:
+                out = F.avg_pool2d(out, int(out.shape[3]))
+            else:'''
+            out = F.avg_pool2d(out, out.shape[3])
+            out = out.view(out.size(0), -1)
+            features = out
+            #out = self.linear(self.dropout(out))
+            out = self.linear(out)
+
+            #return out
+            return out, features #RanS 1.7.21
 
 
 def PreActResNet50_Ron():

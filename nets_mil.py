@@ -9,17 +9,6 @@ import PreActResNets
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
 
 
-'''
-class Flatten(nn.Module):
-    """
-    This class flattens an array to a vector
-    """
-
-    def forward(self, x):
-        N, C, H, W = x.size()  # read in N, C, H, W
-        return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
-'''
-
 class MyGroupNorm(nn.Module):
     def __init__(self, num_channels):
         super(MyGroupNorm, self).__init__()
@@ -788,6 +777,9 @@ class MIL_PreActResNet50_Ron_MultiBag(nn.Module):
         self.L = 128
         self.K = 1  # in the paper referred a 1.
 
+        # is_HeatMap is used when we want to create a heatmap and we need to fkip the order of the last two layers
+        self.is_HeatMap = False  # Omer 27/7/2021
+
         self.feat_ext_part1 = PreActResNets.MIL_PreActResNet50_Ron()
 
         self.attention_V = nn.Sequential(
@@ -987,7 +979,8 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
                     A_after_sftmx = torch.cat((A_after_sftmx, a))
 
             out = self.classifier(M)
-            return out, A_after_sftmx
+            #return out, A_after_sftmx
+            return out, A_after_sftmx, A.squeeze(0)
 
         # In inference mode, there is no need to use more than one bag in each mini-batch because the data variability
         # is needed only for the training process.
