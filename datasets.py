@@ -721,7 +721,7 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
     def __len__(self):
         return int(np.ceil(np.array(self.num_tiles) / self.tiles_per_iter).sum())
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, location: List = None):
         start_getitem = time.time()
         if idx == 0 or (idx > 0 and self.is_last_batch[idx - 1]):
             #self.new_slide = True
@@ -754,8 +754,7 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                     level_downsample = int(
                         desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
-
-            #self.tile_size = 1024  # FIXME: if you want to more on 256 tiles or 1024
+            self.tile_size = 2048  # FIXME: if you want 256 tiles or 1024
             self.adjusted_tile_size = self.tile_size * level_downsample
 
             self.best_slide_level = level if level > best_next_level else best_next_level
@@ -764,8 +763,10 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
         label = [1] if self.target[self.slide_num] == 'Positive' else [0]
         label = torch.LongTensor(label)
 
+        tile_locations = self.slide_grids[idx] if location is None else location
+
         tiles, time_list, _ = _get_tiles(slide=self.current_slide,
-                                         locations=self.slide_grids[idx],
+                                         locations=tile_locations,
                                          tile_size_level_0=self.level_0_tile_size,
                                          adjusted_tile_sz=self.adjusted_tile_size,
                                          output_tile_sz=self.tile_size,
@@ -807,6 +808,7 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                 'Level 0 Locations': self.slide_grids[idx],
                 'Original Data': transforms.ToTensor()(tiles[0])
                 }
+
 
 class Infer_Dataset_Background(WSI_Master_Dataset):
     """
@@ -1471,3 +1473,90 @@ class Features_MILdataset(Dataset):
                     'num tiles': self.num_tiles[item]
                     }
 
+
+class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
+    """
+    This Class provides tile extraction for ONE specific slide WITHOUT using the legitimate tile grid
+    """
+    def __init__(self,
+                 DataSet: str = 'TCGA',
+                 slidename: str = '',
+                 target_kind: str = 'ER',
+                 folds: List = [1],
+                 tile_size: int = 256,
+                 desired_slide_magnification: int = 10
+                 ):
+        super(One_Full_Slide_Inference_Dataset, self).__init__(DataSet=DataSet,
+                                                               tile_size=256,
+                                                               bag_size=None,
+                                                               target_kind=target_kind,
+                                                               test_fold=1,
+                                                               infer_folds=folds,
+                                                               train=True,
+                                                               print_timing=False,
+                                                               transform_type='none',
+                                                               get_images=False,
+                                                               train_type='Infer',
+                                                               desired_slide_magnification=desired_slide_magnification)
+
+        self.tile_size = tile_size
+
+        slide_idx = np.where(np.array(self.all_image_file_names) == slidename)[0][0]
+
+        height = int(self.meta_data_DF.loc[slide_idx, 'Height'])
+        width = int(self.meta_data_DF.loc[slide_idx, 'Width'])
+        objective_power = self.meta_data_DF.loc[slide_idx, 'Manipulated Objective Power']
+
+        adjusted_tile_size_at_level_0 = int(self.tile_size * (int(objective_power) / self.desired_magnification))
+        equivalent_rows = int(np.ceil(height / adjusted_tile_size_at_level_0))
+        equivalent_cols = int(np.ceil(width / adjusted_tile_size_at_level_0))
+
+        self.delta_pixel = int(objective_power / self.desired_magnification)
+
+        self.equivalent_grid_size = (equivalent_rows, equivalent_cols)
+        self.magnification = self.all_magnifications[slide_idx]
+        self.slide_name = self.all_image_file_names[slide_idx]
+        self.slide = self.slides[slide_idx]
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, location: List = None):
+        desired_downsample = self.magnification / self.desired_magnification
+
+        level, best_next_level = -1, -1
+        for index, downsample in enumerate(self.slide.level_downsamples):
+            if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                level = index
+                level_downsample = 1
+                break
+
+            elif downsample < desired_downsample:
+                best_next_level = index
+                level_downsample = int(
+                    desired_downsample / self.slide.level_downsamples[best_next_level])
+
+        self.adjusted_tile_size = self.tile_size * level_downsample
+
+        self.best_slide_level = level if level > best_next_level else best_next_level
+        self.level_0_tile_size = int(desired_downsample) * self.tile_size
+
+        tiles, time_list, _ = _get_tiles(slide=self.slide,
+                                         locations=location,
+                                         tile_size_level_0=self.level_0_tile_size,
+                                         adjusted_tile_sz=self.adjusted_tile_size,
+                                         output_tile_sz=self.tile_size,
+                                         best_slide_level=self.best_slide_level)
+
+
+        # Converting the tiles to Tensor:
+        X, original_data = [], []
+        for tile in tiles:
+            original_data.append(transforms.ToTensor()(tile))
+            X.append(torch.reshape(self.transform(tile), (1, self.transform(tile).size(0), self.transform(tile).size(1), self.transform(tile).size(2))))
+
+        return {'Data': X,
+                'Slide Filename': self.slide._filename,
+                'Equivalent Grid Size': self.equivalent_grid_size,
+                'Original Data': original_data
+                }

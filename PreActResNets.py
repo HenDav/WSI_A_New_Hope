@@ -270,14 +270,14 @@ class PreActResNet_Ron(nn.Module):
             if self.training is True:
                 raise Exception('Pay Attention that the model in not in eval mode')
 
-            print('Input size to Conv-Net is of size {}'.format(x.shape))
+            #print('Input size to Conv-Net is of size {}'.format(x.shape))
             out = self.conv1(x)
             out = self.layer1(out)
             out = self.layer2(out)
             out = self.layer3(out)
             out = self.layer4(out)
 
-            print('OutPut size from Conv-Net is of size {}'.format(out.shape))
+            #print('OutPut size from Conv-Net is of size {}'.format(out.shape))
             if x.shape[2] <= 256 or x.shape[2] == 1024 or x.shape[2] == 2048:  # If input is in the original tile size dimensions (using <= and not == for the case tile is 128 pixels)
                 image_to_compute_MilWeights = F.avg_pool2d(out, kernel_size=32, stride=1, padding=16, count_include_pad=False)
                 initial_image_size = out.shape[2]

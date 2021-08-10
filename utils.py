@@ -220,6 +220,10 @@ def _get_tiles(slide: openslide.OpenSlide,
             #image = slide.read_region(location=(20000, 20000), level=0, size=(4096, 4096)).convert('RGB')
             #image = slide.read_region(location=(8000, 20000), level=0, size=(4096, 4096)).convert('RGB')
             #image = Image.fromarray(np.ones([adjusted_tile_sz, adjusted_tile_sz, 3], dtype=np.uint8) * 255)
+            # Locations fot tiles in NEGATIVE slide: TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs
+            #image = slide.read_region(location=(46000, 23000), level=0, size=(2048, 2048)).convert('RGB')
+            #image = slide.read_region(location=(49000, 33000), level=best_slide_level, size=(adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
+
             # When reading from OpenSlide the locations is as follows (col, row)
             image = slide.read_region((new_loc_init['Left'], new_loc_init['Top']), best_slide_level, (adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
             #temp RanS 12.7.21
@@ -365,7 +369,7 @@ def run_data(experiment: str = None,
         else:
             experiment = 1
 
-        location = 'runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
+        location = os.path.abspath(os.getcwd()) + '/runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
         if type(DataSet_name) is not list:
             DataSet_name = [DataSet_name]
 
@@ -1203,11 +1207,12 @@ class FocalLoss(torch.nn.Module):
         return ((1 - pt) ** self.gamma * ce).mean()
 
 
-class EmbbedSquare(object):
-    def __init__(self, size=16, stride=8, pad=4, color='Testing'):
+class EmbedSquare(object):
+    def __init__(self, size=16, stride=8, pad=4, minibatch_size=1, color='Testing'):
         self.size = size
         self.stride = stride
         self.pad = pad
+        self.minibatch = minibatch_size
         self.normalized_square = torch.zeros(1, 3, self.size, self.size)
 
         if color == 'Black':
@@ -1237,6 +1242,9 @@ class EmbbedSquare(object):
 
         total_jumps = size // self.stride
         output_images = []
+        minibatch_size = 0
+        counter = 0
+        image_output_minibatch = torch.zeros((self.minibatch, 3, 256, 256))
         for row_idx in range(0, total_jumps):
             init['Row'] = row_idx * self.stride
             init['Col'] = 0
@@ -1249,7 +1257,16 @@ class EmbbedSquare(object):
                 image_output = image_output[:, :, self.pad: + self.pad + size, self.pad: + self.pad + size]
 
                 # And add the output image to the list of ready images with the cutout:
-                output_images.append(image_output)
+                image_output_minibatch[minibatch_size, :, :, :] = image_output
+                minibatch_size += 1
+                counter += 1
+                if counter == 1024:
+                    output_images.append(image_output_minibatch[:minibatch_size, :, :, :])
+                    break
+                if minibatch_size == self.minibatch:
+                    output_images.append(image_output_minibatch)
+                    minibatch_size = 0
+                    image_output_minibatch = torch.zeros((self.minibatch, 3, 256, 256))
 
         return output_images
 

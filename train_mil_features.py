@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=500, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-ppt', dest='per_patient_training', action='store_true', help='will the data be taken per patient (or per slides) ?')

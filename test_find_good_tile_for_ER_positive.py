@@ -12,17 +12,83 @@ import matplotlib
 import pandas as pd
 from scipy.io import savemat
 
+
+
+
+def get_cutout_scores(tile, basic_model, MIL_model):
+    basic_model.to(DEVICE)
+    MIL_model.to(DEVICE)
+    embedded_squares_in_tiles = Embed_Square(tile)
+    scores_REG_image, weights_MIL_image = np.zeros((32, 32)), np.zeros((32, 32))
+
+    with torch.no_grad():
+        for idx, tile in enumerate(tqdm(embedded_squares_in_tiles)):
+            tile = tile.to(DEVICE)
+            basic_model_outputs = basic_model(tile)
+            _, _, weight_before_sftmx = mil_model(x=None, H=basic_model_outputs['Features'])
+            score = torch.nn.functional.softmax(basic_model_outputs['Scores'], dim=1)[0][1].item()
+
+            scores_REG_image[idx // 32, idx % 32] = score
+            weights_MIL_image[idx // 32, idx % 32] = weight_before_sftmx
+
+        scores_DF = pd.DataFrame(scores_REG_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/cutout_scores.xlsx')
+        weights_DF = pd.DataFrame(weights_MIL_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/cutout_weights.xlsx')
+
+    return {'CutOut Scores': scores_REG_image,
+            'CutOut Weights': weights_MIL_image}
+
+
+def get_tile_movements(initial_location: dict = None,
+                       slidename: str = None,
+                       model = None):
+
+    one_slide_dset = datasets.One_Full_Slide_Inference_Dataset(DataSet='TCGA',
+                                                               tile_size=2048,
+                                                               slidename=slidename)
+
+    delta_pixel = one_slide_dset.delta_pixel
+    # Create locations:
+    locations = []
+    for row in range(0, 8):
+        Row = initial_location['Row'] + row * delta_pixel
+        for col in range(0, 8):
+            Col = initial_location['Col'] + col * delta_pixel
+            locations.append((Row, Col))
+
+    slide_tile_data = one_slide_dset.__getitem__(location=locations)
+
+    # We can pass the tiles through the model:
+    model.eval()
+    model.to(DEVICE)
+    model.is_HeatMap = True
+    score_heatmaps = []
+    tile_scores = []
+
+    for idx, tile in enumerate(tqdm(slide_tile_data['Data'])):
+        model_output = model(tile)
+        score_heatmaps.append(model_output['Small Heat Map'])
+        tile_scores.append(model_output['Scores'])
+
+        pd.DataFrame(model_output['Small Heat Map'].squeeze().numpy()).to_excel(
+            '/Users/wasserman/Developer/WSI_MIL/Heatmaps/score_heatmap_tile_ER_Pos_2048_0_pixel_movement_' + str(idx) + '.xlsx')
+
+    return {'Score Heatmaps': score_heatmaps,
+            'Tile Scores': tile_scores}
+
 # Data type definition:
 DATA_TYPE = 'Features'
 target = 'ER'
 test_fold = 1
+
+model_locations = {'ABCTB_TCGA': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt',
+                   'Carmel': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/Carmel_338/model_data_Epoch_1000.pt'}
 
 if target == 'ER':
     if test_fold == 1:
         Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
         train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Train'
         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
-        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
+        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt'
         traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
     elif test_fold == 2:
         Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
@@ -89,7 +155,7 @@ slide_07 = highest_score_slides[645]
 lowest_score_slides = []
 lowest_scores = []
 lowest_tile_scores_for_slides = []
-# Sorting the positive slides
+
 for idx, score in enumerate(sorted_scores_negative):
     lowest_scores.append(score)
     idx = np.where(all_negative_scores == score)[0][0]
@@ -98,7 +164,7 @@ for idx, score in enumerate(sorted_scores_negative):
 
 # Picking some negative slides:
 slide_name_NEGative = lowest_score_slides[7]
-
+slide_score = lowest_scores[7]
 # Second part: computing tile scores to find a few tiles with high scores
 
 inf_dset = datasets.Full_Slide_Inference_Dataset(DataSet='TCGA',
@@ -138,10 +204,28 @@ features_256_all = []
 tile_scores_256 = []
 
 with torch.no_grad():
-    for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
-        slide_filename = minibatch['Slide Filename'][0].split('/')[-1]
+    #for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
+    for batch_idx in tqdm(range(len(inf_dset))):
+        minibatch = inf_dset.__getitem__(batch_idx, location=[(33000, 49000)])
+        #slide_filename = minibatch['Slide Filename'][0].split('/')[-1]
+        slide_filename = minibatch['Slide Filename'].split('/')[-1]
         if slide_filename != slide_name:
             continue
+
+        desired_idx = batch_idx
+        # Computing 64 tiles, 1 pixel movements:
+        """ 
+        Negative Slide: TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs, Location: initial_location={'Row': 33000, 'Col': 49000}
+        Positive Slide: TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.svs, Location: 
+        Positive Slide:  
+        """
+        initial_location_Negative = {'Row': 33000, 'Col': 49000}
+        initial_location_Positive = {'Row': 20000, 'Col': 20000}
+        initial_location_Positive_1 = {'Row': 20000, 'Col': 8000}
+        heatmaps = get_tile_movements(initial_location=initial_location_Positive,
+                                      slidename=slide_filename,
+                                      model=model)
+
 
         data = minibatch['Data']
         if data.shape[3] == 1024:
@@ -158,7 +242,9 @@ with torch.no_grad():
         is_tissue_tile = minibatch['Is Tissue Tiles']
 
         tile_data.extend(data)
-        original_tile_data.extend(original_tiles)
+        #original_tile_data.extend(original_tiles)
+        original_tile_data.extend([original_tiles])
+        #is_tissue.extend(is_tissue_tile)
         is_tissue.extend(is_tissue_tile[0])
         data = data.to(DEVICE)
         model.is_HeatMap = True
@@ -257,8 +343,11 @@ with torch.no_grad():
         heatmap_256 = small_heat_maps_256_all[0]
 
 # Computing per pixel scores using CutOut:
-Embbed_Square = utils.EmbbedSquare()
-embedded_squares = Embbed_Square(tile_data[0])
+Embed_Square = utils.EmbedSquare(minibatch_size=1, color='Black')
+cutout_scores_weights = get_cutout_scores(tile_data[0], basic_model=model, MIL_model=mil_model)
+
+
+'''
 # checking the images:
 fig = plt.figure()
 for idx, tile in enumerate(embedded_squares):
@@ -269,20 +358,11 @@ for idx, tile in enumerate(embedded_squares):
         break
 plt.show()
 
-
-
-# Forwarding the output tiles through the net:
-
-with torch.no_grad():
-    for tile in embedded_squares:
-        tile = tile.to(DEVICE)
-        embedded_squares_output = model(tile)
-        embedded_squares_MIL_output = 0
-
+'''
 
 # Saving tile image:
-matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/tile_0.png', np.transpose(original_tile_data[0].numpy(), (1, 2, 0)))
-pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/score_heatmap_2048_0.xlsx')
+matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/tile_ER_Neg_2048_0.png', np.transpose(original_tile_data[0].numpy(), (1, 2, 0)))
+pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/score_heatmap_tile_ER_Neg_2048_0.xlsx')
 pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/mil_weights_heatmap_2048_0.xlsx')
 # Saving both small Heatmaps to excel files:
 '''
