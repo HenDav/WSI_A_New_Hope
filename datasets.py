@@ -183,6 +183,14 @@ class WSI_Master_Dataset(Dataset):
         all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         if train_type == 'Infer':
+            temp_select =False
+            if temp_select != '': #RanS 10.8.21
+                slidenames = [1,2,3]
+                valid_slide_indices = []
+                for slide_name in slidenames:
+                    valid_slide_index = self.meta_data_DF[self.meta_data_DF['file']==slidename].index.to_list()
+                    valid_slide_indices.append(valid_slide_index[0])
+
             self.valid_slide_indices = valid_slide_indices
             self.all_magnifications = all_magnifications
             self.all_is_DX_cut = all_is_DX_cut if self.DX else [True] * len(self.all_magnifications)
@@ -1272,6 +1280,3 @@ class Features_MILdataset(Dataset):
                     'features': self.features[item][tile_idx],
                     'num tiles': self.num_tiles[item]
                     }
-
-
-

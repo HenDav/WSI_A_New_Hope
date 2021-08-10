@@ -913,8 +913,10 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
             use_otsu3 = True # this helps avoid the grid
         else:
             use_otsu3 = False
-
-        thmb_seg_map, edge_image = _calc_segmentation_for_image(thumb_cropped, magnification, use_otsu3=use_otsu3, is_IHC_slide=is_IHC_slide)
+        if DataSet=='LEUKEMIA':
+            thmb_seg_map, edge_image = _calc_simple_segmentation_for_image(thumb_cropped, magnification)
+        else:
+            thmb_seg_map, edge_image = _calc_segmentation_for_image(thumb_cropped, magnification, use_otsu3=use_otsu3, is_IHC_slide=is_IHC_slide)
         slide.close()
         thmb_seg_image = Image.blend(thumb, edge_image, 0.5)
 
@@ -932,6 +934,7 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
         error_dict['File'] = file
         error_dict['Error'] = 'Slide not found'
         return error_dict
+
 
 def otsu3(img):
     #blur = cv.GaussianBlur(img,(5,5),0)
@@ -979,6 +982,26 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     xy = np.array(ndimage.center_of_mass(image, labeled, range(1, num_objects + 1)))
     return xy
 
+def _calc_simple_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+    """
+    This function creates a segmentation map for an Image
+    :param magnification:
+    :return:
+    """
+
+    #RanS 3.8.21 - take all pixels that aren't (almost) completely white
+    image_array = np.array(image)
+    image_is_white = np.prod(image_array, axis=2) > 250**3
+    seg_map = np.ones_like(image_array)*255
+    seg_map[image_is_white] = 0
+    seg_map_PIL = Image.fromarray(seg_map)
+
+    edge_image = cv.Canny(seg_map, 1, 254)
+    # Make the edge thicker by dilating:
+    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
+
+    return seg_map_PIL, edge_image
 
 def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool,
                                  is_IHC_slide: bool) -> (Image, Image):

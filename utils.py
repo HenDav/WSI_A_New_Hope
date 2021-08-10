@@ -13,7 +13,6 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-#from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
@@ -21,10 +20,11 @@ from nets_mil import ResNet50_GN_GatedAttention, ReceptorNet
 import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
-from shutil import copy2
+from shutil import copy2, copyfile
 from datetime import date
 import inspect
 import torch.nn.functional as F
+import multiprocessing
 
 #if sys.platform == 'win32':
 #    os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran')
@@ -295,12 +295,10 @@ def get_cpu():
     elif platform == 'darwin':
         cpu = 2
         platform = 'MacOs'
-    else:
-        cpu = 1
-        platform = 'Unrecognized'
+    else: #windows
+        cpu = multiprocessing.cpu_count()
+        platform = 'Windows'
 
-
-    #cpu = 20
     print('Running on {} with {} CPUs'.format(platform, cpu))
     return cpu
 
@@ -356,7 +354,7 @@ def run_data(experiment: str = None,
         else:
             experiment = 1
 
-        location = 'runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
+        location = os.path.join('runs', 'Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold))
         if type(DataSet_name) is not list:
             DataSet_name = [DataSet_name]
 
@@ -985,14 +983,15 @@ def save_code_files(args: argsNamespace, train_DataSet):
 
     data_DF = pd.DataFrame([data_dict]).transpose()
 
-    if not os.path.isdir(args.output_dir):
+    if not os.path.isdir(code_files_path):
         #os.mkdir(args.output_dir)
         os.mkdir(code_files_path)
     data_DF.to_excel(os.path.join(code_files_path, 'run_arguments.xlsx'))
     # Get all .py files in the code path:
     py_files = glob.glob('*.py')
     for _, file in enumerate(py_files):
-        copy2(file, os.path.join(code_files_path, os.path.basename(file)))
+        #copy2(file, os.path.join(code_files_path, os.path.basename(file)))
+        copyfile(file, os.path.join(code_files_path, os.path.basename(file)))
 
 def extract_tile_scores_for_slide(all_features, models):
     # Save tile scores and last models layer bias difference to file:

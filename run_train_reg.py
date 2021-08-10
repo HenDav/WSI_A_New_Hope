@@ -15,6 +15,7 @@ if infer:
                     #'--save_features'
                     ])
 else:
+    #subprocess.run(['python', 'train_reg.py',
     subprocess.run(['python', 'train_reg.py',
                     '--test_fold', '3',
                     '--epochs', '2',
@@ -44,6 +45,7 @@ else:
                     #'-im'
                     #'--loan'
                     #'--er_eq_pr'
+                    '-time'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

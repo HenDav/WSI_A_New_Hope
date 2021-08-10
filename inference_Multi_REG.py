@@ -5,13 +5,14 @@ import datasets
 import numpy as np
 from sklearn.metrics import roc_curve
 import os
-import sys
+import sys, platform
 import argparse
 from tqdm import tqdm
 import pickle
 import resnet_v2
 from collections import OrderedDict
 import smtplib, ssl
+import nets, PreActResNets, resnet_v2
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
@@ -22,6 +23,7 @@ parser.add_argument('-f', '--folds', type=list, nargs="+", default=[1], help=' f
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed path of rons model') #RanS 16.3.21 r'/home/rschley/Pathnet/results/fold_1_ER_large/checkpoint/ckpt_epoch_1467.pth'
 parser.add_argument('--save_features', action='store_true', help='save features') #RanS 1.7.21
+parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides') #RanS 3.8.21, override run_data
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
@@ -84,6 +86,10 @@ for counter in range(len(args.from_epoch)):
     model.eval()
     models.append(model)
 
+#RanS 3.8.21, override run_data dx if args.dx is true
+if args.dx:
+    dx = args.dx
+
 #RanS 16.3.21, support ron's model as well
 if args.model_path != '':
     args.from_epoch.append('rons_model')
@@ -107,6 +113,8 @@ tiles_per_iter = 20
 if sys.platform == 'linux':
     TILE_SIZE = 256
     tiles_per_iter = 150
+    if platform.node() == 'gipdeep4' or platform.node() == 'gipdeep6': #RanS 8.8.21
+        tiles_per_iter = 100
 elif sys.platform == 'win32':
     TILE_SIZE = 256
 
@@ -212,7 +220,7 @@ with torch.no_grad():
             # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
             if args.save_features and slide_num % NUM_SLIDES_SAVE == 0:
                 for model_num in range(NUM_MODELS):
-                    feature_file_name = os.path.join(data_path, output_dir, '',
+                    feature_file_name = os.path.join(data_path, output_dir, 'Inference',
                                                      'Model_Epoch_' + str(args.from_epoch[model_num])
                                                      + '-Folds_' + str(args.folds) + '_' + str(
                                                          args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
@@ -231,7 +239,7 @@ with torch.no_grad():
 #save features for last slides
 if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
     for model_num in range(NUM_MODELS):
-        feature_file_name = os.path.join(data_path, output_dir, '',
+        feature_file_name = os.path.join(data_path, output_dir, 'Inference',
                                          'Model_Epoch_' + str(args.from_epoch[model_num])
                                          + '-Folds_' + str(args.folds) + '_' + str(
                                              args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
@@ -254,10 +262,10 @@ for model_num in range(NUM_MODELS):
     fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
-    if not os.path.isdir(os.path.join(data_path, output_dir, '')):
-        os.mkdir(os.path.join(data_path, output_dir, ''))
+    if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+        os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
 
-    file_name = os.path.join(data_path, output_dir, '', 'Model_Epoch_' + str(args.from_epoch[model_num])
+    file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),

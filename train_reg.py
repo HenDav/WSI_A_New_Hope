@@ -130,10 +130,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 time_writer.add_scalar('Time/Train (iter) [Sec]', train_time, time_stamp)
                 # print('Elapsed time of one train iteration is {:.2f} s'.format(train_time))
                 time_list = torch.stack(time_list, 1)
-                if len(time_list) == 4:
-                    time_writer.add_scalar('Time/Open WSI [Sec]'     , time_list[:, 0].mean().item(), time_stamp)
+                if len(time_list[0]) == 4:
+                    time_writer.add_scalar('Time/Open WSI [Sec]', time_list[:, 0].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[:, 1].mean().item(), time_stamp)
-                    time_writer.add_scalar('Time/Augmentation [Sec]' , time_list[:, 2].mean().item(), time_stamp)
+                    time_writer.add_scalar('Time/Augmentation [Sec]', time_list[:, 2].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[:, 3].mean().item(), time_stamp)
                 else:
                     time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[:, 0].mean().item(), time_stamp)
@@ -376,6 +376,8 @@ if __name__ == '__main__':
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     num_workers = cpu_available
+    #num_workers = cpu_available * 2 #temp RanS 9.8.21
+    #num_workers = cpu_available//2  # temp RanS 9.8.21
     #num_workers = 4 #temp RanS 24.3.21
 
     if sys.platform == 'win32':
@@ -476,6 +478,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
+        model = torch.nn.DataParallel(model) #DataParallel, RanS 1.8.21
         cudnn.benchmark = True
 
         # RanS 28.1.21
