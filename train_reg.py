@@ -478,7 +478,7 @@ if __name__ == '__main__':
         model.load_state_dict(model_data_loaded['model_state_dict'])
 
         print()
-        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
+        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, from_epoch))
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
