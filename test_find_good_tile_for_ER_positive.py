@@ -70,7 +70,7 @@ def get_tile_movements(initial_location: dict = None,
         tile_scores.append(model_output['Scores'])
 
         pd.DataFrame(model_output['Small Heat Map'].squeeze().numpy()).to_excel(
-            '/Users/wasserman/Developer/WSI_MIL/Heatmaps/score_heatmap_tile_ER_Pos_2048_0_pixel_movement_' + str(idx) + '.xlsx')
+            '/Users/wasserman/Developer/WSI_MIL/Heatmaps/score_heatmap_tile_ER_Pos_2048_1_pixel_movement_' + str(idx) + '.xlsx')
 
     return {'Score Heatmaps': score_heatmaps,
             'Tile Scores': tile_scores}
@@ -222,7 +222,7 @@ with torch.no_grad():
         initial_location_Negative = {'Row': 33000, 'Col': 49000}
         initial_location_Positive = {'Row': 20000, 'Col': 20000}
         initial_location_Positive_1 = {'Row': 20000, 'Col': 8000}
-        heatmaps = get_tile_movements(initial_location=initial_location_Positive,
+        heatmaps = get_tile_movements(initial_location=initial_location_Positive_1,
                                       slidename=slide_filename,
                                       model=model)
 

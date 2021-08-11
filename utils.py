@@ -274,8 +274,6 @@ def _get_tiles(slide: openslide.OpenSlide,
             plt.imshow(image)
 
         if adjusted_tile_sz != output_tile_sz:
-            # FIXME:
-            #image = image.resize((2048, 2048))
             image = image.resize((output_tile_sz, output_tile_sz))
 
         tiles_PIL[idx] = image
@@ -346,7 +344,19 @@ def run_data(experiment: str = None,
     :return:
     """
 
-    run_file_name = 'runs/run_data.xlsx'
+    if experiment is not None:
+        if experiment > 0 and experiment < 10000:
+            # One of Ran's experiments
+            run_file_name = r'/home/rschley/code/WSI_MIL/general_try4/runs/run_data.xlsx'
+        elif experiment > 10000 and experiment < 20000:
+            # One of Omer's experiments
+            run_file_name = r'/home/womer/project/runs/run_data.xlsx'
+        elif experiment > 20000 and experiment < 30000:
+            # One of Gil's experiments
+            raise Exception('Need to get permission to Gils drive and then implement this part')
+    else:
+        run_file_name = 'runs/run_data.xlsx'
+
     if os.path.isfile(run_file_name):
         try:
             run_DF = pd.read_excel(run_file_name)
