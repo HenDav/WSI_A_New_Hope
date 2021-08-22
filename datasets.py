@@ -72,7 +72,7 @@ class WSI_Master_Dataset(Dataset):
             locations_list.append(self.dir_dict[key])
 
             slide_meta_data_file = os.path.join(self.dir_dict[key], 'slides_data_' + key + '.xlsx')
-            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids', 'Grid_data.xlsx')
+            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids_' + str(self.desired_magnification), 'Grid_data.xlsx')
 
             slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
             grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
@@ -257,7 +257,7 @@ class WSI_Master_Dataset(Dataset):
                         self.slides.append(openslide.open_slide(image_file))
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
 
-                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids',
+                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids_' + str(self.desired_magnification),
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
                             grid_list = pickle.load(filehandle)
@@ -533,7 +533,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                     self.grid_lists.append(0)
                 else:
                     basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                    grid_file = os.path.join(self.image_path_names[ind], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    grid_file = os.path.join(self.image_path_names[ind], 'Grids_' + str(self.desired_magnification), basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
@@ -736,7 +736,7 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                 self.magnification.extend([self.all_magnifications[slide_num]])
 
                 basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                grid_file = os.path.join(self.image_path_names[ind], 'Grids',
+                grid_file = os.path.join(self.image_path_names[ind], 'Grids_' + str(self.desired_magnification),
                                          basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
 
                 #which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
@@ -934,7 +934,7 @@ class Infer_Dataset_Background(WSI_Master_Dataset):
                     self.grid_lists.append(0)
                 else:
                     basic_file_name = '.'.join(self.image_file_names[ind].split('.')[:-1])
-                    grid_file = os.path.join(self.image_path_names[ind], 'Grids', basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                    grid_file = os.path.join(self.image_path_names[ind], 'Grids_' + str(self.desired_magnification), basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                     with open(grid_file, 'rb') as filehandle:
                         grid_list = pickle.load(filehandle)
                         self.grid_lists.append(grid_list)
@@ -1100,7 +1100,7 @@ class WSI_Segmentation_Master_Dataset(Dataset):
             locations_list.append(self.dir_dict[key])
 
             slide_meta_data_file = os.path.join(self.dir_dict[key], 'slides_data_' + key + '.xlsx')
-            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids', 'Grid_data.xlsx')
+            grid_meta_data_file = os.path.join(self.dir_dict[key], 'Grids_' + str(self.desired_magnification), 'Grid_data.xlsx')
 
             slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
             grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
@@ -1234,7 +1234,7 @@ class WSI_Segmentation_Master_Dataset(Dataset):
                     else:
                         self.slides.append(openslide.open_slide(image_file))
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
-                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids',
+                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids_' + str(self.desired_magnification),
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
                             grid_list = pickle.load(filehandle)

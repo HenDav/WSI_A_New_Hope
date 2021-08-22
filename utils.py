@@ -992,7 +992,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
     # grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids', 'production_meta_data.xlsx')
     if train_DataSet.train_type != 'Features':
         for _, key in enumerate(train_DataSet.dir_dict):
-            grid_meta_data_file = os.path.join(train_DataSet.dir_dict[key], 'Grids', 'production_meta_data.xlsx')
+            grid_meta_data_file = os.path.join(train_DataSet.dir_dict[key], 'Grids_' + str(train_DataSet.desired_magnification), 'production_meta_data.xlsx')
             if os.path.isfile(grid_meta_data_file):
                 grid_data_DF = pd.read_excel(grid_meta_data_file)
                 grid_dict = grid_data_DF.to_dict('split')
