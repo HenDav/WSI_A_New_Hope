@@ -87,9 +87,3 @@ if __name__ =='__main__':
             server.login(sender_email, password)
             server.sendmail(sender_email, receiver_email, message)
             print('email sent to ' + receiver_email)
-
-    utils_data_managment.make_grid(DataSet='TCGA',
-                                   tile_sz=256,
-                                   tissue_coverage=0.5,
-                                   num_workers=2
-                                   )

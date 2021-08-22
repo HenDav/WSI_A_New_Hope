@@ -40,7 +40,8 @@ class WSI_Master_Dataset(Dataset):
                  desired_slide_magnification: int = 20,
                  slide_repetitions: int = 1,
                  loan: bool = False,
-                 er_eq_pr: bool = False
+                 er_eq_pr: bool = False,
+                 slide_per_block: bool = False
                  ):
 
         # Check if the target receptor is available for the requested train DataSet:
@@ -88,7 +89,6 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
-
         if self.target_kind=='OR':
             PR_targets = list(self.meta_data_DF['PR status'])
             ER_targets = list(self.meta_data_DF['ER status'])
@@ -102,6 +102,27 @@ class WSI_Master_Dataset(Dataset):
             all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
         all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
+
+        #RanS 17.8.21
+        if slide_per_block:
+            if DataSet == 'CARMEL':
+                #all_patient_barcodes1 = ['17-5_1_1_a', '17-5_1_1_b', '18-81_1_2_e', '18-81_1_2_k', '17-10008_1_1_e'] ######temp
+
+                all_blocks = []
+                for barcode in all_patient_barcodes:
+                    if barcode is not np.nan:
+                        all_blocks.append(barcode[:-2])
+                    else:
+                        all_blocks.append(barcode)
+
+                _, unique_inds = np.unique(all_blocks, return_index=True)
+                all_inds = np.arange(0, len(all_blocks))
+                excess_block_slides = set(all_inds) - set(unique_inds)
+                print('slide_per_block: removing ' + str(len(excess_block_slides)) + ' slides')
+            else:
+                IOError('slide_per_block only implemented for CARMEL dataset')
+        else:
+            excess_block_slides = set()
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
         # Let's compute which slides are these:
@@ -139,7 +160,7 @@ class WSI_Master_Dataset(Dataset):
                 '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
         valid_slide_indices = np.array(
-            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr))
+            list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr - excess_block_slides))
 
         # The train set should be a combination of all sets except the test set and validation set:
         if self.DataSet == 'CAT' or self.DataSet == 'ABCTB_TCGA':
@@ -186,11 +207,11 @@ class WSI_Master_Dataset(Dataset):
         all_magnifications = list(self.meta_data_DF['Manipulated Objective Power'])
 
         if train_type == 'Infer':
-            temp_select =False
-            if temp_select != '': #RanS 10.8.21
-                slidenames = [1,2,3]
+            temp_select = False
+            if temp_select: #RanS 10.8.21, hard coded selection of specific slides
+                slidenames = ['19-14722_1_1_a.mrxs', '19-14722_1_1_b.mrxs', '19-14722_1_1_e.mrxs', '19-5229_2_1_a.mrxs', '19-5229_2_1_b.mrxs', '19-5229_2_1_e.mrxs']
                 valid_slide_indices = []
-                for slide_name in slidenames:
+                for slidename in slidenames:
                     valid_slide_index = self.meta_data_DF[self.meta_data_DF['file']==slidename].index.to_list()
                     valid_slide_indices.append(valid_slide_index[0])
 
@@ -266,8 +287,6 @@ class WSI_Master_Dataset(Dataset):
     def __getitem__(self, idx):
         start_getitem = time.time()
         idx = idx % self.real_length
-
-        #self.tile_size = 1000000 #temp RanS 22.7.21
 
         if self.presaved_tiles[idx]:  # load presaved patches
             time_tile_extraction = time.time()
@@ -399,7 +418,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  n_tiles: int = 10,
                  desired_slide_magnification: int = 10,
                  loan: bool = False,
-                 er_eq_pr: bool = False
+                 er_eq_pr: bool = False,
+                 slide_per_block: bool = False
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -415,7 +435,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              color_param=color_param,
                                              n_tiles=n_tiles,
                                              desired_slide_magnification=desired_slide_magnification,
-                                             er_eq_pr=er_eq_pr)
+                                             er_eq_pr=er_eq_pr,
+                                             slide_per_block=slide_per_block)
 
         self.loan = loan
         print(
@@ -471,11 +492,29 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.slide_grids = []
         self.grid_lists = []
         self.patient_barcode = []
+        #self.equivalent_grid = []
+        #self.equivalent_grid_size = []
 
         ind = 0
         slide_with_not_enough_tiles = 0
         for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
+
+                '''# Recreate the basic slide grids:
+                height = int(self.meta_data_DF.loc[slide_num, 'Height'])
+                width = int(self.meta_data_DF.loc[slide_num, 'Width'])
+                objective_power = self.meta_data_DF.loc[slide_num, 'Manipulated Objective Power']
+
+                adjusted_tile_size_at_level_0 = int(
+                    self.tile_size * (int(objective_power) / self.desired_magnification))
+                equivalent_rows = int(np.ceil(height / adjusted_tile_size_at_level_0))
+                equivalent_cols = int(np.ceil(width / adjusted_tile_size_at_level_0))
+                basic_grid = [(row, col) for row in range(0, height, adjusted_tile_size_at_level_0) for col in
+                              range(0, width, adjusted_tile_size_at_level_0)]
+                equivalent_grid_dimensions = (equivalent_rows, equivalent_cols)
+                self.equivalent_grid_size.append(equivalent_grid_dimensions)'''
+
+
                 if num_tiles <= self.all_tissue_tiles[slide_num] and self.all_tissue_tiles[slide_num] > 0:
                     self.num_tiles.append(num_tiles)
                 else:
@@ -503,6 +542,9 @@ class Infer_Dataset(WSI_Master_Dataset):
                 #chosen_locations_chunks = chunks(chosen_locations, self.tiles_per_iter)
                 patch_ind_chunks = chunks(which_patches, self.tiles_per_iter) #RanS 5.5.21
                 self.slide_grids.extend(patch_ind_chunks)
+
+                #equivalent_grid_list = map_original_grid_list_to_equiv_grid_list(adjusted_tile_size_at_level_0, grid_list)
+                #self.equivalent_grid.append(equivalent_grid_list)
 
                 ind += 1  # RanS 29.1.21
 
@@ -533,7 +575,7 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.tiles_to_go = self.num_tiles[self.slide_num]
 
             self.current_slide = self.slides[self.slide_num]
-
+            #self.slide_size = self.current_slide.dimensions[::-1]
             self.initial_num_patches = self.num_tiles[self.slide_num]
 
             if not self.presaved_tiles[self.slide_num]: #RanS 5.5.21
@@ -574,6 +616,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 tile1 = self.rand_crop(Image.fromarray(tile))
                 tiles[ii] = tile1
         else:
+            #locs_ind = [self.equivalent_grid[self.slide_num][loc] for loc in self.slide_grids[idx]]
             locs = [self.grid_lists[self.slide_num][loc] for loc in self.slide_grids[idx]]
             tiles, time_list, _ = _get_tiles(slide=self.current_slide,
                                           #locations=self.slide_grids[idx],
@@ -619,7 +662,21 @@ class Infer_Dataset(WSI_Master_Dataset):
 
         #return X, label, time_list, last_batch, self.initial_num_patches, self.current_slide._filename
         #return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num] #RanS 5.5.21
-        return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
+        #return X, label, time_list, last_batch, self.initial_num_patches, self.image_file_names[self.slide_num], self.patient_barcode[self.slide_num]  #Omer 24/5/21
+
+        return {'Data': X,
+                'Label': label,
+                'Time List': time_list,
+                'Is Last Batch': last_batch,
+                'Initial Num Tiles': self.initial_num_patches,
+                'Slide Filename': self.image_file_names[self.slide_num],
+                #'Patch loc index': locs_ind,
+                'Patient barcode': self.patient_barcode[self.slide_num],
+                #'Slide Index Size': self.equivalent_grid_size[self.slide_num],
+                #'Slide Size': self.slide_size,
+                #'Patch Loc': locs,
+                }
+
 
 
 class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
@@ -1228,7 +1285,7 @@ class WSI_Segmentation_Master_Dataset(Dataset):
         else:
             slide = self.slides[idx]
 
-            tiles, time_list = _choose_data(grid_list=self.grid_lists[idx],
+            tiles, time_list, _ = _choose_data(grid_list=self.grid_lists[idx],
                                             slide=slide,
                                             how_many=self.bag_size,
                                             magnification=self.magnification[idx],

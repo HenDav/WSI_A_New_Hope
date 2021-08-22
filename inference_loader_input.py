@@ -1,26 +1,29 @@
-import numpy as np
 import os
 import re, glob
 inference_files = {}
 
 is_herohe = False
-exp = 370
-fold = 1
-target = 'Her2'
-dataset = 'CARMEL'
+exp = 309
+fold = '1'
+target = 'PR'
+dataset = 'ABCTB_TCGA'
+subdir = ''
+#subdir = '6slides'
+#subdir = 'CARMEL'
+#subdir = 'test_inference_aug21_TCGA_corrections'
 
-if is_herohe or dataset == 'CARMEL':
+if is_herohe or dataset == 'CARMEL' or dataset == 'CAT' or subdir == 'CARMEL':
     patient_level = False
 else:
     patient_level = True
 save_csv = True
 
-#patient_level = False #temp
+patient_level = False #temp
 
 #inference_dir = r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_DX_runs\exp' + str(exp) +r'\Inference' #temp, old
 inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4', dataset + '_runs', target, 'exp' + str(exp), 'Inference')
 #inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4\ABCTB_TCGA_runs', 'other', 'exp' + str(exp), 'Inference')
-#inference_dir = os.path.join(inference_dir, 'temp') #temp
+inference_dir = os.path.join(inference_dir, subdir) #temp
 #auto find epochs
 file_list = glob.glob(inference_dir+'\*.data')
 epochs = [int(re.findall(r"\bModel_Epoch_+\d+\b", os.path.basename(fn))[0][12:]) for fn in file_list]

@@ -19,7 +19,7 @@ import openslide
 import glob
 import sys
 import matplotlib.pyplot as plt
-from shutil import copy2
+from shutil import copy2, copyfile
 import matplotlib.patches as patches
 from matplotlib.collections import PatchCollection
 import cv2 as cv
@@ -438,15 +438,20 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         tile_nums = len(legit_grid)
 
         # Plot grid on thumbnail
-        thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
+        thumb_file_jpg = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
                                   filename + '_thumb.jpg')
+        thumb_file_png = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
+                                  filename + '_thumb.png') #for old files, RanS 12.8.21
 
         grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
                                        'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'),
                                         filename + '_GridImage.jpg')
         #RanS 10.3.21, do not rewrite
-        if os.path.isfile(thumb_file) and not os.path.isfile(grid_image_file):
-            thumb = np.array(Image.open(thumb_file))
+        if (os.path.isfile(thumb_file_jpg) or os.path.isfile(thumb_file_png)) and not os.path.isfile(grid_image_file):
+            try:
+                thumb = np.array(Image.open(thumb_file_jpg))
+            except:
+                thumb = np.array(Image.open(thumb_file_png))
             slide = openslide.OpenSlide(os.path.join(ROOT_DIR, database, file))
             thumb_downsample = slide.dimensions[0] / thumb.shape[1]  # shape is transposed
             patch_size_thumb = adjusted_tile_size_at_level_0 / thumb_downsample
@@ -554,6 +559,7 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
     META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
     META_DATA_FILE['LEUKEMIA'] = 'barcode_list.xlsx'
+    META_DATA_FILE['TCGA_LUNG'] = 'barcode_list.xlsx'
 
     #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     data_file = os.path.join(out_path, DataSet, SLIDES_DATA_FILE) #RanS 15.2.21
@@ -605,6 +611,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Code'].astype(str)  # RanS 16.12.20
     elif DataSet == 'LEUKEMIA':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['MarrowID'].astype(str)  # RanS 16.12.20
+    elif DataSet == 'TCGA_LUNG':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['PatientID'].astype(str)  # RanS 11.8.21
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -771,7 +779,8 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         py_files = glob.glob('*.py')
         for _, file in enumerate(py_files):
             #copy2(file, code_files_path)
-            copy2(file, os.path.join(code_files_path,os.path.basename(file)))
+            #copy2(file, os.path.join(code_files_path,os.path.basename(file)))
+            copyfile(file, os.path.join(code_files_path,os.path.basename(file)))
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))

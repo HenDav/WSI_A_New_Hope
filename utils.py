@@ -742,6 +742,7 @@ def get_datasets_dir_dict(Dataset: str):
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
     CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
+    TCGA_LUNG_gipdeep_path = r'/mnt/gipmed_new/Data/Lung/TCGA_Lung/TCGA_LUNG'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -783,6 +784,10 @@ def get_datasets_dir_dict(Dataset: str):
 
         else:
             raise Exception('Unrecognized platform')
+
+    elif Dataset == 'TCGA_LUNG':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['TCGA_LUNG'] = TCGA_LUNG_gipdeep_path
 
     elif Dataset == 'TCGA':
         if sys.platform == 'linux':  # GIPdeep
@@ -865,6 +870,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('target should be: RedSquares')
     elif DataSet == 'SHEBA' and target_kind != 'Onco':
         raise ValueError('for SHEBA DataSet, target should be Onco')
+    elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD']:
+        raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()

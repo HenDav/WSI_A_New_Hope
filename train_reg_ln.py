@@ -19,6 +19,15 @@ import smtplib, ssl
 import psutil
 import nets, PreActResNets, resnet_v2
 
+#RanS 1.8.21
+from torch import nn
+from torch.nn import functional as F
+from torch.utils.data import random_split
+from torchvision.datasets import MNIST
+from torchvision import transforms
+import pytorch_lightning as pl
+
+
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
@@ -47,14 +56,12 @@ parser.add_argument('--mag', type=int, default=10, help='desired magnification o
 parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
 parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
 parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
-parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
-
 
 args = parser.parse_args()
 
 EPS = 1e-7
 
-def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, optimizer, print_timing: bool=False):
+def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader, DEVICE, print_timing: bool=False):
     """
     This function trains the model
     :return:
@@ -103,12 +110,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             model.to(DEVICE)
             optimizer.zero_grad()
             outputs, _ = model(data)
-
-            #cancelled RanS 11.8.21, this is buggy
-            '''if batch_idx == 0:
-                all_writer.add_graph(model, data)
-                print('added model to writer')'''
-
             loss = criterion(outputs, target)
             loss.backward()
             optimizer.step()
@@ -138,10 +139,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 time_writer.add_scalar('Time/Train (iter) [Sec]', train_time, time_stamp)
                 # print('Elapsed time of one train iteration is {:.2f} s'.format(train_time))
                 time_list = torch.stack(time_list, 1)
-                if len(time_list[0]) == 4:
-                    time_writer.add_scalar('Time/Open WSI [Sec]', time_list[:, 0].mean().item(), time_stamp)
+                if len(time_list) == 4:
+                    time_writer.add_scalar('Time/Open WSI [Sec]'     , time_list[:, 0].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[:, 1].mean().item(), time_stamp)
-                    time_writer.add_scalar('Time/Augmentation [Sec]', time_list[:, 2].mean().item(), time_stamp)
+                    time_writer.add_scalar('Time/Augmentation [Sec]' , time_list[:, 2].mean().item(), time_stamp)
                     time_writer.add_scalar('Time/Total To Collect Data [Sec]', time_list[:, 3].mean().item(), time_stamp)
                 else:
                     time_writer.add_scalar('Time/Avg to Extract Tile [Sec]', time_list[:, 0].mean().item(), time_stamp)
@@ -344,6 +345,43 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
     return acc, bacc, roc_auc
 
 ########################################################################################################
+
+class LitModule(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.model = eval(args.model)
+        self.model_name = self.model.model_name
+        if args.focal:
+            self.criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
+        else:
+            self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, x):
+        # in lightning, forward defines the prediction/inference actions
+        out, features = self.model(x)
+        return out
+
+    def training_step(self, batch, batch_idx):
+        # training_step defined the train loop.
+        # It is independent of forward
+        (data, targets, time_list, f_names, _) = batch
+        #x, y = batch
+        outputs, _ = model(data)
+        loss = self.criterion(outputs, targets)
+
+        #x = x.view(x.size(0), -1)
+        #z = self.encoder(x)
+        #x_hat = self.decoder(z)
+        #loss = F.mse_loss(x_hat, x)
+        # Logging to TensorBoard by default
+        #self.log("train_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        return optimizer
+
+
 ########################################################################################################
 
 if __name__ == '__main__':
@@ -384,12 +422,10 @@ if __name__ == '__main__':
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     num_workers = cpu_available
-    #num_workers = cpu_available * 2 #temp RanS 9.8.21
-    #num_workers = cpu_available//2  # temp RanS 9.8.21
     #num_workers = 4 #temp RanS 24.3.21
 
-    if sys.platform == 'win32':
-        num_workers = 0 #temp RanS 3.5.21
+    #if sys.platform == 'win32':
+    #    num_workers = 0 #temp RanS 3.5.21
 
     print('num workers = ', num_workers)
 
@@ -407,8 +443,7 @@ if __name__ == '__main__':
                                          desired_slide_magnification=args.mag,
                                          DX=args.dx,
                                          loan=args.loan,
-                                         er_eq_pr=args.er_eq_pr,
-                                         slide_per_block=args.slide_per_block
+                                         er_eq_pr=args.er_eq_pr
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -451,7 +486,8 @@ if __name__ == '__main__':
     utils.run_data(experiment=experiment, transformation_string=transformation_string)
 
     # Load model
-    model = eval(args.model)
+    #model = eval(args.model)
+    model = LitModule() #RanS 1.8.21
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
     if args.experiment == 0:
@@ -482,13 +518,13 @@ if __name__ == '__main__':
         model.load_state_dict(model_data_loaded['model_state_dict'])
 
         print()
-        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, from_epoch))
+        print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    #optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
-        model = torch.nn.DataParallel(model) #DataParallel, RanS 1.8.21
-        cudnn.benchmark = True
+        #model = torch.nn.DataParallel(model) #DataParallel, RanS 1.8.21
+        #cudnn.benchmark = True
 
         # RanS 28.1.21
         # https://forums.fast.ai/t/show-gpu-utilization-metrics-inside-training-loop-without-subprocess-call/26594
@@ -498,20 +534,19 @@ if __name__ == '__main__':
             handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
             # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
 
-    if args.experiment != 0:
-        optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])
-        for state in optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(DEVICE)
+    #if args.experiment != 0:
+    #    optimizer.load_state_dict(model_data_loaded['optimizer_state_dict'])
+    #    for state in optimizer.state.values():
+    #        for k, v in state.items():
+    #            if torch.is_tensor(v):
+    #                state[k] = v.to(DEVICE)
 
-    if args.focal:
-        criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
-        criterion.to(DEVICE) #RanS 20.7.21
-    else:
-        criterion = nn.CrossEntropyLoss()
 
-    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+    # trainer = pl.Trainer(gpus=8) (if you have GPUs)
+    trainer = pl.Trainer()
+    trainer.fit(model, train_loader, test_loader)
+
+    #train(model, train_loader, test_loader, DEVICE=DEVICE, print_timing=args.time)
 
     #finished training, send email if possible
     if os.path.isfile('mail_cfg.txt'):

@@ -3,7 +3,7 @@ from random import shuffle
 import csv
 import pandas as pd
 
-dataset = 'ABCTB'
+dataset = 'TCGA_LUNG'
 
 if dataset == 'Carmel123':
     N_samples = 1553 #number of slides in file
@@ -29,6 +29,12 @@ elif dataset == 'ABCTB':
     val_ratio = 0  # percentage to be marked as "validation"
     n_folds = 5  # number of cross-validation folds
     out_file = r'C:\ran_data\ABCTB\ABCTB_examples\slides_data_full_folds.xlsx'
+elif dataset == 'TCGA_LUNG':
+    in_file = r'C:\ran_data\TCGA_lung\slides_data_TCGA_LUNG.xlsx'
+    test_ratio = 0  # percentage to be marked as "test"
+    val_ratio = 0  # percentage to be marked as "validation"
+    n_folds = 5  # number of cross-validation folds
+    out_file = r'C:\ran_data\TCGA_lung\slides_data_full_folds.xlsx'
 
 
 slides_data = pd.read_excel(in_file)
