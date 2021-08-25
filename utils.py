@@ -165,7 +165,7 @@ def _get_tiles(slide: openslide.OpenSlide,
     #tiles_PIL = []
 
     #RanS 28.4.21, preallocate list of images
-    empty_image = Image.fromarray(np.uint8(np.zeros((output_tile_sz,output_tile_sz,3))))
+    empty_image = Image.fromarray(np.uint8(np.zeros((output_tile_sz, output_tile_sz, 3))))
     tiles_PIL = [empty_image] * len(locations)
 
     start_gettiles = time.time()
@@ -220,7 +220,7 @@ def _get_tiles(slide: openslide.OpenSlide,
             #image = slide.read_region(location=(20000, 20000), level=0, size=(4096, 4096)).convert('RGB')
             #image = slide.read_region(location=(8000, 20000), level=0, size=(4096, 4096)).convert('RGB')
             #image = Image.fromarray(np.ones([adjusted_tile_sz, adjusted_tile_sz, 3], dtype=np.uint8) * 255)
-            # Locations fot tiles in NEGATIVE slide: TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs
+            # Locations for tiles in NEGATIVE slide: TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs
             #image = slide.read_region(location=(46000, 23000), level=0, size=(2048, 2048)).convert('RGB')
             #image = slide.read_region(location=(49000, 33000), level=best_slide_level, size=(adjusted_tile_sz, adjusted_tile_sz)).convert('RGB')
 
@@ -345,15 +345,21 @@ def run_data(experiment: str = None,
     """
 
     if experiment is not None:
-        if experiment > 0 and experiment < 10000:
-            # One of Ran's experiments
-            run_file_name = r'/home/rschley/code/WSI_MIL/general_try4/runs/run_data.xlsx'
-        elif experiment > 10000 and experiment < 20000:
-            # One of Omer's experiments
-            run_file_name = r'/home/womer/project/runs/run_data.xlsx'
-        elif experiment > 20000 and experiment < 30000:
-            # One of Gil's experiments
-            raise Exception('Need to get permission to Gils drive and then implement this part')
+        if sys.platform == 'linux':
+            if experiment > 0 and experiment < 10000:
+                # One of Ran's experiments
+                run_file_name = r'/home/rschley/code/WSI_MIL/general_try4/runs/run_data.xlsx'
+                location_prefix = '/home/rschley/code/WSI_MIL/general_try4/'
+            elif experiment > 10000 and experiment < 20000:
+                # One of Omer's experiments
+                run_file_name = r'/home/womer/project/runs/run_data.xlsx'
+                location_prefix = '/home/womer/project/'
+            elif experiment > 20000 and experiment < 30000:
+                # One of Gil's experiments
+                raise Exception('Need to get permission to Gils drive and then implement this part')
+        else:
+            run_file_name = 'runs/run_data.xlsx'
+
     else:
         run_file_name = 'runs/run_data.xlsx'
 
@@ -463,6 +469,10 @@ def run_data(experiment: str = None,
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
+
+        if sys.platform == 'linux':
+            if location.split('/')[0] == 'runs':
+                location = location_prefix + location
 
         return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
                DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification
@@ -761,6 +771,7 @@ def get_datasets_dir_dict(Dataset: str):
 
     TCGA_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/TCGA'
     HEROHE_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/HEROHE'
+    CARMEL_omer_path = r'/Users/wasserman/Developer/WSI_MIL/All Data/CARMEL'
 
     if Dataset == 'ABCTB_TCGA':
         if sys.platform == 'linux':  # GIPdeep
@@ -775,7 +786,8 @@ def get_datasets_dir_dict(Dataset: str):
         if sys.platform == 'linux':  # GIPdeep
             for ii in np.arange(1, 9):
                 dir_dict['CARMEL' + str(ii)] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + str(ii), 'CARMEL' + str(ii))
-
+        elif sys.platform == 'darwin':  # Omer
+            dir_dict['CARMEL'] = CARMEL_omer_path
     elif Dataset == 'CAT':
         if sys.platform == 'linux':  # GIPdeep
             for ii in np.arange(1, 9):
@@ -1239,44 +1251,74 @@ class EmbedSquare(object):
             raise Exception('Color choice do not match to any of the options (White/ Black)')
 
     def __call__(self, image):
-        if type(image) != torch.Tensor or image.shape != torch.Size([1, 3, 256, 256]):
-            raise Exception('Image is not in correct format or size')
+        if len(image.shape) == 3:
+            _, tile_size, _ = image.shape
+        elif len(image.shape) == 4:
+            _, _, tile_size, _ = image.shape
 
-        _, _, size, _ = image.shape
+        if type(image) != torch.Tensor:
+            raise Exception('Image is not in correct format')
 
-        new_image = torch.zeros((1, 3, size + 2 * self.pad, size + 2 * self.pad))
-        new_image[:, :, self.pad:self.pad + size, self.pad:self.pad + size] = image
+        new_image = torch.zeros((1, 3, tile_size + 2 * self.pad, tile_size + 2 * self.pad))
+        new_image[:, :, self.pad:self.pad + tile_size, self.pad:self.pad + tile_size] = image
 
         init = {'Row': 0,
                 'Col': 0}
+        init_2048 = {'Row': 0,
+                      'Col': 0}
 
-        total_jumps = size // self.stride
+        total_jumps = 256 // self.stride
         output_images = []
+        output_images.append(image.reshape([1, 3, tile_size, tile_size]))  # Adding the initial image
         minibatch_size = 0
         counter = 0
-        image_output_minibatch = torch.zeros((self.minibatch, 3, 256, 256))
+        quit=False
+        image_output_minibatch = torch.zeros((self.minibatch, 3, tile_size, tile_size))
+        print('Creating square embeded tiles...')
         for row_idx in range(0, total_jumps):
+            if quit:
+                break
             init['Row'] = row_idx * self.stride
             init['Col'] = 0
             for col_idx in range(0, total_jumps):
+                if quit:
+                    break
                 image_output = torch.clone(new_image)
                 init['Col'] = col_idx * self.stride
                 image_output[:, :, init['Row']:self.size + init['Row'], init['Col']:self.size + init['Col']] = self.normalized_square
 
+                if tile_size == 2048:  # We need to put 16 squares (4X4) and not just one
+                    for row_2048_idx in range(0, 8):
+                        init_2048['Row'] = init['Row'] + row_2048_idx * 256  # 256 is the stride for multiple cutouts in a big tile
+                        init_2048['Col'] = 0
+                        #plt.imshow(image_output.squeeze(0).numpy().transpose(1, 2, 0))
+                        for col_2048_idx in range(0, 8):
+                            init_2048['Col'] = init['Col'] + col_2048_idx * 256  # 256 is the stride for multiple cutouts in a big tile
+                            if init_2048['Row'] == init['Row'] and init_2048['Col'] == init['Col']:
+                                continue  # We can skip the first square since it has already been inserted
+
+                            image_output[:, :,
+                            init_2048['Row']:self.size + init_2048['Row'],
+                            init_2048['Col']:self.size + init_2048['Col']] = self.normalized_square
+
+
                 # Now we have to cut the padding:
-                image_output = image_output[:, :, self.pad: + self.pad + size, self.pad: + self.pad + size]
+                image_output = image_output[:, :, self.pad: + self.pad + tile_size, self.pad: + self.pad + tile_size]
 
                 # And add the output image to the list of ready images with the cutout:
                 image_output_minibatch[minibatch_size, :, :, :] = image_output
                 minibatch_size += 1
                 counter += 1
+
                 if counter == 1024:
                     output_images.append(image_output_minibatch[:minibatch_size, :, :, :])
                     break
                 if minibatch_size == self.minibatch:
                     output_images.append(image_output_minibatch)
                     minibatch_size = 0
-                    image_output_minibatch = torch.zeros((self.minibatch, 3, 256, 256))
+                    image_output_minibatch = torch.zeros((self.minibatch, 3, tile_size, tile_size))
+                if len(output_images) == 2:
+                    quit=True
 
         return output_images
 
