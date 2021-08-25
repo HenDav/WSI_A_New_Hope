@@ -55,6 +55,7 @@ def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
 
 
 def connect_all_average_maps(average_maps):
+    '''
     # At first I'll create the final heatmap by using the first small heatmap and inserting 31 zeros between each row and column
     final_heatmap = np.zeros((39, 39))
     final_heatmap[:8, :8] = average_maps[0]
@@ -62,11 +63,16 @@ def connect_all_average_maps(average_maps):
         final_heatmap = np.insert(final_heatmap, range(add_row_idx, 8 * add_row_idx, add_row_idx), 0, axis=0)
     for add_col_idx in range(1, 32):
         final_heatmap = np.insert(final_heatmap, range(add_col_idx, 8 * add_col_idx, add_col_idx), 0, axis=1)
-
+    '''
     # Now I'll add the other small_heatmaps data.
+    final_heatmap = np.zeros((256, 256))
     for idx in range(1, 1024):
+        init_row_number = idx // 32
+        init_col_number = idx % 32
         map = average_maps[idx]
-
+        for row in range(8):
+            for col in range(8):
+                final_heatmap[init_row_number + row, init_col_number + col] = map[row, col]
 
 
 
@@ -97,6 +103,8 @@ def get_cutout_scores(tile, basic_model, MIL_model):
             if tile.shape[2] == 2048:
                 all_small_heat_maps.append(basic_model_outputs['Small Heat Map'].squeeze().numpy())
                 if idx == 1:
+                    all_avg_maps = get_AvgValues_from_Diff_Heatmaps(all_small_heat_maps)
+                    connect_all_average_maps(all_avg_maps)
                     pass
 
                 continue
