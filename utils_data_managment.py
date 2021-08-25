@@ -351,7 +351,7 @@ def make_grid(DataSet: str = 'TCGA',
     total_tiles = []
 
     # Save the grid to file:
-    grids_dir = os.path.join(ROOT_DIR, DataSet, 'Grids' + str(desired_magnification) + added_extension)
+    grids_dir = os.path.join(ROOT_DIR, DataSet, 'Grids_' + str(desired_magnification) + added_extension)
     grid_images_dir = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
                                       'GridImages_'  + str(desired_magnification) + '_' + str(tissue_coverage) + added_extension.replace('.', '_'))
     if not os.path.isdir(grids_dir):
@@ -552,11 +552,11 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['PORTO_HE'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
     META_DATA_FILE['PORTO_PDL1'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
-    META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx'
+    #META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx'
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
     META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
-    META_DATA_FILE['LEUKEMIA'] = 'barcode_list.xlsx'
-    META_DATA_FILE['TCGA_LUNG'] = 'barcode_list.xlsx'
+    #META_DATA_FILE['LEUKEMIA'] = 'barcode_list.xlsx'
+    #META_DATA_FILE['TCGA_LUNG'] = 'barcode_list.xlsx'
 
     #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     data_file = os.path.join(out_path, DataSet, SLIDES_DATA_FILE) #RanS 15.2.21
@@ -568,7 +568,13 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         DataSet_key = DataSet
 
     #meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet_key]))
-    meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
+    try:
+        meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
+        barcode_list_format = False
+    except:
+        meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, 'barcode_list.xlsx'))  # RanS 25.8.21, default
+        barcode_list_format = True
+
     if DataSet == 'PORTO_HE':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
     elif DataSet == 'PORTO_PDL1':
@@ -600,8 +606,9 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
             else:
                 ValueError('invalid batch number!')
         meta_data_DF['bcr_patient_barcode'] = slide_list
-    elif DataSet[:6] == 'CARMEL':
-        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
+
+    #elif DataSet[:6] == 'CARMEL':
+    #    meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
     elif DataSet == 'ABCTB':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Image File'].astype(str) #RanS 16.12.20
     elif DataSet == 'SHEBA':
@@ -610,6 +617,8 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['MarrowID'].astype(str)  # RanS 16.12.20
     elif DataSet == 'TCGA_LUNG':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['PatientID'].astype(str)  # RanS 11.8.21
+    elif barcode_list_format:
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
