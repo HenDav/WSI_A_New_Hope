@@ -19,7 +19,7 @@ import openslide
 import glob
 import sys
 import matplotlib.pyplot as plt
-from shutil import copy2
+from shutil import copy2, copyfile
 import matplotlib.patches as patches
 from matplotlib.collections import PatchCollection
 import cv2 as cv
@@ -96,12 +96,6 @@ def make_tiles_hard_copy(DataSet: str = 'TCGA',
     :return: 
     """""
 
-    # Create alternative slides_data file (if needed):
-    #cancelled RanS 10.5.21, slides_data isn't changed
-    #if added_extension != '':
-    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
-
-    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
     slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
     grid_data_file = os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx')
 
@@ -344,12 +338,6 @@ def make_grid(DataSet: str = 'TCGA',
     :return: 
     """""
 
-    # Create alternative slides_data file (if needed):
-    #cancelled RanS 10.5.21, no change is amde to slides_data
-    #if added_extension != '':
-    #    copy2(os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx'), os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx'))
-
-    #slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + added_extension + '.xlsx')
     slides_data_file = os.path.join(ROOT_DIR, DataSet, 'slides_data_' + DataSet + '.xlsx')
 
     slides_meta_data_DF = pd.read_excel(slides_data_file)
@@ -363,27 +351,27 @@ def make_grid(DataSet: str = 'TCGA',
     total_tiles = []
 
     # Save the grid to file:
-    if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension)):
-        os.mkdir(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension))
-    if not os.path.isdir(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                                      'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'))):
-        os.mkdir(os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                              'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_')))
+    grids_dir = os.path.join(ROOT_DIR, DataSet, 'Grids_' + str(desired_magnification) + added_extension)
+    grid_images_dir = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
+                                      'GridImages_'  + str(desired_magnification) + '_' + str(tissue_coverage) + added_extension.replace('.', '_'))
+    if not os.path.isdir(grids_dir):
+        os.mkdir(grids_dir)
+    if not os.path.isdir(grid_images_dir):
+        os.mkdir(grid_images_dir)
 
     print('Starting Grid production...')
     print()
 
     with multiprocessing.Pool(num_workers) as pool:
-        #for tile_nums1, total_tiles1 in tqdm(pool.imap_unordered(partial(_make_grid_for_image,
         for tile_nums1, total_tiles1 in tqdm(pool.imap(partial(_make_grid_for_image,
                                                                meta_data_DF=slides_meta_data_DF,
                                                                ROOT_DIR=ROOT_DIR,
-                                                               added_extension=added_extension,
-                                                               DataSet=DataSet,
                                                                different_SegData_path_extension=different_SegData_path_extension,
                                                                tissue_coverage=tissue_coverage,
                                                                tile_sz=tile_sz,
-                                                               desired_magnification=desired_magnification),
+                                                               desired_magnification=desired_magnification,
+                                                               grids_dir=grids_dir,
+                                                               grid_images_dir=grid_images_dir),
                                                        files), total=len(files)):
             tile_nums.append(tile_nums1)
             total_tiles.append(total_tiles1)
@@ -397,7 +385,7 @@ def make_grid(DataSet: str = 'TCGA',
     meta_data_DF.loc[files, 'Total tiles - ' + str(tile_sz) + ' compatible @ X' + str(desired_magnification)] = total_tiles
     meta_data_DF.loc[files, 'Slide tile usage [%] (for ' + str(tile_sz) + '^2 Pix/Tile) @ X' + str(desired_magnification)] = slide_usage
 
-    meta_data_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'Grid_data.xlsx'))
+    meta_data_DF.to_excel(os.path.join(grids_dir, 'Grid_data.xlsx'))
 
     # Save Grids creation MetaData to file
     grid_productoin_meta_data_dict = {'Creation Date': str(date.today()),
@@ -406,17 +394,16 @@ def make_grid(DataSet: str = 'TCGA',
                                       }
 
     grid_production_DF = pd.DataFrame([grid_productoin_meta_data_dict]).transpose()
-    grid_production_DF.to_excel(os.path.join(ROOT_DIR, DataSet, 'Grids' + added_extension, 'production_meta_data.xlsx'))
+    grid_production_DF.to_excel(os.path.join(grids_dir, 'production_meta_data.xlsx'))
 
     print('Finished Grid production phase !')
 
 
-def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet, different_SegData_path_extension,
-                         tissue_coverage, tile_sz, desired_magnification):
+def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, different_SegData_path_extension,
+                         tissue_coverage, tile_sz, desired_magnification, grids_dir, grid_images_dir):
     filename = '.'.join(os.path.basename(file).split('.')[:-1])
     database = meta_data_DF.loc[file, 'id']
-    grid_file = os.path.join(ROOT_DIR, database, 'Grids' + added_extension,
-                             filename + '--tlsz' + str(tile_sz) + '.data')
+    grid_file = os.path.join(grids_dir, filename + '--tlsz' + str(tile_sz) + '.data')
     segmap_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'SegMaps',
                                filename + '_SegMap.png')
 
@@ -450,15 +437,18 @@ def _make_grid_for_image(file, meta_data_DF, ROOT_DIR, added_extension, DataSet,
         tile_nums = len(legit_grid)
 
         # Plot grid on thumbnail
-        thumb_file = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
-                                  filename + '_thumb.png')
+        thumb_file_jpg = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
+                                  filename + '_thumb.jpg')
+        thumb_file_png = os.path.join(ROOT_DIR, database, 'SegData' + different_SegData_path_extension, 'Thumbs',
+                                  filename + '_thumb.png') #for old files, RanS 12.8.21
 
-        grid_image_file = os.path.join(ROOT_DIR, DataSet, 'SegData' + different_SegData_path_extension,
-                                       'GridImages_' + str(tissue_coverage) + added_extension.replace('.', '_'),
-                                        filename + '_GridImage.jpg')
+        grid_image_file = os.path.join(grid_images_dir, filename + '_GridImage.jpg')
         #RanS 10.3.21, do not rewrite
-        if os.path.isfile(thumb_file) and not os.path.isfile(grid_image_file):
-            thumb = np.array(Image.open(thumb_file))
+        if (os.path.isfile(thumb_file_jpg) or os.path.isfile(thumb_file_png)) and not os.path.isfile(grid_image_file):
+            try:
+                thumb = np.array(Image.open(thumb_file_jpg))
+            except:
+                thumb = np.array(Image.open(thumb_file_png))
             slide = openslide.OpenSlide(os.path.join(ROOT_DIR, database, file))
             thumb_downsample = slide.dimensions[0] / thumb.shape[1]  # shape is transposed
             patch_size_thumb = adjusted_tile_size_at_level_0 / thumb_downsample
@@ -562,9 +552,11 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
     META_DATA_FILE['HEROHE'] = 'HEROHE_HER2_STATUS.xlsx'
     META_DATA_FILE['PORTO_HE'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
     META_DATA_FILE['PORTO_PDL1'] = 'LISTA COMPLETA pdl1 - Gil - V3_batch1+2.xlsx'
-    META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx' #RanS 16.12.20
+    #META_DATA_FILE['CARMEL'] = 'barcode_list.xlsx'
     META_DATA_FILE['ABCTB'] = 'ABCTB_Path_Data1.xlsx'  # RanS 17.2.21
     META_DATA_FILE['SHEBA'] = 'CODED_Oncotype 5.2.21_binary.xlsx'  # RanS 25.3.21
+    #META_DATA_FILE['LEUKEMIA'] = 'barcode_list.xlsx'
+    #META_DATA_FILE['TCGA_LUNG'] = 'barcode_list.xlsx'
 
     #data_file = os.path.join(ROOT_DIR, SLIDES_DATA_FILE)
     data_file = os.path.join(out_path, DataSet, SLIDES_DATA_FILE) #RanS 15.2.21
@@ -576,7 +568,13 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
         DataSet_key = DataSet
 
     #meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, DataSet, META_DATA_FILE[DataSet_key]))
-    meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
+    try:
+        meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, META_DATA_FILE[DataSet_key])) #RanS 22.3.21, barcode list moved to main data folder
+        barcode_list_format = False
+    except:
+        meta_data_DF = pd.read_excel(os.path.join(ROOT_DIR, 'barcode_list.xlsx'))  # RanS 25.8.21, default
+        barcode_list_format = True
+
     if DataSet == 'PORTO_HE':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideName'].astype(str)
     elif DataSet == 'PORTO_PDL1':
@@ -608,12 +606,19 @@ def make_slides_xl_file(DataSet: str = 'HEROHE', ROOT_DIR: str = 'All Data', out
             else:
                 ValueError('invalid batch number!')
         meta_data_DF['bcr_patient_barcode'] = slide_list
-    elif DataSet[:6] == 'CARMEL':
-        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
+
+    #elif DataSet[:6] == 'CARMEL':
+    #    meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
     elif DataSet == 'ABCTB':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Image File'].astype(str) #RanS 16.12.20
     elif DataSet == 'SHEBA':
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['Code'].astype(str)  # RanS 16.12.20
+    elif DataSet == 'LEUKEMIA':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['MarrowID'].astype(str)  # RanS 16.12.20
+    elif DataSet == 'TCGA_LUNG':
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['PatientID'].astype(str)  # RanS 11.8.21
+    elif barcode_list_format:
+        meta_data_DF['bcr_patient_barcode'] = meta_data_DF['SlideID'].astype(str)  # RanS 16.12.20
     else:
         meta_data_DF['bcr_patient_barcode'] = meta_data_DF['bcr_patient_barcode'].astype(str)
     meta_data_DF.set_index('bcr_patient_barcode', inplace=True)
@@ -779,7 +784,9 @@ def make_segmentations(DataSet: str = 'TCGA', ROOT_DIR: str = 'All Data', rewrit
         code_files_path = os.path.join(out_path_dataset, 'SegData', 'Code')
         py_files = glob.glob('*.py')
         for _, file in enumerate(py_files):
-            copy2(file, code_files_path)
+            #copy2(file, code_files_path)
+            #copy2(file, os.path.join(code_files_path,os.path.basename(file)))
+            copyfile(file, os.path.join(code_files_path,os.path.basename(file)))
 
     slide_files_svs = glob.glob(os.path.join(data_path, '*.svs'))
     slide_files_ndpi = glob.glob(os.path.join(data_path, '*.ndpi'))
@@ -921,8 +928,10 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
             use_otsu3 = True # this helps avoid the grid
         else:
             use_otsu3 = False
-
-        thmb_seg_map, edge_image = _calc_segmentation_for_image(thumb_cropped, magnification, use_otsu3=use_otsu3, is_IHC_slide=is_IHC_slide)
+        if DataSet=='LEUKEMIA':
+            thmb_seg_map, edge_image = _calc_simple_segmentation_for_image(thumb_cropped, magnification)
+        else:
+            thmb_seg_map, edge_image = _calc_segmentation_for_image(thumb_cropped, magnification, use_otsu3=use_otsu3, is_IHC_slide=is_IHC_slide)
         slide.close()
         thmb_seg_image = Image.blend(thumb, edge_image, 0.5)
 
@@ -940,6 +949,7 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
         error_dict['File'] = file
         error_dict['Error'] = 'Slide not found'
         return error_dict
+
 
 def otsu3(img):
     #blur = cv.GaussianBlur(img,(5,5),0)
@@ -987,6 +997,27 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     xy = np.array(ndimage.center_of_mass(image, labeled, range(1, num_objects + 1)))
     return xy
 
+
+def _calc_simple_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
+    """
+    This function creates a segmentation map for an Image
+    :param magnification:
+    :return:
+    """
+
+    #RanS 3.8.21 - take all pixels that aren't (almost) completely white
+    image_array = np.array(image)
+    image_is_white = np.prod(image_array, axis=2) > 250**3
+    seg_map = np.ones_like(image_array)*255
+    seg_map[image_is_white] = 0
+    seg_map_PIL = Image.fromarray(seg_map)
+
+    edge_image = cv.Canny(seg_map, 1, 254)
+    # Make the edge thicker by dilating:
+    kernel_dilation = np.ones((3, 3))  #cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    edge_image = Image.fromarray(cv.dilate(edge_image, kernel_dilation, iterations=magnification * 2)).convert('RGB')
+
+    return seg_map_PIL, edge_image
 
 def _calc_segmentation_for_image(image: Image, magnification: int, use_otsu3: bool,
                                  is_IHC_slide: bool) -> (Image, Image):

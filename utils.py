@@ -13,7 +13,6 @@ import time
 from typing import List, Tuple
 from xlrd.biffh import XLRDError
 from zipfile import BadZipFile
-#from HED_space import HED_color_jitter
 from skimage.util import random_noise
 from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
@@ -21,10 +20,11 @@ from nets_mil import ResNet50_GN_GatedAttention, ReceptorNet
 import nets
 from math import isclose
 from argparse import Namespace as argsNamespace
-from shutil import copy2
+from shutil import copy2, copyfile
 from datetime import date
 import inspect
 import torch.nn.functional as F
+import multiprocessing
 
 #if sys.platform == 'win32':
 #    os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran')
@@ -306,12 +306,10 @@ def get_cpu():
     elif platform == 'darwin':
         cpu = 2
         platform = 'MacOs'
-    else:
-        cpu = 1
-        platform = 'Unrecognized'
+    else: #windows
+        cpu = multiprocessing.cpu_count()
+        platform = 'Windows'
 
-
-    #cpu = 20
     print('Running on {} with {} CPUs'.format(platform, cpu))
     return cpu
 
@@ -385,7 +383,7 @@ def run_data(experiment: str = None,
         else:
             experiment = 1
 
-        location = os.path.abspath(os.getcwd()) + '/runs/Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold)
+        location = os.path.join(os.path.abspath(os.getcwd()),'runs', 'Exp_' + str(experiment) + '-' + Receptor + '-TestFold_' + str(test_fold))
         if type(DataSet_name) is not list:
             DataSet_name = [DataSet_name]
 
@@ -764,6 +762,7 @@ def get_datasets_dir_dict(Dataset: str):
     SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
     CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
+    TCGA_LUNG_gipdeep_path = r'/mnt/gipmed_new/Data/Lung/TCGA_Lung/TCGA_LUNG'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -807,6 +806,10 @@ def get_datasets_dir_dict(Dataset: str):
 
         else:
             raise Exception('Unrecognized platform')
+
+    elif Dataset == 'TCGA_LUNG':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['TCGA_LUNG'] = TCGA_LUNG_gipdeep_path
 
     elif Dataset == 'TCGA':
         if sys.platform == 'linux':  # GIPdeep
@@ -889,6 +892,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('target should be: RedSquares')
     elif DataSet == 'SHEBA' and target_kind != 'Onco':
         raise ValueError('for SHEBA DataSet, target should be Onco')
+    elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD']:
+        raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
@@ -1009,7 +1014,7 @@ def save_code_files(args: argsNamespace, train_DataSet):
     # grid_meta_data_file = os.path.join(train_DataSet.ROOT_PATH, train_DataSet.DataSet, 'Grids', 'production_meta_data.xlsx')
     if train_DataSet.train_type != 'Features':
         for _, key in enumerate(train_DataSet.dir_dict):
-            grid_meta_data_file = os.path.join(train_DataSet.dir_dict[key], 'Grids', 'production_meta_data.xlsx')
+            grid_meta_data_file = os.path.join(train_DataSet.dir_dict[key], 'Grids_' + str(train_DataSet.desired_magnification), 'production_meta_data.xlsx')
             if os.path.isfile(grid_meta_data_file):
                 grid_data_DF = pd.read_excel(grid_meta_data_file)
                 grid_dict = grid_data_DF.to_dict('split')
@@ -1027,7 +1032,8 @@ def save_code_files(args: argsNamespace, train_DataSet):
     # Get all .py files in the code path:
     py_files = glob.glob('*.py')
     for _, file in enumerate(py_files):
-        copy2(file, code_files_path)
+        #copy2(file, os.path.join(code_files_path, os.path.basename(file)))
+        copyfile(file, os.path.join(code_files_path, os.path.basename(file)))
 
 def extract_tile_scores_for_slide(all_features, models):
     # Save tile scores and last models layer bias difference to file:

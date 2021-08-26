@@ -47,13 +47,35 @@ for ind, key in enumerate(inference_files.keys()):
         inference_data = pickle.load(filehandle)
 
     if infer_type == 'REG':
-        fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
-        num_slides, patch_scores, all_slide_names = inference_data
-
+        try: #temp for transition period
+            fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+            num_slides, patch_scores, all_slide_names, patch_locs, patch_locs_inds, all_slide_size, all_slide_size_ind = inference_data
+        except:
+            fpr, tpr, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+            num_slides, patch_scores, all_slide_names = inference_data
         if save_csv:
             patch_scores_df = pd.DataFrame(patch_scores)
             patch_scores_df.insert(0, "slide_name", all_slide_names)
             patch_scores_df.to_csv(os.path.join(inference_dir, key + '_patch_scores.csv'))
+
+            #patch coordinates RanS 10.8.21
+            #if len(patch_locs.shape) == 4: #temp
+            #    patch_locs = np.squeeze(patch_locs[:, 1, :, :])
+            try:
+                patch_x_df = pd.DataFrame(patch_locs[:, :, 0])
+                patch_x_df.insert(0, "slide_name", all_slide_names)
+                patch_x_df.to_csv(os.path.join(inference_dir, key + '_x.csv'))
+
+                patch_y_df = pd.DataFrame(patch_locs[:, :, 1])
+                patch_y_df.insert(0, "slide_name", all_slide_names)
+                patch_y_df.to_csv(os.path.join(inference_dir, key + '_y.csv'))
+
+                slide_size_df = pd.DataFrame(all_slide_size)
+                slide_size_df.insert(0, "slide_name", all_slide_names)
+                slide_size_df.to_csv(os.path.join(inference_dir, key + '_slide_dimensions.csv'))
+            except:
+                pass
+
         roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
         #temp fix RanS 4.2.21
@@ -71,7 +93,7 @@ for ind, key in enumerate(inference_files.keys()):
             for name in all_slide_names:
                 if os.path.splitext(name)[-1] == '.svs': #TCGA files
                     patient_all.append(name[8:12])
-                elif os.path.splitext(name)[-1] == '.ndpi': #ABCTB files
+                elif os.path.splitext(name)[-1] == '.ndpi' or os.path.splitext(name)[-1] == '.tif': #ABCTB files
                     patient_all.append(name[:9])
             #patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
             patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
