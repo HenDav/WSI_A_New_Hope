@@ -32,22 +32,13 @@ else:
     else:
         grid_image_path = grid_image_paths[0]
 
-"""if os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_3')):
-    grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_3')
-elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0_5')):
-    grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0_5')
-elif os.path.isdir(os.path.join(in_dir, 'SegData', 'GridImages_0.05')):
-    grid_image_path = os.path.join(in_dir, 'SegData', 'GridImages_0.05')
-else:
-    IOError('no grid_images folder found, please check')"""
-
 def slide_2_image(slide_file, ind, mag, n_legit_tiles, desired_mag, grid_only):
     #fn = os.path.basename(slide_file)[:-5]
     fn = os.path.splitext(os.path.basename(slide_file))[0] #RanS 9.5.21
     #seg_file = os.path.join(in_dir, 'SegData', 'SegImages', fn + '_SegImage.jpg')
     success_flag = True
     if not grid_only:
-        grid_file = os.path.join(in_dir, 'Grids', fn + '--tlsz256' + '.data')
+        grid_file = os.path.join(in_dir, 'Grids_' + str(args.mag), fn + '--tlsz256' + '.data')
         if not os.path.isfile(grid_file):
             print('no grid file')
             return -1
@@ -130,7 +121,7 @@ slides = np.sort(slide_files_svs + slide_files_ndpi + slide_files_mrxs + slide_f
 #meta_data_file = os.path.join(os.path.dirname(in_dir), 'slides_data.xlsx')
 dataset = os.path.basename(in_dir)
 slide_meta_data_file = os.path.join(in_dir, 'slides_data_' + dataset + '.xlsx') #RanS 24.3.21
-grid_meta_data_file = os.path.join(in_dir, 'Grids', 'Grid_data.xlsx')
+grid_meta_data_file = os.path.join(in_dir, 'Grids_' + str(args.mag), 'Grid_data.xlsx')
 slide_meta_data_DF = pd.read_excel(slide_meta_data_file)
 grid_meta_data_DF = pd.read_excel(grid_meta_data_file)
 #meta_data_DF = pd.DataFrame({**slide_meta_data_DF.set_index('file').to_dict(),
