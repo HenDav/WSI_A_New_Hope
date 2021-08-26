@@ -1272,17 +1272,17 @@ class EmbedSquare(object):
         output_images.append(image.reshape([1, 3, tile_size, tile_size]))  # Adding the initial image
         minibatch_size = 0
         counter = 0
-        quit=False
+        #quit=False
         image_output_minibatch = torch.zeros((self.minibatch, 3, tile_size, tile_size))
         print('Creating square embeded tiles...')
         for row_idx in range(0, total_jumps):
-            if quit:
-                break
+            '''if quit:
+                break'''
             init['Row'] = row_idx * self.stride
             init['Col'] = 0
             for col_idx in range(0, total_jumps):
-                if quit:
-                    break
+                '''if quit:
+                    break'''
                 image_output = torch.clone(new_image)
                 init['Col'] = col_idx * self.stride
                 image_output[:, :, init['Row']:self.size + init['Row'], init['Col']:self.size + init['Col']] = self.normalized_square
@@ -1317,8 +1317,8 @@ class EmbedSquare(object):
                     output_images.append(image_output_minibatch)
                     minibatch_size = 0
                     image_output_minibatch = torch.zeros((self.minibatch, 3, tile_size, tile_size))
-                if len(output_images) == 2:
-                    quit=True
+                '''if len(output_images) == 6:
+                    quit=True'''
 
         return output_images
 

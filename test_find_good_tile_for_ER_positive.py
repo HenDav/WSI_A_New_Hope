@@ -16,9 +16,9 @@ from scipy.io import savemat
 
 def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
     if len(small_heatmaps) != 1025:
-        raise Exception('small_heatmaps list should contain 1025 heatmaps')
+        print('WARNING: small_heatmaps list should contain 1025 heatmaps')
     all_average_maps = []
-    for heatmap_idx in range(1, 1025):
+    for heatmap_idx in range(1, len(small_heatmaps)):
         diff_heatmap = small_heatmaps[0] - small_heatmaps[heatmap_idx]
         diff = np.zeros((258, 258))
         diff[1:257, 1:257] = diff_heatmap
@@ -55,36 +55,25 @@ def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
 
 
 def connect_all_average_maps(average_maps):
-    '''
-    # At first I'll create the final heatmap by using the first small heatmap and inserting 31 zeros between each row and column
-    final_heatmap = np.zeros((39, 39))
-    final_heatmap[:8, :8] = average_maps[0]
-    for add_row_idx in range(1, 32):
-        final_heatmap = np.insert(final_heatmap, range(add_row_idx, 8 * add_row_idx, add_row_idx), 0, axis=0)
-    for add_col_idx in range(1, 32):
-        final_heatmap = np.insert(final_heatmap, range(add_col_idx, 8 * add_col_idx, add_col_idx), 0, axis=1)
-    '''
-    # Now I'll add the other small_heatmaps data.
+
     final_heatmap = np.zeros((256, 256))
-    for idx in range(1, 1024):
+    for idx in range(len(average_maps)):
         init_row_number = idx // 32
         init_col_number = idx % 32
         map = average_maps[idx]
         for row in range(8):
             for col in range(8):
-                final_heatmap[init_row_number + row, init_col_number + col] = map[row, col]
+                final_heatmap[init_row_number + row * 32, init_col_number + col * 32] = map[row, col]
 
+    # Saving heatmap to file:
+    if not os.path.isdir('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048'):
+        Path('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048').mkdir(parents=True,
+                                                                                                                exist_ok=True)
+    pd.DataFrame(small_heatmap).to_excel(
+        '/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048' +
+        '/heatmap_2048.xlsx')
 
-
-        for add_row_idx in range(1, 32):
-            map = np.insert(map, range(add_row_idx, 8 * add_row_idx, add_row_idx), 0, axis=0)
-        for add_col_idx in range(1, 32):
-            map = np.insert(map, range(add_col_idx, 8 * add_col_idx, add_col_idx), 0, axis=1)
-
-
-
-
-
+    return final_heatmap
 
 
 def get_cutout_scores(tile, basic_model, MIL_model):
@@ -102,29 +91,25 @@ def get_cutout_scores(tile, basic_model, MIL_model):
             basic_model_outputs = basic_model(tile)
             if tile.shape[2] == 2048:
                 all_small_heat_maps.append(basic_model_outputs['Small Heat Map'].squeeze().numpy())
-                if idx == 1:
-                    all_avg_maps = get_AvgValues_from_Diff_Heatmaps(all_small_heat_maps)
-                    connect_all_average_maps(all_avg_maps)
-                    pass
+                #if idx == 4:
 
-                continue
-                '''# Save to file:
-                if not os.path.isdir('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0]):
-                    Path('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0]).mkdir(parents=True, exist_ok=True)
+            else:
+                _, _, weight_before_sftmx = mil_model(x=None, H=basic_model_outputs['Features'])
+                score = torch.nn.functional.softmax(basic_model_outputs['Scores'], dim=1)[0][1].item()
 
-                pd.DataFrame(small_heatmap).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + str(tile_num) + '/heatmap_tile_' + str(idx) + '.xlsx')'''
+                scores_REG_image[idx // 32, idx % 32] = score
+                weights_MIL_image[idx // 32, idx % 32] = weight_before_sftmx
 
-            _, _, weight_before_sftmx = mil_model(x=None, H=basic_model_outputs['Features'])
-            score = torch.nn.functional.softmax(basic_model_outputs['Scores'], dim=1)[0][1].item()
+    if tile.shape[2] == 2048:
+        all_avg_maps = get_AvgValues_from_Diff_Heatmaps(all_small_heat_maps)
+        final_heatmaps = connect_all_average_maps(all_avg_maps)
+        return final_heatmaps
+    else:
+        pd.DataFrame(scores_REG_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_scores.xlsx')
+        pd.DataFrame(weights_MIL_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_weights.xlsx')
 
-            scores_REG_image[idx // 32, idx % 32] = score
-            weights_MIL_image[idx // 32, idx % 32] = weight_before_sftmx
-
-        scores_DF = pd.DataFrame(scores_REG_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/cutout_scores.xlsx')
-        weights_DF = pd.DataFrame(weights_MIL_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/cutout_weights.xlsx')
-
-    return {'CutOut Scores': scores_REG_image,
-            'CutOut Weights': weights_MIL_image}
+        return {'CutOut Scores': scores_REG_image,
+                'CutOut Weights': weights_MIL_image}
 
 
 def get_tile_movements(initial_location: dict = None,
