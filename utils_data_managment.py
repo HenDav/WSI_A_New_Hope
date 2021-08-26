@@ -997,6 +997,7 @@ def _get_image_maxima(image, threshold=0.5, neighborhood_size=5):
     xy = np.array(ndimage.center_of_mass(image, labeled, range(1, num_objects + 1)))
     return xy
 
+
 def _calc_simple_segmentation_for_image(image: Image, magnification: int) -> (Image, Image):
     """
     This function creates a segmentation map for an Image
