@@ -1320,6 +1320,7 @@ class WSI_Segmentation_Master_Dataset(Dataset):
 
 class Features_MILdataset(Dataset):
     def __init__(self,
+                 dataset: str = r'TCGA_ABCTB',
                  data_location: str = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/',
                  bag_size: int = 100,
                  minimum_tiles_in_slide: int = 50,
@@ -1360,25 +1361,48 @@ class Features_MILdataset(Dataset):
             data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
 
         if sys.platform == 'darwin':
-            '''
-            grid_location_dict = {
-                'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
-                'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
-            '''
-            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
-                grid_location_dict = {'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
-                                      'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
+            if dataset == 'TCGA_ABCTB':
+                if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
+                    grid_location_dict = {'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
+                                          'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_Grid_data.xlsx'}
+
+            elif dataset == 'CAT':
+                grid_location_dict = {
+                    'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
+                    'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_TIF_Grid_data.xlsx',
+                    'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+            elif dataset == 'CARMEL':
+                grid_location_dict = {
+                    'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
             else:
                 raise Exception("Need to write which dictionaries to use in this receptor case")
 
         elif sys.platform == 'linux':
-            '''
-            grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
-                                  'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
-            '''
-            if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
-                grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids/Grid_data.xlsx',
-                                      'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids/Grid_data.xlsx'}
+            if dataset == 'TCGA_ABCTB':
+                if target in ['ER', 'ER_Features'] or (target in ['PR', 'PR_Features', 'Her2', 'Her2_Features'] and test_fold == 1):
+                    grid_location_dict = {'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids_10/Grid_data.xlsx',
+                                          'ABCTB': r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB/Grids_10/Grid_data.xlsx'}
+
+            elif dataset == 'CAT':
+                grid_location_dict = {
+                    'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids_10/Grid_data.xlsx',
+                    'ABCTB': r'/mnt/gipmed_new/Data/ABCTB_TIF/Grids_10/Grid_data.xlsx',
+                    'CARMEL': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+            elif dataset == 'CARMEL':
+                grid_location_dict = {
+                    'CARMEL': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
             else:
                 raise Exception("Need to write which dictionaries to use in this receptor case")
 
@@ -1393,7 +1417,11 @@ class Features_MILdataset(Dataset):
             with open(os.path.join(data_location, file), 'rb') as filehandle:
                 inference_data = pickle.load(filehandle)
 
-            labels, targets, scores, patch_scores, slide_names, features = inference_data
+            try:
+                labels, targets, scores, patch_scores, slide_names, features = inference_data
+            except ValueError:
+                raise Exception('Debug')
+
             num_slides, max_tile_num = features.shape[0], features.shape[2]
 
             for slide_num in range(num_slides):
@@ -1402,14 +1430,19 @@ class Features_MILdataset(Dataset):
                     if grid_DF.loc[slide_names[slide_num], 'bad segmentation'] == 1:
                         slides_with_bad_segmentation += 1
                         continue
+                except ValueError:
+                    raise Exception('Debug')
                 except KeyError:
-                    print()
+                    raise Exception('Debug')
 
                 total_slides += 1
                 feature_1 = features[slide_num, :, :, 0]
                 nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
                 tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
-                tiles_in_slide_from_grid_data = grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10']
+                try:
+                    tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10'])
+                except TypeError:
+                    raise Exception('Debug')
 
                 if tiles_in_slide_from_grid_data < tiles_in_slide:  # Checking that the number of tiles in Grid_data.xlsx is equall to the one found in the actual data
                     bad_num_of_good_tiles += 1
@@ -1423,27 +1456,39 @@ class Features_MILdataset(Dataset):
                     continue
 
                 if is_per_patient:
+                    # calculate patient id:
                     patient = slide_names[slide_num].split('.')[0]
                     if patient.split('-')[0] == 'TCGA':
                         patient = '-'.join(patient.split('-')[:3])
-                    patient_list.append(patient)
+                    elif slide_names[slide_num].split('.')[-1] == 'mrxs':  # This is a CARMEL slide
+                        patient = slides_data_DF_CARMEL.loc[slide_names[slide_num], 'patient barcode']
 
+                    # insert to the "all patient list"
+                    patient_list.append(patient)  # This list includes the patients with multiple targets
+
+                    # Check if the patient has already been observed to be with multiple targets.
+                    # if so count the slide as bad slide and move on to the next slide
+                    if patient in self.bad_patient_list:
+                        slides_from_same_patient_with_different_target_values += 1
+                        continue
+
+                    # in case this patient has already been seen, than it has multiple slides
                     if patient in self.patient_data.keys():
                         patient_dict = self.patient_data[patient]
+
+                        # Check if the patient has multiple targets
                         patient_same_target = True if int(targets[slide_num]) == patient_dict['target'] else False  # Checking the the patient target is not changing between slides
-                        if patient in self.bad_patient_list:
-                            slides_from_same_patient_with_different_target_values += 1
-                            continue
+                        # if the patient has multiple targets than:
                         if not patient_same_target:
-                            slides_from_same_patient_with_different_target_values = 1 + len(self.patient_data[patient]['slides'])  # we skip mofre than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dicr
-                            self.patient_data.pop(patient)
-                            self.bad_patient_list.append(patient)
-                            continue
+                            slides_from_same_patient_with_different_target_values += 1 + len(patient_dict['slides'])  # we skip more than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dict
+                            self.patient_data.pop(patient)  #  remove it from the dictionary of legitimate patients
+                            self.bad_patient_list.append(patient)  # insert it to the list of non legitimate patients
+                            continue  # and move on to the next slide
 
                         patient_dict['num tiles'].append(tiles_in_slide)
                         patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
                         patient_dict['labels'].append(int(labels[slide_num]))
-                        patient_dict['target'].append(int(targets[slide_num]))
+                        #patient_dict['target'].append(int(targets[slide_num]))
                         patient_dict['slides'].append(slide_names[slide_num])
                         patient_dict['scores'].append(scores[slide_num])
 
@@ -1483,10 +1528,12 @@ class Features_MILdataset(Dataset):
         print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
         print('There are {}/{} slides with \"bad segmentation\" '.format(slides_with_bad_segmentation, total_slides))
         print('There are {}/{} slides with less than {} tiles '.format(slides_with_not_enough_tiles, total_slides, minimum_tiles_in_slide))
-        if is_per_patient:
-            self.patient_keys = list(self.patient_data.keys())
-            print('Skipped {}/{} slides for {}/{} patients (Inconsistent target value for same patient)'.format(slides_from_same_patient_with_different_target_values, total_slides, len(self.bad_patient_list), len(set(patient_list))))
+
         if self.is_per_patient:
+            self.patient_keys = list(self.patient_data.keys())
+            print('Skipped {}/{} slides for {}/{} patients (Inconsistent target value for same patient)'.format(
+                slides_from_same_patient_with_different_target_values, total_slides, len(self.bad_patient_list),
+                len(set(patient_list))))
             print('Initialized Dataset with {} feature slides in {} patients'.format(total_slides - slides_from_same_patient_with_different_target_values - slides_with_not_enough_tiles,
                                                                                      self.__len__()))
         else:
@@ -1693,8 +1740,10 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
 
                 self.magnification.extend([self.all_magnifications[slide_num]])
                 basic_file_name = '.'.join(self.all_image_file_names[slide_num].split('.')[:-1])
-                grid_file = os.path.join(self.dir_dict[self.all_image_ids[slide_num]], 'Grids',
+                grid_file = os.path.join(self.dir_dict[self.all_image_ids[slide_num]], 'Grids_' + str(self.desired_magnification),
                                          basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                '''grid_file = os.path.join(self.image_path_names[ind], 'Grids_' + str(self.desired_magnification),
+                                         basic_file_name + '--tlsz' + str(self.tile_size) + '.data')'''
 
                 with open(grid_file, 'rb') as filehandle:
                     tissue_grid_list = pickle.load(filehandle)
@@ -1747,8 +1796,8 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
     def __len__(self):
         return int(np.ceil(np.array(self.num_tiles) / self.tiles_per_iter).sum())
 
-    #def __getitem__(self, idx, location: List = None):
-    def __getitem__(self, idx):
+    #def __getitem__(self, idx):
+    def __getitem__(self, idx, location: List = None, tile_size: int = None):
         start_getitem = time.time()
         if idx == 0 or (idx > 0 and self.is_last_batch[idx - 1]):
             self.slide_num += 1
@@ -1777,6 +1826,9 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                     level_downsample = int(
                         desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
+            if tile_size is not None:
+                self.tile_size = tile_size
+
             self.adjusted_tile_size = self.tile_size * level_downsample
 
             self.best_slide_level = level if level > best_next_level else best_next_level
@@ -1786,9 +1838,10 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
         target = [1] if self.all_targets[self.slide_num] == 'Positive' else [0]
         target = torch.LongTensor(target)
 
-        #print('num tiles: {}'.format(len(self.slide_grids[idx])))
+        tile_locations = self.slide_grids[idx] if location is None else location
+
         tiles, time_list, _ = _get_tiles(slide=self.current_slide,
-                                         locations=self.slide_grids[idx],
+                                         locations=tile_locations,
                                          tile_size_level_0=self.level_0_tile_size,
                                          adjusted_tile_sz=self.adjusted_tile_size,
                                          output_tile_sz=self.tile_size,

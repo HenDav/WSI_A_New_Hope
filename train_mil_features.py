@@ -22,10 +22,10 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
 #parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
-#parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('-tar', '--target', type=str, default='ER', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='CARMEL', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='ER', help='Target to train for')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
@@ -39,13 +39,17 @@ parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty
 parser.add_argument('--model', default='nets_mil.MIL_Feature_Attention_MultiBag()', type=str, help='net to use')
 #parser.add_argument('--model', default='nets_mil.MIL_Feature_3_Attention_MultiBag()', type=str, help='net to use')
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
-parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
+#parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('-llf', dest='last_layer_freeze', action='store_true', help='get last layer and freeze it ?')
 parser.add_argument('-dl', '--data_limit', type=int, default=None, help='Data Limit to a specified number of feature tiles')
 parser.add_argument('-repData', dest='repeating_data', action='store_false', help='sample data with repeat ?')
 
 args = parser.parse_args()
+
+'''args.last_layer_freeze = True
+args.per_patient_training = True
+args.repeating_data = False'''
 
 EPS = 1e-7
 
@@ -138,7 +142,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             optimizer.zero_grad()
             model.to(DEVICE)
 
-            outputs, weights = model(x=None, H=data)
+            outputs, weights, _ = model(x=None, H=data)
 
             if str(outputs.min().item()) == 'nan':
                 print('slides:', minibatch['slide name'])
@@ -295,7 +299,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                         'loss': loss.item(),
                         'acc_test': acc_test,
                         'bacc_test': bacc_test,
-                        'tile_size': TILE_SIZE,
                         'tiles_per_bag': args.tiles_per_bag},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
@@ -339,7 +342,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
             data, target = data.to(device=DEVICE), target.to(device=DEVICE)
             model.to(DEVICE)
 
-            outputs, weights = model(x=None, H=data)
+            outputs, weights, _ = model(x=None, H=data)
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
@@ -390,9 +393,6 @@ if __name__ == '__main__':
     # Data type definition:
     DATA_TYPE = 'Features'
 
-    # Tile size definition:
-    TILE_SIZE = 128
-
     '''
     # These lines are for debugging:
     if sys.platform == 'darwin':
@@ -402,62 +402,94 @@ if __name__ == '__main__':
     '''
 
     if sys.platform == 'darwin':
-        if args.target == 'ER':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
-                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Train'
-                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
-            elif args.test_fold == 2:
-                Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
-                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Train'
-                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
+        if args.dataset == 'TCGA_ABCTB':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Test'
+                    ''
+                elif args.test_fold == 2:
+                    Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
 
-            basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/ran_293/model_data_Epoch_1000.pt'
-            traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
-        elif args.target == 'PR':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
-                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Train'
-                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
+                basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt'
+                traind_model = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/features/338 - freezed last layer/model_data_Epoch_500.pt'
 
-        elif args.target == 'Her2':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
-                train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Train'
-                test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
+            elif args.target == 'PR':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
 
+            elif args.target == 'Her2':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
 
-                #args.last_layer_freeze = True
+        elif args.dataset == 'CAT':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_355-ER-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
+                    basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+
+        elif args.dataset == 'CARMEL':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_358-ER-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test'
+                    basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
 
     elif sys.platform == 'linux':
-        if args.target == 'ER':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
-                train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
-                test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
-                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
-            elif args.test_fold == 2:
-                Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
-                train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
-                test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
-                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+        if args.dataset == 'TCGA_ABCTB':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_293-ER-TestFold_1'
+                    train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features'
+                    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/test_inference_w_features'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
-        elif args.target == 'PR':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
-                train_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Train'
-                test_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Test'
-                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_309-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                elif args.test_fold == 2:
+                    Dataset_name = r'FEATURES: Exp_299-ER-TestFold_2'
+                    train_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Train'
+                    test_data_dir = r'/home/womer/project/All Data/Ran_Features/299/Test'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
 
-        elif args.target == 'Her2':
-            if args.test_fold == 1:
-                Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
-                train_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Train'
-                test_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Test'
-                basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_308-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+            elif args.target == 'PR':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_309-PR-TestFold_1'
+                    train_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Train'
+                    test_data_dir = r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Test'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_309-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
+            elif args.target == 'Her2':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_308-Her2-TestFold_1'
+                    train_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Train'
+                    test_data_dir = r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Test'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_308-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
-        TILE_SIZE = 256
+        elif args.dataset == 'CAT':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_355-ER-TestFold_1'
+                    train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features'
+                    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
+        elif args.dataset == 'CARMEL':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_358-ER-TestFold_1'
+                    train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/train_w_features'
+                    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
@@ -482,7 +514,8 @@ if __name__ == '__main__':
         experiment = args.experiment
 
     # Get data:
-    train_dset = datasets.Features_MILdataset(data_location=train_data_dir,
+    train_dset = datasets.Features_MILdataset(dataset=args.dataset,
+                                              data_location=train_data_dir,
                                               is_per_patient=args.per_patient_training,
                                               is_repeating_tiles=args.repeating_data,
                                               bag_size=args.tiles_per_bag,
@@ -491,7 +524,8 @@ if __name__ == '__main__':
                                               data_limit=args.data_limit,
                                               test_fold=args.test_fold)
 
-    test_dset = datasets.Features_MILdataset(data_location=test_data_dir,
+    test_dset = datasets.Features_MILdataset(dataset=args.dataset,
+                                             data_location=test_data_dir,
                                              is_per_patient=args.per_patient_training,
                                              bag_size=args.tiles_per_bag,
                                              target=args.target,

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=338, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=10399, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -40,36 +40,51 @@ cpu_available = utils.get_cpu()
 # Data type definition:
 DATA_TYPE = 'Features'
 
-# Tile size definition:
-TILE_SIZE = 128
-
 # Load saved model:
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, test_fold, _, _, _, _, _, _, target, _, model_name, _ = utils.run_data(experiment=args.experiment)
+output_dir, test_fold, _, _, _, _, _, dataset, target, _, model_name, _ = utils.run_data(experiment=args.experiment)
 
 if sys.platform == 'darwin':
-    if target in ['ER', 'ER_Features']:
-        if test_fold == 1:
-            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
-        elif test_fold == 2:
-            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
-    elif target in ['PR', 'PR_Features']:
-        if test_fold == 1:
-            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
-    elif target in ['Her2', 'Her2_Features']:
-        if test_fold == 1:
-            test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
+    # fix output_dir:
+    if output_dir.split('/')[1] == 'home':
+        output_dir = '/'.join(output_dir.split('/')[-2:])
+
+    # if target in ['ER', 'ER_Features']:
+    #if test_fold == 1:
+    #elif test_fold == 2:
+    if dataset == 'FEATURES: Exp_293-ER-TestFold_1':
+        dset = 'TCGA_ABCTB'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Fold_1/Test'
+
+    elif dataset == 'FEATURES: Exp_299-ER-TestFold_2':
+        dset = 'TCGA_ABCTB'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test'
+
+    # elif target in ['PR', 'PR_Features']:
+    #if test_fold == 1:
+    elif dataset == 'FEATURES: Exp_309-PR-TestFold_1':
+        dset = 'TCGA_ABCTB'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test'
+
+    # elif target in ['Her2', 'Her2_Features']:
+    # if test_fold == 1:
+    elif dataset == 'FEATURES: Exp_308-Her2-TestFold_1':
+        dset = 'TCGA_ABCTB'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test'
+
+    #if test_fold == 1:
+    elif dataset == 'FEATURES: Exp_355-ER-TestFold_1':
+        dset = 'CAT'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
 
     args.save_tile_scores = True
-
-elif sys.platform == 'linux':
-    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference'
-    TILE_SIZE = 256
+    is_per_patient = False if args.save_tile_scores else True
 
 # Get data:
-inf_dset = datasets.Features_MILdataset(data_location=test_data_dir,
+inf_dset = datasets.Features_MILdataset(dataset=dset,
+                                        data_location=test_data_dir,
                                         target=target,
-                                        is_per_patient=False if args.save_tile_scores else True,
+                                        is_per_patient=is_per_patient,
                                         is_all_tiles=True,
                                         is_train=False,
                                         test_fold=test_fold)
@@ -204,7 +219,13 @@ for model_num, model_epoch in enumerate(args.from_epoch):
         fpr_reg, tpr_reg, _ = roc_curve(true_targets, np.array(scores_reg))
         roc_auc_reg = auc(fpr_reg, tpr_reg)
         plt.plot(fpr_reg, tpr_reg)
-        legend_labels.append('REG Per Patient AUC=' + str(round(roc_auc_reg, 3)) + ')')
+        if is_per_patient:
+            label_reg = 'REG Per Patient AUC='
+            label_MIL = 'Model' + str(model_epoch) + ': MIL Per Patient AUC='
+        else:
+            label_reg = 'REG Per Slide AUC='
+            label_MIL = 'Model' + str(model_epoch) + ': MIL Per Slide AUC='
+        legend_labels.append(label_reg + str(round(roc_auc_reg, 3)) + ')')
 
     #acc = 100 * correct_labeling / total
     #balanced_acc = 100 * (correct_pos / (total_pos + EPS) + correct_neg / (total_neg + EPS)) / 2
@@ -212,7 +233,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
     fpr_mil, tpr_mil, _ = roc_curve(true_targets, scores_mil)
     roc_auc_mil = auc(fpr_mil, tpr_mil)
     plt.plot(fpr_mil, tpr_mil)
-    legend_labels.append('Model' + str(model_epoch) + ': MIL Per Patient AUC=' + str(round(roc_auc_mil, 3)) + ')')
+    legend_labels.append(label_MIL + str(round(roc_auc_mil, 3)) + ')')
 
 
 plt.xlabel('False Positive Rate')
@@ -222,5 +243,10 @@ plt.xlim(0, 1)
 plt.ylim(0, 1)
 plt.grid(b=True)
 
-plt.savefig(os.path.join(output_dir, 'feature_mil_inference.png'))
+if is_per_patient:
+    graph_name = 'feature_mil_inference_per_patient.png'
+else:
+    graph_name = 'feature_mil_inference_per_slide.png'
+
+plt.savefig(os.path.join(output_dir, graph_name))
 print('Done')

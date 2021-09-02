@@ -296,10 +296,10 @@ class PreActResNet_Ron(nn.Module):
                 features = out.view(out.size(0), -1)
                 out = self.linear(features)
 
-                data_dict_4_gil = {'linear_weights': self.linear.weight.numpy(),
-                                   'linear_bias': self.linear.bias.numpy(),
-                                   'heat_map': small_heat_map.squeeze().numpy(),
-                                   'feature_map': out_for_dict.squeeze(0).numpy(),
+                data_dict_4_gil = {'linear_weights': self.linear.weight.cpu().numpy(),
+                                   'linear_bias': self.linear.bias.cpu().numpy(),
+                                   'heat_map': small_heat_map.squeeze().cpu().numpy(),
+                                   'feature_map': out_for_dict.squeeze(0).cpu().numpy(),
                                    }
                 out_data_dict = {'Large Heat Map': large_heat_map,
                                  'Small Heat Map': small_heat_map,

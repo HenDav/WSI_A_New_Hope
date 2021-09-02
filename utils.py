@@ -25,6 +25,7 @@ from datetime import date
 import inspect
 import torch.nn.functional as F
 import multiprocessing
+from tqdm import tqdm
 
 #if sys.platform == 'win32':
 #    os.add_dll_directory(r'C:\ran_programs\Anaconda3\openslide_bin_ran')
@@ -1242,6 +1243,7 @@ class EmbedSquare(object):
         self.pad = pad
         self.minibatch = minibatch_size
         self.normalized_square = torch.zeros(1, 3, self.size, self.size)
+        self.color = color
 
         if color == 'Black':
             self.normalized_square[:, 0, :, :], \
@@ -1251,6 +1253,10 @@ class EmbedSquare(object):
             self.normalized_square[:, 0, :, :], \
             self.normalized_square[:, 1, :, :], \
             self.normalized_square[:, 2, :, :] = 0.8907, 0.9977, 0.8170  # Value of WHITE pixel after normalization
+        elif color == 'Gray':
+            self.normalized_square[:, 0, :, :], \
+            self.normalized_square[:, 1, :, :], \
+            self.normalized_square[:, 2, :, :] = -3.5712, - 1.8690, - 5.5611  # Value of GRAY pixel after normalization
         elif color == 'Testing':
             self.normalized_square = torch.ones(1, 3, self.size, self.size) * 255
         else:
@@ -1270,18 +1276,25 @@ class EmbedSquare(object):
 
         init = {'Row': 0,
                 'Col': 0}
-        init_2048 = {'Row': 0,
-                      'Col': 0}
+        '''init_2048 = {'Row': 0,
+                      'Col': 0}'''
 
         total_jumps = 256 // self.stride
         output_images = []
-        output_images.append(image.reshape([1, 3, tile_size, tile_size]))  # Adding the initial image
+        output_images.append(image.reshape([1, 3, tile_size, tile_size]))  # Adding the basic tile to the list
         minibatch_size = 0
         counter = 0
         #quit=False
         image_output_minibatch = torch.zeros((self.minibatch, 3, tile_size, tile_size))
+        if tile_size == 2048:  # We'll need to put 16 squares (4X4) and not just one
+            # At first we need to create a basic square mask.
+            basic_mask = np.zeros((1808, 1808), dtype=bool)
+            for row_idx in range(8):
+                for col_idx in range(8):
+                    basic_mask[256 * row_idx:256 * row_idx + 16, 256 * col_idx:256 * col_idx + 16] = True
+
         print('Creating square embeded tiles...')
-        for row_idx in range(0, total_jumps):
+        for row_idx in tqdm(range(0, total_jumps)):
             '''if quit:
                 break'''
             init['Row'] = row_idx * self.stride
@@ -1291,10 +1304,15 @@ class EmbedSquare(object):
                     break'''
                 image_output = torch.clone(new_image)
                 init['Col'] = col_idx * self.stride
-                image_output[:, :, init['Row']:self.size + init['Row'], init['Col']:self.size + init['Col']] = self.normalized_square
+                if tile_size == 256:
+                    image_output[:, :, init['Row']:self.size + init['Row'], init['Col']:self.size + init['Col']] = self.normalized_square
 
-                if tile_size == 2048:  # We need to put 16 squares (4X4) and not just one
-                    for row_2048_idx in range(0, 8):
+                elif tile_size == 2048:  # We need to put 16 squares (4X4) and not just one
+                    mask = np.zeros_like(image_output, dtype=bool)
+                    mask[:, :, init['Row']:1808 + init['Row'], init['Col']:1808 + init['Col']] = basic_mask
+                    np.place(image_output.numpy(), mask, self.normalized_square[0, 0, 0, 0].item())
+
+                    '''for row_2048_idx in range(0, 8):
                         init_2048['Row'] = init['Row'] + row_2048_idx * 256  # 256 is the stride for multiple cutouts in a big tile
                         init_2048['Col'] = 0
                         #plt.imshow(image_output.squeeze(0).numpy().transpose(1, 2, 0))
@@ -1305,7 +1323,7 @@ class EmbedSquare(object):
 
                             image_output[:, :,
                             init_2048['Row']:self.size + init_2048['Row'],
-                            init_2048['Col']:self.size + init_2048['Col']] = self.normalized_square
+                            init_2048['Col']:self.size + init_2048['Col']] = self.normalized_square'''
 
 
                 # Now we have to cut the padding:
