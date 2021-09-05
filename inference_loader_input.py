@@ -3,17 +3,17 @@ import re, glob
 inference_files = {}
 
 is_herohe = False
-exp = '_g10'
-fold = '1'
-target = 'PR'
-dataset = 'CAT'
-subdir = ''
-#subdir = '6slides'
+exp = 383
+fold = 1
+target = 'is_B'
+dataset = 'LEUKEMIA'
+#subdir = ''
+subdir = 'bacc'
 #subdir = 'CARMEL'
 #subdir = 'test_inference_aug21_TCGA_corrections'
 is_other = False
 
-if is_herohe or dataset == 'CARMEL' or dataset == 'CAT' or subdir == 'CARMEL':
+if is_herohe or dataset == 'CARMEL' or dataset == 'CAT' or subdir == 'CARMEL' or dataset == 'TCGA_LUNG':
     patient_level = False
 else:
     patient_level = True

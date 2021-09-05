@@ -354,7 +354,9 @@ def run_data(experiment: str = None,
                 location_prefix = '/home/womer/project/'
             elif experiment > 20000 and experiment < 30000:
                 # One of Gil's experiments
-                raise Exception('Need to get permission to Gils drive and then implement this part')
+                run_file_name = r'/mnt/gipnetapp_public/sgils/ran/runs/run_data.xlsx'
+                location_prefix = '/mnt/gipnetapp_public/sgils/ran/'
+                #raise Exception('Need to get permission to Gils drive and then implement this part')
         else:
             run_file_name = 'runs/run_data.xlsx'
 
@@ -763,6 +765,7 @@ def get_datasets_dir_dict(Dataset: str):
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
     CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
     TCGA_LUNG_gipdeep_path = r'/mnt/gipmed_new/Data/Lung/TCGA_Lung/TCGA_LUNG'
+    LEUKEMIA_gipdeep_path = r'/mnt/gipmed_new/Data/BoneMarrow/LEUKEMIA'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -876,6 +879,10 @@ def get_datasets_dir_dict(Dataset: str):
             #dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\PORTO_PDL1'
             dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\temp_8_slides\PORTO_PDL1'
 
+    elif Dataset == 'LEUKEMIA':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['LEUKEMIA'] = LEUKEMIA_gipdeep_path
+
     return dir_dict
 
 
@@ -894,6 +901,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('for SHEBA DataSet, target should be Onco')
     elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD']:
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
+    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B']:
+        raise ValueError('for LEUKEMIA DataSet, target should be ALL or is_B')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()

@@ -21,33 +21,32 @@ import nets, PreActResNets, resnet_v2
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
-parser.add_argument('-e', '--epochs', default=5, type=int, help='Epochs to run')
+parser.add_argument('-e', '--epochs', default=1001, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-#parser.add_argument('-ds', '--dataset', type=str, default='test_speed', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')  # RanS 7.12.20
-parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time') # RanS 7.12.20
-parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time') # RanS 7.12.20
-parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
-parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')  # RanS 7.12.20
-parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)') # RanS 7.12.20
-parser.add_argument('--batch_size', default=18, type=int, help='size of batch')  # RanS 8.12.20
-#parser.add_argument('--model', default='resnet_v2.PreActResNet50()', type=str, help='net to use') # RanS 15.12.20
-parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use') # RanS 15.12.20
-#parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use') # RanS 15.12.20
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error') #RanS 16.12.20
+parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
+parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time')
+parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time')
+parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
+parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty')
+parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')
+parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)')
+parser.add_argument('--batch_size', default=18, type=int, help='size of batch')
+parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use')
+#parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use')
+parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
-parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
+parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
 parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
 parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
 parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
+#parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
 
 
 args = parser.parse_args()

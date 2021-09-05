@@ -144,6 +144,7 @@ patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
 #patch_locs_inds_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2))
 features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
+all_slide_datasets = np.zeros(NUM_SLIDES, dtype=object)
 #all_slide_size = np.zeros((NUM_SLIDES,2))
 #all_slide_size_ind = np.zeros((NUM_SLIDES,2))
 patch_scores[:] = np.nan
@@ -167,6 +168,7 @@ with torch.no_grad():
         time_list = MiniBatch_Dict['Time List']
         last_batch = MiniBatch_Dict['Is Last Batch']
         slide_file = MiniBatch_Dict['Slide Filename']
+        slide_dataset = MiniBatch_Dict['Slide DataSet']
         #patch_locs = MiniBatch_Dict['Patch Loc']
         #patch_loc_inds = MiniBatch_Dict['Patch loc index']
         #slide_size_ind = MiniBatch_Dict['Slide Index Size']
@@ -232,6 +234,7 @@ with torch.no_grad():
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
                 all_slide_names[slide_num] = slide_file[0]
+                all_slide_datasets[slide_num] = slide_dataset[0]
 
                 if target == 1 and predicted == 1:
                     correct_pos[model_num] += 1
@@ -252,7 +255,8 @@ with torch.no_grad():
                                       all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
                                       np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num, :]),
                                       all_slide_names[slide_num-NUM_SLIDES_SAVE:slide_num],
-                                      features_all]
+                                      features_all,
+                                      all_slide_datasets[slide_num-NUM_SLIDES_SAVE:slide_num]]
                     with open(feature_file_name, 'wb') as filehandle:
                         pickle.dump(inference_data, filehandle)
                 print('saved output for ', str(slide_num), ' slides')
@@ -272,7 +276,8 @@ if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
                           all_scores[last_save:slide_num, model_num],
                           np.squeeze(patch_scores[last_save:slide_num, model_num, :]),
                           all_slide_names[last_save:slide_num],
-                          features_all[:slide_num-last_save]]
+                          features_all[:slide_num-last_save],
+                          all_slide_datasets[last_save:slide_num]]
         with open(feature_file_name, 'wb') as filehandle:
             pickle.dump(inference_data, filehandle)
         print('saved output for ', str(slide_num), ' slides')
@@ -292,7 +297,7 @@ for model_num in range(NUM_MODELS):
                              + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),
-                      np.squeeze(patch_scores[:, model_num, :]), all_slide_names]
+                      np.squeeze(patch_scores[:, model_num, :]), all_slide_names, all_slide_datasets]
                       #np.squeeze(patch_scores[:, model_num, :]), all_slide_names, np.squeeze(patch_locs_all[:, model_num, :, :]), np.squeeze(patch_locs_inds_all[:, model_num, :, :]), all_slide_size, all_slide_size_ind]
 
     with open(file_name, 'wb') as filehandle:

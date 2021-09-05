@@ -3,7 +3,8 @@ from random import shuffle
 import csv
 import pandas as pd
 
-dataset = 'TCGA_LUNG'
+dataset = 'LEUKEMIA'
+patient_column_name = 'patient barcode'
 
 if dataset == 'Carmel123':
     N_samples = 1553 #number of slides in file
@@ -35,10 +36,17 @@ elif dataset == 'TCGA_LUNG':
     val_ratio = 0  # percentage to be marked as "validation"
     n_folds = 5  # number of cross-validation folds
     out_file = r'C:\ran_data\TCGA_lung\slides_data_full_folds.xlsx'
+elif dataset == 'LEUKEMIA':
+    in_file = r'C:\ran_data\BoneMarrow\slides_data_LEUKEMIA.xlsx'
+    test_ratio = 0  # percentage to be marked as "test"
+    val_ratio = 0  # percentage to be marked as "validation"
+    n_folds = 5  # number of cross-validation folds
+    out_file = r'C:\ran_data\BoneMarrow\slides_data_LEUKEMIA_folds.xlsx'
+    patient_column_name = 'PatientID'
 
 
 slides_data = pd.read_excel(in_file)
-patients = np.unique(slides_data['patient barcode'])
+patients = np.unique(slides_data[patient_column_name])
 N_patients = patients.shape[0]
 
 fold_size = int(N_patients*(1-test_ratio - val_ratio)/n_folds)
@@ -60,7 +68,7 @@ patients_folds_df = pd.DataFrame({'patient': patients, 'fold_new': folds})
 #slides_data['new fold'] = 'Missing Data'
 #slides_data['new fold']
 
-slides_data = slides_data.merge(right=patients_folds_df, left_on='patient barcode', right_on='patient', how='outer')
+slides_data = slides_data.merge(right=patients_folds_df, left_on=patient_column_name, right_on='patient', how='outer')
 slides_data.to_excel(out_file)
 
 print('finished')
