@@ -935,6 +935,7 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
             A_V = self.attention_V(H)  # NxL
             A_U = self.attention_U(H)  # NxL
             A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
+
             if DividedSlides_Flag:  # DividedSlides_Flag tells if all the feature from all slides are gathered together in the same dimension or divided between dimensions
                 A = torch.transpose(A, 2, 1)
             else:
@@ -979,7 +980,7 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
                     A_after_sftmx = torch.cat((A_after_sftmx, a))
 
             out = self.classifier(M)
-            #return out, A_after_sftmx
+
             return out, A_after_sftmx, A.squeeze(0)
 
         # In inference mode, there is no need to use more than one bag in each mini-batch because the data variability

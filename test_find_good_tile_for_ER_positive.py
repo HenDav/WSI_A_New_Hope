@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
 from pathlib import Path
-from scipy.io import savemat
+import sys
 
 
 def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
@@ -20,6 +20,12 @@ def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
     all_average_maps = []
     for heatmap_idx in range(1, len(small_heatmaps)):
         diff_heatmap = small_heatmaps[0] - small_heatmaps[heatmap_idx]
+
+        if diff_heatmap.shape != (256, 256) or type(diff_heatmap) != np.ndarray:
+            print(diff_heatmap.shape)
+            print(type(diff_heatmap))
+            raise Exception('diff_heatmap is in wrong shape or type)')
+
         diff = np.zeros((258, 258))
         diff[1:257, 1:257] = diff_heatmap
         diff_0_1 = np.where(diff != 0, 1, diff)
@@ -43,6 +49,9 @@ def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
             else:  # Both rows are equal to 0
                 continue
 
+        if len(beginning_row) + len(ending_row) + len(beginning_col) + len(ending_col) != 8*4:
+            raise Exception('Less than 16 parts')
+
         average_values = np.zeros((8, 8))  # We have an 8X8 array of non zero values
         # we need to calculate the average of each block which has non zero values
         for row_idx in range(8):
@@ -50,35 +59,30 @@ def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
                 average_values[row_idx, col_idx] = diff[beginning_row[row_idx]:ending_row[row_idx], beginning_col[col_idx]:ending_col[col_idx]].mean()
 
         all_average_maps.append(average_values)
-
+    #print(all_average_maps[-1])
     return all_average_maps
 
 
 def connect_all_average_maps(average_maps):
 
     final_heatmap = np.zeros((256, 256))
+    num_counter = 0
     for idx in range(len(average_maps)):
         init_row_number = idx // 32
         init_col_number = idx % 32
         map = average_maps[idx]
         for row in range(8):
             for col in range(8):
+                num_counter += 1
                 final_heatmap[init_row_number + row * 32, init_col_number + col * 32] = map[row, col]
-
-    # Saving heatmap to file:
-    if not os.path.isdir('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048'):
-        Path('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048').mkdir(parents=True,
-                                                                                                                exist_ok=True)
-    pd.DataFrame(small_heatmap).to_excel(
-        '/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048' +
-        '/heatmap_2048.xlsx')
 
     return final_heatmap
 
 
-def get_cutout_scores(tile, basic_model, MIL_model):
+def get_cutout_scores(tile, basic_model, MIL_model=None):
     basic_model.to(DEVICE)
-    MIL_model.to(DEVICE)
+    if MIL_model:
+        MIL_model.to(DEVICE)
     embedded_squares_in_tiles = Embed_Square(tile)
     if tile.shape[1] == 256:
         scores_REG_image, weights_MIL_image = np.zeros((32, 32)), np.zeros((32, 32))
@@ -90,11 +94,10 @@ def get_cutout_scores(tile, basic_model, MIL_model):
             tile = tile.to(DEVICE)
             basic_model_outputs = basic_model(tile)
             if tile.shape[2] == 2048:
-                all_small_heat_maps.append(basic_model_outputs['Small Heat Map'].squeeze().numpy())
-                #if idx == 4:
+                all_small_heat_maps.append(basic_model_outputs['Small Heat Map'].squeeze().cpu().numpy())
 
             else:
-                _, _, weight_before_sftmx = mil_model(x=None, H=basic_model_outputs['Features'])
+                _, _, weight_before_sftmx = MIL_model(x=None, H=basic_model_outputs['Features'])
                 score = torch.nn.functional.softmax(basic_model_outputs['Scores'], dim=1)[0][1].item()
 
                 scores_REG_image[idx // 32, idx % 32] = score
@@ -102,11 +105,18 @@ def get_cutout_scores(tile, basic_model, MIL_model):
 
     if tile.shape[2] == 2048:
         all_avg_maps = get_AvgValues_from_Diff_Heatmaps(all_small_heat_maps)
-        final_heatmaps = connect_all_average_maps(all_avg_maps)
-        return final_heatmaps
+        final_heatmap = connect_all_average_maps(all_avg_maps)
+        # Saving heatmap to file:
+        if not os.path.isdir('Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048'):
+            Path('Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048').mkdir(parents=True,
+                                                                                exist_ok=True)
+        pd.DataFrame(final_heatmap).to_excel(
+            'Heatmaps/CutOut/' + slide.split('.')[0] + '/Tile_2048' + '/heatmap_2048_BckGrdClr_' + Embed_Square.color + '.xlsx')
+
+        return final_heatmap
     else:
-        pd.DataFrame(scores_REG_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_scores.xlsx')
-        pd.DataFrame(weights_MIL_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_weights.xlsx')
+        pd.DataFrame(scores_REG_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_scores_' + Embed_Square.color + '.xlsx')
+        pd.DataFrame(weights_MIL_image).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/CutOut/cutout_weights_' + Embed_Square.color + '.xlsx')
 
         return {'CutOut Scores': scores_REG_image,
                 'CutOut Weights': weights_MIL_image}
@@ -287,9 +297,14 @@ else:
     slide_locations['TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs'] = [{'TOP': 33000, 'LEFT': 49000}]
 
 # Slide categorization to models:
-Model_ABCTB_TCGA_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt'
-Model_CAT_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
-Model_CARMEL_ER_Fold_5 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_338-TF_5/model_data_Epoch_1000.pt'
+if sys.platform == 'darwin':
+    Model_ABCTB_TCGA_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt'
+    Model_CAT_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+    Model_CARMEL_ER_Fold_5 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_338-TF_5/model_data_Epoch_1000.pt'
+elif sys.platform == 'linux':
+    Model_ABCTB_TCGA_ER_Fold_1 = os.path.join(utils.run_data(experiment=293)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
+    Model_CAT_ER_Fold_1 = os.path.join(utils.run_data(experiment=355)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
+    Model_CARMEL_ER_Fold_5 = os.path.join(utils.run_data(experiment=338)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
 
 Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.svs': Model_ABCTB_TCGA_ER_Fold_1,
                   'TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs': Model_ABCTB_TCGA_ER_Fold_1,
@@ -302,15 +317,17 @@ Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.
                   '19-9915_1_1_e.mrxs': Model_CARMEL_ER_Fold_5}
 
 # Second part: computing tile scores to find a few tiles with high scores
-inf_dset = datasets.Full_Slide_Inference_Dataset(DataSet='TCGA',
+'''inf_dset = datasets.Full_Slide_Inference_Dataset(DataSet='TCGA',
                                                  tile_size=256,
                                                  tiles_per_iter=1,
                                                  target_kind='ER',
                                                  folds=[1, 5],
                                                  desired_slide_magnification=10,
                                                  num_background_tiles=0)
+'''
+inf_dset = datasets.Batched_Full_Slide_Inference_Dataset(tiles_per_iter=1)
 
-inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+#inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
 tile_locations = []
 tile_scores = []
@@ -383,7 +400,8 @@ with torch.no_grad():
             pix = 0
             data_256 = data[:, :, :, :256, pix:256 + pix]
 
-        label = minibatch['Label']
+        #label = minibatch['Label']
+        label = minibatch['Target']
         is_last_batch = minibatch['Is Last Batch']
         initial_num_tiles = minibatch['Initial Num Tiles']
         equivalent_grid = minibatch['Equivalent Grid']
@@ -452,8 +470,14 @@ extract_MIL_weights = True
 if extract_MIL_weights:
     # Computing tile weight using MIL:
     mil_model = eval('nets_mil.MIL_Feature_Attention_MultiBag()')
-    mil_model_data_loaded = torch.load(os.path.join('/Users/wasserman/Developer/WSI_MIL/runs/Exp_347-ER-TestFold_1/Model_CheckPoints/',
-                                                'model_data_Epoch_' + str(500) + '.pt'), map_location='cpu')
+    '''mil_model_data_loaded = torch.load(os.path.join('/Users/wasserman/Developer/WSI_MIL/runs/Exp_347-ER-TestFold_1/Model_CheckPoints/',
+                                                'model_data_Epoch_' + str(500) + '.pt'), map_location='cpu')'''
+
+    mil_model_data_loaded = torch.load(
+        os.path.join('/Users/wasserman/Developer/WSI_MIL/runs/Exp_10390-ER_Features-TestFold_1/Model_CheckPoints/',
+                     'model_data_Epoch_' + str(500) + '.pt'), map_location='cpu')
+
+
     mil_model.load_state_dict(mil_model_data_loaded['model_state_dict'])
     mil_model.to(DEVICE)
     mil_model.infer = True
@@ -495,10 +519,11 @@ if extract_MIL_weights:
             heatmap_1024 = small_heat_maps_all[0][:, :, :32, :32]
             heatmap_256 = small_heat_maps_256_all[0]
 
-embed_cutout_squares = True
+embed_cutout_squares = False
 if embed_cutout_squares:
     # Computing per pixel scores using CutOut:
-    Embed_Square = utils.EmbedSquare(minibatch_size=1, color='Black')
+    Embed_Square = utils.EmbedSquare(minibatch_size=1, color='Gray')
+    mil_model = mil_model if 'mil_model' in locals() else None
     cutout_scores_weights = get_cutout_scores(tile_data[0], basic_model=model, MIL_model=mil_model)
 
 
@@ -515,35 +540,36 @@ plt.show()
 
 '''
 
-# Saving tile image:
-matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.png', np.transpose(original_tile_data[0].numpy(), (1, 2, 0)))
-pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
-pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
-# Saving both small Heatmaps to excel files:
-'''
-if data.shape[3] == 1024:
-    pd.DataFrame(heatmap_256.squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/256_' +str(pix) +'_pix_right.xlsx')
-    pd.DataFrame(heatmap_1024.squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/1024.xlsx')
-'''
-# Showing images
-f, axarr = plt.subplots(figsize=(11, 4), nrows=1, ncols=3)
-idx = 0
-axarr[0].imshow(np.transpose(small_heat_maps_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
-axarr[1].imshow(np.transpose(original_tile_data[idx].numpy(), (1, 2, 0)))
-axarr[2].imshow(mil_weights_image_all[idx], cmap='gray')
-
-#f.suptitle('tile score = {:.4f}, tile MIL weight = {:.4f}'.format(tile_scores[idx], weights_all[idx]))
-f.suptitle('tile score = {:.4f}'.format(tile_scores[idx]))
-axarr[0].set_title('Score Heatmap')
-axarr[1].set_title('Original Tile')
-axarr[2].set_title('MIL Weights Heatmap')
-
-if data.shape[3] == 1024:
-    f, axarr = plt.subplots(figsize=(10, 3), nrows=1, ncols=3)
+if True:
+    # Saving tile image:
+    matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.png', np.transpose(original_tile_data[0].numpy(), (1, 2, 0)))
+    pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
+    pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
+    # Saving both small Heatmaps to excel files:
+    '''
+    if data.shape[3] == 1024:
+        pd.DataFrame(heatmap_256.squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/256_' +str(pix) +'_pix_right.xlsx')
+        pd.DataFrame(heatmap_1024.squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/1024.xlsx')
+    '''
+    # Showing images
+    f, axarr = plt.subplots(figsize=(11, 4), nrows=1, ncols=3)
     idx = 0
-    axarr[0].imshow(np.transpose(small_heat_maps_256_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
-    axarr[1].imshow(np.transpose(original_256_all[idx].numpy(), (1, 2, 0)))
-    axarr[2].imshow(np.transpose(large_heat_maps_256_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
-    axarr[1].set_title('tile score = {:.4f}, tile MIL weight = {:.4f}'.format(tile_scores_256[idx], weights_256_all[idx]))
+    axarr[0].imshow(np.transpose(small_heat_maps_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
+    axarr[1].imshow(np.transpose(original_tile_data[idx].numpy(), (1, 2, 0)))
+    axarr[2].imshow(mil_weights_image_all[idx], cmap='gray')
+
+    #f.suptitle('tile score = {:.4f}, tile MIL weight = {:.4f}'.format(tile_scores[idx], weights_all[idx]))
+    f.suptitle('tile score = {:.4f}'.format(tile_scores[idx]))
+    axarr[0].set_title('Score Heatmap')
+    axarr[1].set_title('Original Tile')
+    axarr[2].set_title('MIL Weights Heatmap')
+
+    if data.shape[3] == 1024:
+        f, axarr = plt.subplots(figsize=(10, 3), nrows=1, ncols=3)
+        idx = 0
+        axarr[0].imshow(np.transpose(small_heat_maps_256_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
+        axarr[1].imshow(np.transpose(original_256_all[idx].numpy(), (1, 2, 0)))
+        axarr[2].imshow(np.transpose(large_heat_maps_256_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
+        axarr[1].set_title('tile score = {:.4f}, tile MIL weight = {:.4f}'.format(tile_scores_256[idx], weights_256_all[idx]))
 print('Done')
 
