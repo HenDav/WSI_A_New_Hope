@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=10399, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=10402, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -79,6 +79,7 @@ if sys.platform == 'darwin':
 
     args.save_tile_scores = True
     is_per_patient = False if args.save_tile_scores else True
+    carmel_only = True
 
 # Get data:
 inf_dset = datasets.Features_MILdataset(dataset=dset,
@@ -87,6 +88,7 @@ inf_dset = datasets.Features_MILdataset(dataset=dset,
                                         is_per_patient=is_per_patient,
                                         is_all_tiles=True,
                                         is_train=False,
+                                        carmel_only=carmel_only,
                                         test_fold=test_fold)
 
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
@@ -98,7 +100,7 @@ legend_labels = []
 if args.save_tile_scores and len(args.from_epoch) > 1:
     raise Exception('When saving tile scores, there should be only one model')
 
-if args.save_tile_scores:
+if args.save_tile_scores and not carmel_only:
     all_slides_weights_before_sftmx_list = []
     all_slides_weights_after_sftmx_list = []
     #all_slides_weights_list = []
@@ -154,7 +156,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
-            if args.save_tile_scores:
+            if args.save_tile_scores and not carmel_only:
                 slide_name = minibatch['slide name']
                 tile_scores_ran = minibatch['tile scores'].cpu().detach().numpy()[0]
 
@@ -206,7 +208,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
             all_labels_mil.append(predicted.cpu().detach().numpy().item())
             all_scores_mil.append(outputs[:, 1].cpu().detach().numpy().item())
 
-    if args.save_tile_scores:
+    if args.save_tile_scores and not carmel_only:
         all_slides_score_dict = {'MIL': all_slides_scores_list,
                                  'REG': all_slides_scores_list_ran}
         all_tile_scores_dict = {'MIL': all_slides_tile_scores_list,
@@ -244,9 +246,9 @@ plt.ylim(0, 1)
 plt.grid(b=True)
 
 if is_per_patient:
-    graph_name = 'feature_mil_inference_per_patient.png'
+    graph_name = 'feature_mil_inference_per_patient_CARMEL_ONLY.png' if carmel_only else 'feature_mil_inference_per_patient.png'
 else:
-    graph_name = 'feature_mil_inference_per_slide.png'
+    graph_name = 'feature_mil_inference_per_slide_CARMEL_ONLY.png' if carmel_only else 'feature_mil_inference_per_slide.png'
 
 plt.savefig(os.path.join(output_dir, graph_name))
 print('Done')

@@ -1332,6 +1332,7 @@ class Features_MILdataset(Dataset):
                  is_train: bool = False,
                  data_limit: int = None,  # if 'None' than there will be no data limit. If a number is specified than it'll be the data limit
                  test_fold: int = None,
+                 carmel_only: bool = False,  # if true than only feature slides from CARMEL dataset will be taken from all the features given the files
                  print_timing: bool = False,
                  slide_repetitions: int = 1
                  ):
@@ -1350,6 +1351,7 @@ class Features_MILdataset(Dataset):
         self.patient_data = {}
         self.bad_patient_list = []
         self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
+        self.carmel_only = carmel_only
         slides_from_same_patient_with_different_target_values, total_slides, bad_num_of_good_tiles = 0, 0, 0
         slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0
         patient_list = []
@@ -1425,7 +1427,7 @@ class Features_MILdataset(Dataset):
             num_slides, max_tile_num = features.shape[0], features.shape[2]
 
             for slide_num in range(num_slides):
-                # Skip slides that were extracted from ABCTB_TIF and have a "bad segmentation" marker in GridData.xlsx file
+                # Skip slides that have a "bad segmentation" marker in GridData.xlsx file
                 try:
                     if grid_DF.loc[slide_names[slide_num], 'bad segmentation'] == 1:
                         slides_with_bad_segmentation += 1
@@ -1434,6 +1436,11 @@ class Features_MILdataset(Dataset):
                     raise Exception('Debug')
                 except KeyError:
                     raise Exception('Debug')
+
+                # skip slides that don't belong to CARMEL dataset in case carmel_only flag is TRUE:
+                if slide_names[slide_num].split('.')[-1] != 'mrxs' and self.carmel_only:  # This is not a CARMEL slide and carmel_only flag is TRUE
+                    continue
+
 
                 total_slides += 1
                 feature_1 = features[slide_num, :, :, 0]
@@ -1574,6 +1581,402 @@ class Features_MILdataset(Dataset):
                     'features': self.features[item][tile_idx],
                     'num tiles': self.num_tiles[item]
                     }
+
+
+class Combined_Features_for_MIL_Training_dataset(Dataset):
+    def __init__(self,
+                 dataset_list: list = ['CAT', 'CARMEL'],
+                 similar_dataset: str = 'CARMEL',
+                 bag_size: int = 100,
+                 minimum_tiles_in_slide: int = 50,
+                 is_per_patient: bool = False,  # if True than data will be gathered and returned per patient (else per slide)
+                 is_all_tiles: bool = False,  # if True than all slide tiles will be used (else only bag_tiles number of tiles)
+                 fixed_tile_num: int = None,
+                 is_repeating_tiles: bool = True,  # if True than the tile pick from each slide/patient is with repeating elements
+                 target: str = 'ER',
+                 is_train: bool = False,
+                 data_limit: int = None,  # if 'None' than there will be no data limit. If a number is specified than it'll be the data limit
+                 test_fold: int = 1,
+                 print_timing: bool = False,
+                 slide_repetitions: int = 1
+                 ):
+
+        if similar_dataset != 'CARMEL':
+            raise Exception('ONLY the case were CARMEL is the similar_dataset is implemented')
+
+        self.is_per_patient, self.is_all_tiles, self.is_repeating_tiles = is_per_patient, is_all_tiles, is_repeating_tiles
+        self.bag_size = bag_size
+        self.train_type = 'Features'
+        self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
+
+        self.slide_data = {}
+
+
+
+        # Get data location:
+        datasets_location = self.__dataset_properties_to_location__(dataset_list, target, test_fold, is_train)
+
+        bad_num_of_good_tiles, slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0, 0
+        total_slides = 0
+        slides_from_same_patient_with_different_target_values = 0
+
+        for dataset, data_location, dataset_name in datasets_location:
+            dataset_slide_names = []
+            dataset_labels = []
+            dataset_targets = []
+            dataset_features = []
+            dataset_num_tiles = []
+            dataset_scores = []
+            dataset_tile_scores = []
+            dataset_patient_data = {}
+            dataset_bad_patient_list = []
+            dataset_patient_list = []
+
+            data_files = glob(os.path.join(data_location, '*.data'))
+            if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
+                data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data'))
+            if os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data') in data_files:
+                data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
+
+            if sys.platform == 'darwin':
+                if dataset == 'CAT':
+                    grid_location_dict = {
+                        #'TCGA': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/TCGA_Grid_data.xlsx',
+                        #'ABCTB': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/ABCTB_TIF_Grid_data.xlsx',
+                        'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+                elif dataset == 'CARMEL':
+                    grid_location_dict = {
+                        'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+                else:
+                    raise Exception("Need to write which dictionaries to use for this receptor case")
+
+            elif sys.platform == 'linux':
+                if dataset == 'CAT':
+                    grid_location_dict = {
+                        #'TCGA': r'/mnt/gipmed_new/Data/Breast/TCGA/Grids_10/Grid_data.xlsx',
+                        #'ABCTB': r'/mnt/gipmed_new/Data/ABCTB_TIF/Grids_10/Grid_data.xlsx',
+                        'CARMEL': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+                elif dataset == 'CARMEL':
+                    grid_location_dict = {
+                        'CARMEL': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+                else:
+                    raise Exception("Need to write which dictionaries to use in this receptor case")
+
+            grid_DF = pd.DataFrame()
+            for key in grid_location_dict.keys():
+                new_grid_DF = pd.read_excel(grid_location_dict[key])
+                grid_DF = pd.concat([grid_DF, new_grid_DF])
+
+            grid_DF.set_index('file', inplace=True)
+
+            for file_idx, file in enumerate(tqdm(data_files)):
+                with open(os.path.join(data_location, file), 'rb') as filehandle:
+                    inference_data = pickle.load(filehandle)
+
+                try:
+                    labels, targets, scores, patch_scores, slide_names, features = inference_data
+                except ValueError:
+                    raise Exception('Debug')
+
+                num_slides, max_tile_num = features.shape[0], features.shape[2]
+
+                for slide_num in range(num_slides):
+                    # skip slides that are not in the similar dataset:
+                    if slide_names[slide_num].split('.')[-1] != 'mrxs':  # This is NOT a CARMEL slide
+                        continue
+                    # Skip slides that have a "bad segmentation" marker in GridData.xlsx file
+                    try:
+                        if grid_DF.loc[slide_names[slide_num], 'bad segmentation'] == 1:
+                            slides_with_bad_segmentation += 1
+                            continue
+                    except ValueError:
+                        raise Exception('Debug')
+                    except KeyError:
+                        raise Exception('Debug')
+
+                    total_slides += 1
+                    feature_1 = features[slide_num, :, :, 0]
+                    nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
+                    tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+                    try:
+                        tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10'])
+                    except TypeError:
+                        raise Exception('Debug')
+
+                    if tiles_in_slide_from_grid_data < tiles_in_slide:  # Checking that the number of tiles in Grid_data.xlsx is equall to the one found in the actual data
+                        bad_num_of_good_tiles += 1
+                        tiles_in_slide = tiles_in_slide_from_grid_data
+
+                    if data_limit is not None and is_train and tiles_in_slide > data_limit:  # Limit the number of feature tiles according to argument "data_limit
+                        tiles_in_slide = data_limit
+
+                    if tiles_in_slide < minimum_tiles_in_slide:  # Checking that the slide has a minimum number of tiles to be useable
+                        slides_with_not_enough_tiles += 1
+                        continue
+
+                    # Now, we'll start going over the slides and save the data. we're doing that in two loops. One for each dataset.
+                    dataset_num_tiles.append(tiles_in_slide)
+                    dataset_features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+                    dataset_tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
+                    dataset_slide_names.append(slide_names[slide_num])
+                    dataset_labels.append(int(labels[slide_num]))
+                    dataset_targets.append(int(targets[slide_num]))
+                    dataset_scores.append(scores[slide_num])
+
+            self.slide_data[dataset] = {'slide names': dataset_slide_names,
+                                        'features': dataset_features,
+                                        'tile scores': dataset_tile_scores,
+                                        'labels': dataset_labels,
+                                        'targets': dataset_targets,
+                                        'slide scores': dataset_scores,
+                                        'num tiles': dataset_num_tiles}
+
+        # At this point we've extracted all the data relevant for the similar dataset from both feature datasets.
+        # Now, we'll check that both datasets has the same slides and that they are sorted in the same order.
+        # Checking if both datasets has the same slides:
+        if set(self.slide_data[datasets_location[0][0]]['slide names']) - set(self.slide_data[datasets_location[1][0]]['slide names']):
+            raise Exception('Datasets has different amount of slides. This case is not implemented')
+
+        # Sorting both datasets:
+        for dataset, _, _ in datasets_location:
+            sort_order = np.argsort(np.array(self.slide_data[dataset]['slide names']))
+            self.slide_data[dataset]['slide names'] = list(np.array(self.slide_data[dataset]['slide names'])[sort_order])
+            self.slide_data[dataset]['features'] = list(np.array(self.slide_data[dataset]['features'])[sort_order])
+            self.slide_data[dataset]['tile scores'] = list(np.array(self.slide_data[dataset]['tile scores'])[sort_order])
+            self.slide_data[dataset]['labels'] = list(np.array(self.slide_data[dataset]['labels'])[sort_order])
+            self.slide_data[dataset]['targets'] = list(np.array(self.slide_data[dataset]['targets'])[sort_order])
+            self.slide_data[dataset]['slide scores'] = list(np.array(self.slide_data[dataset]['slide scores'])[sort_order])
+            self.slide_data[dataset]['num tiles'] = list(np.array(self.slide_data[dataset]['num tiles'])[sort_order])
+
+        # Checking that the targets are equal for both datasets and that there is an equal number of tiles per slide:
+        if (np.array(self.slide_data[datasets_location[0][0]]['targets']) - np.array(self.slide_data[datasets_location[1][0]]['targets'])).sum() != 0:
+            raise Exception('Datasets targets are not equal')
+
+        if abs(np.array(self.slide_data[datasets_location[0][0]]['num tiles']) - np.array(self.slide_data[datasets_location[1][0]]['num tiles'])).sum() != 0:
+            raise Exception('Datasets num tiles are not equal')
+
+        '''
+                if is_per_patient:
+                    # calculate patient id:
+                    patient = slide_names[slide_num].split('.')[0]
+                    if patient.split('-')[0] == 'TCGA':
+                        patient = '-'.join(patient.split('-')[:3])
+                    elif slide_names[slide_num].split('.')[-1] == 'mrxs':  # This is a CARMEL slide
+                        patient = slides_data_DF_CARMEL.loc[slide_names[slide_num], 'patient barcode']
+
+                    # insert to the "all patient list"
+                    patient_list.append(patient)  # This list includes the patients with multiple targets
+
+                    # Check if the patient has already been observed to be with multiple targets.
+                    # if so count the slide as bad slide and move on to the next slide
+                    if patient in self.bad_patient_list:
+                        slides_from_same_patient_with_different_target_values += 1
+                        continue
+
+                    # in case this patient has already been seen, than it has multiple slides
+                    if patient in self.patient_data.keys():
+                        patient_dict = self.patient_data[patient]
+
+                        # Check if the patient has multiple targets
+                        patient_same_target = True if int(targets[slide_num]) == patient_dict['target'] else False  # Checking the the patient target is not changing between slides
+                        # if the patient has multiple targets than:
+                        if not patient_same_target:
+                            slides_from_same_patient_with_different_target_values += 1 + len(patient_dict['slides'])  # we skip more than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dict
+                            self.patient_data.pop(patient)  #  remove it from the dictionary of legitimate patients
+                            self.bad_patient_list.append(patient)  # insert it to the list of non legitimate patients
+                            continue  # and move on to the next slide
+
+                        patient_dict['num tiles'].append(tiles_in_slide)
+                        patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
+                        patient_dict['labels'].append(int(labels[slide_num]))
+                        patient_dict['slides'].append(slide_names[slide_num])
+                        patient_dict['scores'].append(scores[slide_num])
+
+                        # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
+                        if self.fixed_tile_num is not None:
+                            tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
+
+                        features_old = patient_dict['features']
+                        features_new = features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)
+                        patient_dict['features'] = np.concatenate((features_old, features_new), axis=0)
+
+                    else:
+                        patient_dict = {'num tiles': [tiles_in_slide],
+                                        'features': features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32),
+                                        'tile scores': patch_scores[slide_num, :tiles_in_slide],
+                                        'labels': [int(labels[slide_num])],
+                                        'target': int(targets[slide_num]),
+                                        'slides': [slide_names[slide_num]],
+                                        'scores': [scores[slide_num]]
+                                        }
+
+                        self.patient_data[patient] = patient_dict
+
+                else:
+                    # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
+                    if self.fixed_tile_num is not None:
+                        tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
+
+                    self.num_tiles.append(tiles_in_slide)
+                    self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+                    self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
+                    self.slide_names.append(slide_names[slide_num])
+                    self.labels.append(int(labels[slide_num]))
+                    self.targets.append(int(targets[slide_num]))
+                    self.scores.append(scores[slide_num])
+                '''
+
+        bad_num_of_good_tiles //= len(datasets_location)
+        slides_with_bad_segmentation //= len(datasets_location)
+        slides_with_not_enough_tiles //= len(datasets_location)
+        total_slides //= len(datasets_location)
+        if bad_num_of_good_tiles:
+            print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
+        if slides_with_bad_segmentation:
+            print('There are {}/{} slides with \"bad segmentation\" '.format(slides_with_bad_segmentation, total_slides))
+        if slides_with_not_enough_tiles:
+            print('There are {}/{} slides with less than {} tiles '.format(slides_with_not_enough_tiles, total_slides, minimum_tiles_in_slide))
+
+        '''if self.is_per_patient:
+            self.patient_keys = list(self.patient_data.keys())
+            print('Skipped {}/{} slides for {}/{} patients (Inconsistent target value for same patient)'.format(
+                slides_from_same_patient_with_different_target_values, total_slides, len(self.bad_patient_list),
+                len(set(patient_list))))
+            print('Initialized Dataset with {} feature slides in {} patients'.format(total_slides - slides_from_same_patient_with_different_target_values - slides_with_not_enough_tiles,
+                                                                                     self.__len__()))
+        else:'''
+
+        print('Initialized Dataset with {} feature slides'.format(self.__len__()))
+
+    def __len__(self):
+        '''if self.is_per_patient:
+            return len(self.patient_keys)
+        else:'''
+
+        return len(self.slide_data[list(self.slide_data.keys())[0]]['slide names'])
+
+    def __getitem__(self, item):
+        '''if self.is_per_patient:
+            patient_data = self.patient_data[self.patient_keys[item]]
+            num_tiles = int(np.array(patient_data['num tiles']).sum())
+
+            if self.is_repeating_tiles:
+                tile_idx = list(range(num_tiles)) if self.is_all_tiles else choices(range(num_tiles), k=self.bag_size)
+            else:
+                tile_idx = list(range(num_tiles)) if self.is_all_tiles else sample(range(num_tiles), k=self.bag_size)
+
+            return {'labels': np.array(patient_data['labels']).mean(),
+                    'targets': patient_data['target'],
+                    'scores': np.array(patient_data['scores']).mean(),
+                    'tile scores': patient_data['tile scores'][tile_idx],
+                    'features': patient_data['features'][tile_idx],
+                    'num tiles': num_tiles
+                    }
+
+        else:'''
+
+        tile_idx = list(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item])) if self.is_all_tiles else choices(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item]), k=self.bag_size)
+        dataset_names = list(self.slide_data.keys())
+
+        return {dataset_names[0]:
+                    {'targets': self.slide_data[dataset_names[0]]['targets'][item],
+                     'slide scores': self.slide_data[dataset_names[0]]['slide scores'][item],
+                     'tile scores': self.slide_data[dataset_names[0]]['tile scores'][item][tile_idx],
+                     'slide name': self.slide_data[dataset_names[0]]['slide names'][item],
+                     'features': self.slide_data[dataset_names[0]]['features'][item][tile_idx],
+                     'num tiles': self.slide_data[dataset_names[0]]['num tiles'][item]
+                     },
+                dataset_names[1]:
+                    {'targets': self.slide_data[dataset_names[1]]['targets'][item],
+                     'slide scores': self.slide_data[dataset_names[1]]['slide scores'][item],
+                     'tile scores': self.slide_data[dataset_names[1]]['tile scores'][item],
+                     'slide name': self.slide_data[dataset_names[1]]['slide names'][item],
+                     'features': self.slide_data[dataset_names[1]]['features'][item],
+                     'num tiles': self.slide_data[dataset_names[1]]['num tiles'][item]
+                     }
+                }
+
+
+    def __dataset_properties_to_location__(self, dataset_name_list: list, receptor: str, test_fold: int, is_train: bool = False):
+        # Basic data definition:
+        if sys.platform == 'darwin':
+            dataset_full_data_dict = {'TCGA_ABCTB':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Train',
+                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Test',
+                                                     'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
+                                                     }
+                                                }
+                                           },
+                                      'CAT':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train',
+                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test',
+                                                     'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1'}
+                                                }
+                                           },
+                                      'CARMEL':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train',
+                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test',
+                                                     'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1'
+                                                     }
+                                                }
+                                           }
+                                      }
+        elif sys.platform == 'linux':
+            dataset_full_data_dict = {'TCGA_ABCTB':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features',
+                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/test_inference_w_features',
+                                                     'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
+                                                     }
+                                                }
+                                           },
+                                      'CAT':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features',
+                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features',
+                                                     'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1'}
+                                                }
+                                           },
+                                      'CARMEL':
+                                          {'ER':
+                                               {1:
+                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/train_w_features',
+                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features',
+                                                     'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1'
+                                                     }
+                                                }
+                                           }
+                                      }
+
+        dataset_location_list = []
+
+        for dataset in dataset_name_list:
+            location = dataset_full_data_dict[dataset][receptor][test_fold]['Train' if is_train else 'Test']
+            dataset_name = dataset_full_data_dict[dataset][receptor][test_fold]['Dataset name']
+            dataset_location_list.append([dataset, location, dataset_name])
+
+        return dataset_location_list
+
 
 
 class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
