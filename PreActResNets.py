@@ -278,7 +278,8 @@ class PreActResNet_Ron(nn.Module):
             out = self.layer4(out)
 
             #print('OutPut size from Conv-Net is of size {}'.format(out.shape))
-            if x.shape[2] <= 256 or x.shape[2] == 1024 or x.shape[2] == 2048:  # If input is in the original tile size dimensions (using <= and not == for the case tile is 128 pixels)
+            #if x.shape[2] <= 256 or x.shape[2] == 1024 or x.shape[2] == 2048:  # If input is in the original tile size dimensions (using <= and not == for the case tile is 128 pixels)
+            if x.shape[2] <= 256 or x.shape[2] == 1024 or x.shape[2] >= 2048:
                 image_to_compute_MilWeights = F.avg_pool2d(out, kernel_size=32, stride=1, padding=16, count_include_pad=False)
                 initial_image_size = out.shape[2]
                 out_for_dict = out

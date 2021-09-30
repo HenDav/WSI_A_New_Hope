@@ -44,12 +44,9 @@ parser.add_argument('-im', dest='images', action='store_true', help='save data i
 parser.add_argument('-llf', dest='last_layer_freeze', action='store_true', help='get last layer and freeze it ?')
 parser.add_argument('-dl', '--data_limit', type=int, default=None, help='Data Limit to a specified number of feature tiles')
 parser.add_argument('-repData', dest='repeating_data', action='store_false', help='sample data with repeat ?')
+parser.add_argument('-conly', dest='carmel_only', action='store_true', help='Use ONLY CARMEL slides  ?')
 
 args = parser.parse_args()
-
-'''args.last_layer_freeze = True
-args.per_patient_training = True
-args.repeating_data = False'''
 
 EPS = 1e-7
 
@@ -506,7 +503,8 @@ if __name__ == '__main__':
                                                      Receptor=args.target + '_Features',
                                                      MultiSlide=True,
                                                      DataSet_Slide_magnification=0,
-                                                     data_limit=args.data_limit)
+                                                     data_limit=args.data_limit,
+                                                     carmel_only=args.carmel_only)
     else:
         args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx,\
         args.dataset, args.target, is_MultiSlide, args.model, args.mag = utils.run_data(experiment=args.experiment)
@@ -522,7 +520,8 @@ if __name__ == '__main__':
                                               target=args.target,
                                               is_train=True,
                                               data_limit=args.data_limit,
-                                              test_fold=args.test_fold)
+                                              test_fold=args.test_fold,
+                                              carmel_only=args.carmel_only)
 
     test_dset = datasets.Features_MILdataset(dataset=args.dataset,
                                              data_location=test_data_dir,
@@ -530,7 +529,8 @@ if __name__ == '__main__':
                                              bag_size=args.tiles_per_bag,
                                              target=args.target,
                                              is_train=False,
-                                             test_fold=args.test_fold)
+                                             test_fold=args.test_fold,
+                                             carmel_only=args.carmel_only)
 
     train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)

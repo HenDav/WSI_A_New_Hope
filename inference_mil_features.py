@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=10402, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=10411, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -77,19 +77,28 @@ if sys.platform == 'darwin':
         dset = 'CAT'
         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
 
-    args.save_tile_scores = True
-    is_per_patient = False if args.save_tile_scores else True
-    carmel_only = True
+    args.save_tile_scores = False
+    is_per_patient = False
+    #is_per_patient = False if args.save_tile_scores else True
+    carmel_only = False
 
 # Get data:
-inf_dset = datasets.Features_MILdataset(dataset=dset,
-                                        data_location=test_data_dir,
-                                        target=target,
-                                        is_per_patient=is_per_patient,
-                                        is_all_tiles=True,
-                                        is_train=False,
-                                        carmel_only=carmel_only,
-                                        test_fold=test_fold)
+if dataset == 'Combined Features':
+    inf_dset = datasets.Combined_Features_for_MIL_Training_dataset(is_all_tiles=True,
+                                                                   target=target,
+                                                                   is_train=False,
+                                                                   test_fold=test_fold,
+                                                                   is_per_patient=is_per_patient)
+
+else:
+    inf_dset = datasets.Features_MILdataset(dataset=dset,
+                                            data_location=test_data_dir,
+                                            target=target,
+                                            is_per_patient=is_per_patient,
+                                            is_all_tiles=True,
+                                            is_train=False,
+                                            carmel_only=carmel_only,
+                                            test_fold=test_fold)
 
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -100,23 +109,27 @@ legend_labels = []
 if args.save_tile_scores and len(args.from_epoch) > 1:
     raise Exception('When saving tile scores, there should be only one model')
 
+# When saving the data we save data for all features (including carmel) so there is no need to save it again when
+# working only on carmel slides
 if args.save_tile_scores and not carmel_only:
     all_slides_weights_before_sftmx_list = []
     all_slides_weights_after_sftmx_list = []
-    #all_slides_weights_list = []
     all_slides_tile_scores_list = []
     all_slides_scores_list = []
 
     all_slides_weights_before_sftmx_list.append({})
     all_slides_weights_after_sftmx_list.append({})
-    #all_slides_weights_list.append({})
     all_slides_tile_scores_list.append({})
     all_slides_scores_list.append({})
 
-    all_slides_tile_scores_list_ran = []
-    all_slides_scores_list_ran = []
-    all_slides_tile_scores_list_ran.append({})
-    all_slides_scores_list_ran.append({})
+    if dataset == 'Combined Features':
+        all_slides_tile_scores_list_ran = {'CAT': [{}], 'CARMEL': [{}]}
+        all_slides_scores_list_ran = {'CAT': [{}], 'CARMEL': [{}]}
+    else:
+        all_slides_tile_scores_list_ran = []
+        all_slides_scores_list_ran = []
+        all_slides_tile_scores_list_ran.append({})
+        all_slides_scores_list_ran.append({})
 
 # Load model
 model = eval(model_name)
@@ -127,7 +140,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
 
     model.load_state_dict(model_data_loaded['model_state_dict'])
 
-    scores_reg = []
+    scores_reg = [] if dataset != 'Combined Features' else {inf_dset.dataset_list[0]: [], inf_dset.dataset_list[1]: []}
     all_scores_mil, all_labels_mil, all_targets = [], [], []
     total, correct_pos, correct_neg = 0, 0, 0
     total_pos, total_neg = 0, 0
@@ -140,58 +153,117 @@ for model_num, model_epoch in enumerate(args.from_epoch):
 
     with torch.no_grad():
         for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
-            labels = minibatch['labels']
-            target = minibatch['targets']
-            data = minibatch['features']
+            if dataset == 'Combined Features':
+                target = minibatch['CAT']['targets']
+                data_CAT = minibatch['CAT']['features']
+                data_CARMEL = minibatch['CARMEL']['features']
+
+                data_CAT, data_CARMEL, target = data_CAT.to(DEVICE), data_CARMEL.to(DEVICE), target.to(DEVICE)
+                data = {'CAT': data_CAT,
+                        'CARMEL': data_CARMEL}
+            else:
+                target = minibatch['targets']
+                data = minibatch['features']
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
             if model_num == 0:
-                scores_reg.append(minibatch['scores'].mean().cpu().item())
+                if dataset == 'Combined Features':
+                    scores_reg['CAT'].append(minibatch['CAT']['tile scores'].mean().cpu().item())
+                    scores_reg['CARMEL'].append(minibatch['CARMEL']['tile scores'].mean().cpu().item())
+                else:
+                    scores_reg.append(minibatch['scores'].mean().cpu().item())
 
-            data, target = data.to(DEVICE), target.to(DEVICE)
             outputs, weights_after_sftmx, weights_before_softmax = model(x=None, H=data)
             #print(data.shape, target.shape, outputs.shape, weights.shape)
 
-            weights_after_sftmx = weights_after_sftmx.cpu().detach().numpy()
-            weights_before_sftmx = weights_before_softmax.cpu().detach().numpy()
+            if dataset == 'Combined Features':
+                for key in list(weights_after_sftmx.keys()):
+                    weights_after_sftmx[key] = weights_after_sftmx[key].cpu().detach().numpy()
+                    weights_before_softmax[key] = weights_before_softmax[key].cpu().detach().numpy()
+            else:
+                weights_after_sftmx = weights_after_sftmx.cpu().detach().numpy()
+                weights_before_softmax = weights_before_softmax.cpu().detach().numpy()
+
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
             if args.save_tile_scores and not carmel_only:
-                slide_name = minibatch['slide name']
-                tile_scores_ran = minibatch['tile scores'].cpu().detach().numpy()[0]
+                if dataset == 'Combined Features':
+                    for key in list(minibatch.keys()):
+                        slide_name = minibatch[key]['slide name']
+                        tile_scores_ran = minibatch[key]['tile scores'].cpu().detach().numpy()[0]
 
-                all_slides_scores_list_ran[model_num][slide_name[0]] = minibatch['scores'].cpu().detach().numpy()
+                        all_slides_scores_list_ran[key][model_num][slide_name[0]] = minibatch[key]['slide scores'].cpu().detach().numpy()
 
-                if len(tile_scores_ran) != 500:
-                    new_tile_scores_ran = np.zeros(500, )
-                    new_tile_scores_ran[:len(tile_scores_ran), ] = tile_scores_ran
-                    tile_scores_ran = new_tile_scores_ran
+                        if len(tile_scores_ran) != 500:
+                            new_tile_scores_ran = np.zeros(500, )
+                            new_tile_scores_ran[:len(tile_scores_ran), ] = tile_scores_ran
+                            tile_scores_ran = new_tile_scores_ran
 
-                all_slides_tile_scores_list_ran[model_num][slide_name[0]] = tile_scores_ran
+                        all_slides_tile_scores_list_ran[key][model_num][slide_name[0]] = tile_scores_ran
 
-                features_to_save = torch.transpose(data.squeeze(0), 1, 0)
-                slide_tile_scores_list = utils.extract_tile_scores_for_slide(features_to_save, [model])
+                        features_to_save = torch.transpose(data[key].squeeze(0), 1, 0)
+                        slide_tile_scores_list = utils.extract_tile_scores_for_slide(features_to_save, [model])
 
-                if len(slide_tile_scores_list[0]) != 500:
-                    new_slide_tile_scores_list = np.zeros(500, )
-                    new_slide_tile_scores_list[:len(slide_tile_scores_list[0]), ] = slide_tile_scores_list[0]
-                    slide_tile_scores_list[0] = new_slide_tile_scores_list
+                        if len(slide_tile_scores_list[0]) != 500:
+                            new_slide_tile_scores_list = np.zeros(500, )
+                            new_slide_tile_scores_list[:len(slide_tile_scores_list[0]), ] = slide_tile_scores_list[0]
+                            slide_tile_scores_list[0] = new_slide_tile_scores_list
 
-                if weights_after_sftmx.shape[1] != 500:
-                    new_weights = np.zeros((1, 500))
-                    new_weights[:, :weights_after_sftmx.shape[1]] = weights_after_sftmx
-                    weights_after_sftmx = new_weights
+                        if weights_after_sftmx.shape[1] != 500:
+                            new_weights = np.zeros((1, 500))
+                            new_weights[:, :weights_after_sftmx.shape[1]] = weights_after_sftmx
+                            weights_after_sftmx = new_weights
 
-                if weights_before_sftmx.shape[1] != 500:
-                    new_weights = np.zeros((1, 500))
-                    new_weights[:, :weights_before_sftmx.shape[1]] = weights_before_sftmx
-                    weights_before_sftmx = new_weights
+                        if weights_before_sftmx.shape[1] != 500:
+                            new_weights = np.zeros((1, 500))
+                            new_weights[:, :weights_before_sftmx.shape[1]] = weights_before_sftmx
+                            weights_before_sftmx = new_weights
 
-                all_slides_tile_scores_list[model_num][slide_name[0]] = slide_tile_scores_list[0]
-                all_slides_weights_before_sftmx_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
-                all_slides_weights_after_sftmx_list[model_num][slide_name[0]] = weights_after_sftmx.reshape(weights_after_sftmx.shape[1], )
-                #all_slides_weights_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
-                all_slides_scores_list[model_num][slide_name[0]] = outputs[:, 1].cpu().detach().numpy()
+                        all_slides_tile_scores_list[model_num][slide_name[0]] = slide_tile_scores_list[0]
+                        all_slides_weights_before_sftmx_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(
+                            weights_before_sftmx.shape[1], )
+                        all_slides_weights_after_sftmx_list[model_num][slide_name[0]] = weights_after_sftmx.reshape(
+                            weights_after_sftmx.shape[1], )
+                        # all_slides_weights_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
+                        all_slides_scores_list[model_num][slide_name[0]] = outputs[:, 1].cpu().detach().numpy()
+
+                else:
+                    slide_name = minibatch['slide name']
+                    tile_scores_ran = minibatch['tile scores'].cpu().detach().numpy()[0]
+
+                    all_slides_scores_list_ran[model_num][slide_name[0]] = minibatch['scores'].cpu().detach().numpy()
+
+                    if len(tile_scores_ran) != 500:
+                        new_tile_scores_ran = np.zeros(500, )
+                        new_tile_scores_ran[:len(tile_scores_ran), ] = tile_scores_ran
+                        tile_scores_ran = new_tile_scores_ran
+
+                    all_slides_tile_scores_list_ran[model_num][slide_name[0]] = tile_scores_ran
+
+                    features_to_save = torch.transpose(data.squeeze(0), 1, 0)
+                    slide_tile_scores_list = utils.extract_tile_scores_for_slide(features_to_save, [model])
+
+                    if len(slide_tile_scores_list[0]) != 500:
+                        new_slide_tile_scores_list = np.zeros(500, )
+                        new_slide_tile_scores_list[:len(slide_tile_scores_list[0]), ] = slide_tile_scores_list[0]
+                        slide_tile_scores_list[0] = new_slide_tile_scores_list
+
+                    if weights_after_sftmx.shape[1] != 500:
+                        new_weights = np.zeros((1, 500))
+                        new_weights[:, :weights_after_sftmx.shape[1]] = weights_after_sftmx
+                        weights_after_sftmx = new_weights
+
+                    if weights_before_sftmx.shape[1] != 500:
+                        new_weights = np.zeros((1, 500))
+                        new_weights[:, :weights_before_sftmx.shape[1]] = weights_before_sftmx
+                        weights_before_sftmx = new_weights
+
+                    all_slides_tile_scores_list[model_num][slide_name[0]] = slide_tile_scores_list[0]
+                    all_slides_weights_before_sftmx_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
+                    all_slides_weights_after_sftmx_list[model_num][slide_name[0]] = weights_after_sftmx.reshape(weights_after_sftmx.shape[1], )
+                    #all_slides_weights_list[model_num][slide_name[0]] = weights_before_sftmx.reshape(weights_before_sftmx.shape[1], )
+                    all_slides_scores_list[model_num][slide_name[0]] = outputs[:, 1].cpu().detach().numpy()
 
             scores_mil = np.concatenate((scores_mil, outputs[:, 1].cpu().detach().numpy()))
             true_targets = np.concatenate((true_targets, target.cpu().detach().numpy()))
@@ -218,16 +290,31 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                                               all_slides_weights_before_sftmx_list, all_slides_weights_after_sftmx_list,
                                               [model], output_dir, args.from_epoch, '')
     if model_num == 0:
-        fpr_reg, tpr_reg, _ = roc_curve(true_targets, np.array(scores_reg))
-        roc_auc_reg = auc(fpr_reg, tpr_reg)
-        plt.plot(fpr_reg, tpr_reg)
-        if is_per_patient:
-            label_reg = 'REG Per Patient AUC='
-            label_MIL = 'Model' + str(model_epoch) + ': MIL Per Patient AUC='
+        if dataset == 'Combined Features':
+            fpr_reg, tpr_reg, roc_auc_reg = {}, {}, {}
+            fpr_reg['CAT'], tpr_reg['CAT'], _ = roc_curve(true_targets, np.array(scores_reg['CAT']))
+            fpr_reg['CARMEL'], tpr_reg['CARMEL'], _ = roc_curve(true_targets, np.array(scores_reg['CARMEL']))
+            roc_auc_reg['CAT'] = auc(fpr_reg['CAT'], tpr_reg['CAT'])
+            roc_auc_reg['CARMEL'] = auc(fpr_reg['CARMEL'], tpr_reg['CARMEL'])
+            plt.plot(fpr_reg['CAT'], tpr_reg['CAT'])
+            plt.plot(fpr_reg['CARMEL'], tpr_reg['CARMEL'])
         else:
-            label_reg = 'REG Per Slide AUC='
-            label_MIL = 'Model' + str(model_epoch) + ': MIL Per Slide AUC='
-        legend_labels.append(label_reg + str(round(roc_auc_reg, 3)) + ')')
+            fpr_reg, tpr_reg, _ = roc_curve(true_targets, np.array(scores_reg))
+            roc_auc_reg = auc(fpr_reg, tpr_reg)
+            plt.plot(fpr_reg, tpr_reg)
+
+        postfix = 'Patient' if is_per_patient else 'Slide'
+        if dataset == 'Combined Features':
+            for key in list(minibatch.keys()):
+                label_reg = 'REG [' + key + '] Per ' + postfix + ' AUC='
+                legend_labels.append(label_reg + str(round(roc_auc_reg[key], 3)) + ')')
+        else:
+            label_reg = 'REG Per ' + postfix + ' AUC='
+            legend_labels.append(label_reg + str(round(roc_auc_reg, 3)) + ')')
+
+        label_MIL = 'Model' + str(model_epoch) + ': MIL Per ' + postfix + ' AUC='
+
+
 
     #acc = 100 * correct_labeling / total
     #balanced_acc = 100 * (correct_pos / (total_pos + EPS) + correct_neg / (total_neg + EPS)) / 2

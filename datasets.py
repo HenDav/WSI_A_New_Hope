@@ -12,6 +12,7 @@ from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks, map_original_grid_list_to_equiv_grid_list
 from utils import HEDColorJitter, define_transformations, assert_dataset_target
 from utils import show_patches_and_transformations, get_datasets_dir_dict
+from utils import dataset_properties_to_location
 import openslide
 from tqdm import tqdm
 import sys
@@ -89,7 +90,7 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
-        if self.target_kind=='OR':
+        if self.target_kind == 'OR':
             PR_targets = list(self.meta_data_DF['PR status'])
             ER_targets = list(self.meta_data_DF['ER status'])
             all_targets = ['Missing Data']*len(ER_targets)
@@ -1471,7 +1472,7 @@ class Features_MILdataset(Dataset):
                         patient = slides_data_DF_CARMEL.loc[slide_names[slide_num], 'patient barcode']
 
                     # insert to the "all patient list"
-                    patient_list.append(patient)  # This list includes the patients with multiple targets
+                    patient_list.append(patient)
 
                     # Check if the patient has already been observed to be with multiple targets.
                     # if so count the slide as bad slide and move on to the next slide
@@ -1605,32 +1606,40 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
             raise Exception('ONLY the case were CARMEL is the similar_dataset is implemented')
 
         self.is_per_patient, self.is_all_tiles, self.is_repeating_tiles = is_per_patient, is_all_tiles, is_repeating_tiles
+        self.dataset_list = dataset_list
         self.bag_size = bag_size
         self.train_type = 'Features'
         self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
 
-        self.slide_data = {}
-
-
+        if self.is_per_patient:
+            self.patient_data = {}
+        else:
+            self.slide_data = {}
 
         # Get data location:
-        datasets_location = self.__dataset_properties_to_location__(dataset_list, target, test_fold, is_train)
+        datasets_location = dataset_properties_to_location(dataset_list, target, test_fold, is_train)
 
         bad_num_of_good_tiles, slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0, 0
         total_slides = 0
         slides_from_same_patient_with_different_target_values = 0
 
-        for dataset, data_location, dataset_name in datasets_location:
-            dataset_slide_names = []
-            dataset_labels = []
-            dataset_targets = []
-            dataset_features = []
-            dataset_num_tiles = []
-            dataset_scores = []
-            dataset_tile_scores = []
-            dataset_patient_data = {}
-            dataset_bad_patient_list = []
-            dataset_patient_list = []
+        print('Gathering data for {} Slides'.format(similar_dataset))
+        for dataset, data_location, dataset_name, _ in datasets_location:
+            print('Loading data from files related to {} Dataset'.format(dataset))
+
+            if self.is_per_patient:  # Variables needed when working per patient:
+                patient_list = []
+                bad_patient_list = []
+                patient_data = {}
+                slides_from_same_patient_with_different_target_values = 0
+            else:
+                dataset_slide_names = []
+                dataset_labels = []
+                dataset_targets = []
+                dataset_features = []
+                dataset_num_tiles = []
+                dataset_scores = []
+                dataset_tile_scores = []
 
             data_files = glob(os.path.join(data_location, '*.data'))
             if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
@@ -1727,116 +1736,155 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                         continue
 
                     # Now, we'll start going over the slides and save the data. we're doing that in two loops. One for each dataset.
-                    dataset_num_tiles.append(tiles_in_slide)
-                    dataset_features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
-                    dataset_tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
-                    dataset_slide_names.append(slide_names[slide_num])
-                    dataset_labels.append(int(labels[slide_num]))
-                    dataset_targets.append(int(targets[slide_num]))
-                    dataset_scores.append(scores[slide_num])
+                    if self.is_per_patient:
+                        # Calculate patient id:
+                        patient = slide_names[slide_num].split('.')[0]
+                        if patient.split('-')[0] == 'TCGA':
+                            patient = '-'.join(patient.split('-')[:3])
+                        elif slide_names[slide_num].split('.')[-1] == 'mrxs':  # This is a CARMEL slide
+                            patient = slides_data_DF_CARMEL.loc[slide_names[slide_num], 'patient barcode']
 
-            self.slide_data[dataset] = {'slide names': dataset_slide_names,
-                                        'features': dataset_features,
-                                        'tile scores': dataset_tile_scores,
-                                        'labels': dataset_labels,
-                                        'targets': dataset_targets,
-                                        'slide scores': dataset_scores,
-                                        'num tiles': dataset_num_tiles}
+                        # insert to the "all patient list"
+                        patient_list.append(patient)
+
+                        # Check if the patient has already been observed to be with multiple targets.
+                        # if so count the slide as bad slide and move on to the next slide
+                        if patient in bad_patient_list:
+                            slides_from_same_patient_with_different_target_values += 1
+                            continue
+
+                        # in case this patient has already been seen, than it has multiple slides
+                        if patient in patient_data.keys():
+                            patient_dict = patient_data[patient]
+
+                            # Check if the patient has multiple targets
+                            patient_same_target = True if int(targets[slide_num]) == patient_dict['target'] else False  # Checking the the patient target is not changing between slides
+                            # if the patient has multiple targets than:
+                            if not patient_same_target:
+                                slides_from_same_patient_with_different_target_values += 1 + len(patient_dict['slide names'])  # we skip more than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dict
+                                patient_data.pop(patient)  # remove it from the dictionary of legitimate patients
+                                bad_patient_list.append(patient)  # insert it to the list of non legitimate patients
+                                continue  # and move on to the next slide
+                            patient_dict['num tiles'].append(tiles_in_slide)
+                            patient_dict['tile scores'].append(patch_scores[slide_num, :tiles_in_slide])# = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
+                            patient_dict['labels'].append(int(labels[slide_num]))
+                            patient_dict['slide names'].append(slide_names[slide_num])
+                            patient_dict['slide scores'].append(scores[slide_num])
+
+                            # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
+                            if self.fixed_tile_num is not None:
+                                tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
+
+                            #features_old = patient_dict['features']
+                            #features_new = features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)
+                            #patient_dict['features'] = np.concatenate((features_old, features_new), axis=0)
+                            patient_dict['features'].append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+
+                        else:
+                            patient_dict = {'num tiles': [tiles_in_slide],
+                                            'features': [features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)],
+                                            'tile scores': [patch_scores[slide_num, :tiles_in_slide]],
+                                            'labels': [int(labels[slide_num])],
+                                            'target': int(targets[slide_num]),
+                                            'slide names': [slide_names[slide_num]],
+                                            'slide scores': [scores[slide_num]]
+                                            }
+                            patient_data[patient] = patient_dict
+
+                    else:
+                        dataset_num_tiles.append(tiles_in_slide)
+                        dataset_features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
+                        dataset_tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
+                        dataset_slide_names.append(slide_names[slide_num])
+                        dataset_labels.append(int(labels[slide_num]))
+                        dataset_targets.append(int(targets[slide_num]))
+                        dataset_scores.append(scores[slide_num])
+
+
+
+            if self.is_per_patient:
+                print('Found {} slides in {} Dataset, from same patients with different targets. Those slides will be excluded from {}'
+                      .format(slides_from_same_patient_with_different_target_values,
+                              dataset,
+                              'Training' if is_train else 'Testing'))
+
+                #self.slide_data[dataset] = patient_data
+                self.patient_data[dataset] = patient_data
+            else:
+                self.slide_data[dataset] = {'slide names': dataset_slide_names,
+                                            'features': dataset_features,
+                                            'tile scores': dataset_tile_scores,
+                                            'labels': dataset_labels,
+                                            'targets': dataset_targets,
+                                            'slide scores': dataset_scores,
+                                            'num tiles': dataset_num_tiles
+                                            }
 
         # At this point we've extracted all the data relevant for the similar dataset from both feature datasets.
         # Now, we'll check that both datasets has the same slides and that they are sorted in the same order.
         # Checking if both datasets has the same slides:
-        if set(self.slide_data[datasets_location[0][0]]['slide names']) - set(self.slide_data[datasets_location[1][0]]['slide names']):
-            raise Exception('Datasets has different amount of slides. This case is not implemented')
+        if self.is_per_patient:
+            # Checking that the patient list in each dataset is equal:
+            #if set(self.slide_data[datasets_location[0][0]].keys()) - set(self.slide_data[datasets_location[1][0]].keys()):
+            if set(self.patient_data[datasets_location[0][0]].keys()) - set(self.patient_data[datasets_location[1][0]].keys()):
+                raise Exception('Datasets has different amount of patients. This case is not implemented')
+            # Checking that the slide names for each patient is equal:
+            #patient_list = self.slide_data[datasets_location[0][0]].keys()
+            patient_list = self.patient_data[datasets_location[0][0]].keys()
+            for patient in patient_list:
+                #if set(self.slide_data[datasets_location[0][0]][patient]['slide names']) - set(self.slide_data[datasets_location[1][0]][patient]['slide names']):
+                if set(self.patient_data[datasets_location[0][0]][patient]['slide names']) - set(self.patient_data[datasets_location[1][0]][patient]['slide names']):
+                    raise Exception('Datasets has different amount of slides for patient {}. This case is not implemented'.format(patient))
+
+        else:
+            if set(self.slide_data[datasets_location[0][0]]['slide names']) - set(self.slide_data[datasets_location[1][0]]['slide names']):
+                raise Exception('Datasets has different amount of slides. This case is not implemented')
 
         # Sorting both datasets:
-        for dataset, _, _ in datasets_location:
-            sort_order = np.argsort(np.array(self.slide_data[dataset]['slide names']))
-            self.slide_data[dataset]['slide names'] = list(np.array(self.slide_data[dataset]['slide names'])[sort_order])
-            self.slide_data[dataset]['features'] = list(np.array(self.slide_data[dataset]['features'])[sort_order])
-            self.slide_data[dataset]['tile scores'] = list(np.array(self.slide_data[dataset]['tile scores'])[sort_order])
-            self.slide_data[dataset]['labels'] = list(np.array(self.slide_data[dataset]['labels'])[sort_order])
-            self.slide_data[dataset]['targets'] = list(np.array(self.slide_data[dataset]['targets'])[sort_order])
-            self.slide_data[dataset]['slide scores'] = list(np.array(self.slide_data[dataset]['slide scores'])[sort_order])
-            self.slide_data[dataset]['num tiles'] = list(np.array(self.slide_data[dataset]['num tiles'])[sort_order])
+        print('Sorting the Data per {} ...'.format('Patient' if self.is_per_patient else 'Slide'))
+        for dataset, _, _, _ in datasets_location:
+            if self.is_per_patient:
+                # The data in both dictionaries is arranged per patient and can be called by the patient number.
+                # We need now to sort the tile data in each patient so it'll be the same for both dictionaries.
+                # We already checked that both dataset contain the same patients and each patient has the same slides
+                for patient in list(self.patient_data[dataset].keys()):
+                    sort_order = np.argsort(np.array(self.patient_data[dataset][patient]['slide names']))
+                    self.patient_data[dataset][patient]['slide names'] =    list(np.array(self.patient_data[dataset][patient]['slide names'])[sort_order])
+                    self.patient_data[dataset][patient]['features'] =       list(np.array(self.patient_data[dataset][patient]['features'], dtype=object)[sort_order])
+                    self.patient_data[dataset][patient]['tile scores'] =    list(np.array(self.patient_data[dataset][patient]['tile scores'], dtype=object)[sort_order])
+                    self.patient_data[dataset][patient]['labels'] =         list(np.array(self.patient_data[dataset][patient]['labels'])[sort_order])
+                    self.patient_data[dataset][patient]['slide scores'] =   list(np.array(self.patient_data[dataset][patient]['slide scores'])[sort_order])
+                    self.patient_data[dataset][patient]['num tiles'] =      list(np.array(self.patient_data[dataset][patient]['num tiles'])[sort_order])
 
-        # Checking that the targets are equal for both datasets and that there is an equal number of tiles per slide:
-        if (np.array(self.slide_data[datasets_location[0][0]]['targets']) - np.array(self.slide_data[datasets_location[1][0]]['targets'])).sum() != 0:
-            raise Exception('Datasets targets are not equal')
+                    # We'll now convert the Features (self.patient_data[dataset][patient]['features']) and the tile scores into one big array:
+                    self.patient_data[dataset][patient]['features'] = np.concatenate(self.patient_data[dataset][patient]['features'], axis=0).astype(np.float32)
+                    self.patient_data[dataset][patient]['tile scores'] = np.concatenate(self.patient_data[dataset][patient]['tile scores'], axis=0).astype(np.float32)
+            else:
+                sort_order = np.argsort(np.array(self.slide_data[dataset]['slide names']))
+                self.slide_data[dataset]['slide names'] = list(np.array(self.slide_data[dataset]['slide names'])[sort_order])
+                self.slide_data[dataset]['features'] = list(np.array(self.slide_data[dataset]['features'], dtype=object)[sort_order])
+                self.slide_data[dataset]['tile scores'] = list(np.array(self.slide_data[dataset]['tile scores'], dtype=object)[sort_order])
+                self.slide_data[dataset]['labels'] = list(np.array(self.slide_data[dataset]['labels'])[sort_order])
+                self.slide_data[dataset]['targets'] = list(np.array(self.slide_data[dataset]['targets'])[sort_order])
+                self.slide_data[dataset]['slide scores'] = list(np.array(self.slide_data[dataset]['slide scores'])[sort_order])
+                self.slide_data[dataset]['num tiles'] = list(np.array(self.slide_data[dataset]['num tiles'])[sort_order])
 
-        if abs(np.array(self.slide_data[datasets_location[0][0]]['num tiles']) - np.array(self.slide_data[datasets_location[1][0]]['num tiles'])).sum() != 0:
-            raise Exception('Datasets num tiles are not equal')
+        if self.is_per_patient:
+            self.patient_list = list(patient_list)
+            for patient in self.patient_list:
+                # Checking that the targets are equal for both datasets and that there is an equal number of tiles per slide:
+                if self.patient_data[datasets_location[0][0]][patient]['target'] -\
+                        self.patient_data[datasets_location[1][0]][patient]['target'] != 0:
+                    raise Exception('Datasets targets for patient {} are not equal'.format(patient))
 
-        '''
-                if is_per_patient:
-                    # calculate patient id:
-                    patient = slide_names[slide_num].split('.')[0]
-                    if patient.split('-')[0] == 'TCGA':
-                        patient = '-'.join(patient.split('-')[:3])
-                    elif slide_names[slide_num].split('.')[-1] == 'mrxs':  # This is a CARMEL slide
-                        patient = slides_data_DF_CARMEL.loc[slide_names[slide_num], 'patient barcode']
+        else:
+            # Checking that the targets are equal for both datasets and that there is an equal number of tiles per slide:
+            if (np.array(self.slide_data[datasets_location[0][0]]['targets']) - np.array(self.slide_data[datasets_location[1][0]]['targets'])).sum() != 0:
+                raise Exception('Datasets targets are not equal')
 
-                    # insert to the "all patient list"
-                    patient_list.append(patient)  # This list includes the patients with multiple targets
-
-                    # Check if the patient has already been observed to be with multiple targets.
-                    # if so count the slide as bad slide and move on to the next slide
-                    if patient in self.bad_patient_list:
-                        slides_from_same_patient_with_different_target_values += 1
-                        continue
-
-                    # in case this patient has already been seen, than it has multiple slides
-                    if patient in self.patient_data.keys():
-                        patient_dict = self.patient_data[patient]
-
-                        # Check if the patient has multiple targets
-                        patient_same_target = True if int(targets[slide_num]) == patient_dict['target'] else False  # Checking the the patient target is not changing between slides
-                        # if the patient has multiple targets than:
-                        if not patient_same_target:
-                            slides_from_same_patient_with_different_target_values += 1 + len(patient_dict['slides'])  # we skip more than 1 slide since we need to count the current slide and the ones that are already inserted to the patient_dict
-                            self.patient_data.pop(patient)  #  remove it from the dictionary of legitimate patients
-                            self.bad_patient_list.append(patient)  # insert it to the list of non legitimate patients
-                            continue  # and move on to the next slide
-
-                        patient_dict['num tiles'].append(tiles_in_slide)
-                        patient_dict['tile scores'] = np.concatenate((patient_dict['tile scores'], patch_scores[slide_num, :tiles_in_slide]), axis=0)
-                        patient_dict['labels'].append(int(labels[slide_num]))
-                        patient_dict['slides'].append(slide_names[slide_num])
-                        patient_dict['scores'].append(scores[slide_num])
-
-                        # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
-                        if self.fixed_tile_num is not None:
-                            tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
-
-                        features_old = patient_dict['features']
-                        features_new = features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32)
-                        patient_dict['features'] = np.concatenate((features_old, features_new), axis=0)
-
-                    else:
-                        patient_dict = {'num tiles': [tiles_in_slide],
-                                        'features': features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32),
-                                        'tile scores': patch_scores[slide_num, :tiles_in_slide],
-                                        'labels': [int(labels[slide_num])],
-                                        'target': int(targets[slide_num]),
-                                        'slides': [slide_names[slide_num]],
-                                        'scores': [scores[slide_num]]
-                                        }
-
-                        self.patient_data[patient] = patient_dict
-
-                else:
-                    # Now we decide how many feature tiles will be taken w.r.t self.fixed_tile_num parameter
-                    if self.fixed_tile_num is not None:
-                        tiles_in_slide = tiles_in_slide if tiles_in_slide <= self.fixed_tile_num else self.fixed_tile_num
-
-                    self.num_tiles.append(tiles_in_slide)
-                    self.features.append(features[slide_num, :, :tiles_in_slide, :].squeeze(0).astype(np.float32))
-                    self.tile_scores.append(patch_scores[slide_num, :tiles_in_slide])
-                    self.slide_names.append(slide_names[slide_num])
-                    self.labels.append(int(labels[slide_num]))
-                    self.targets.append(int(targets[slide_num]))
-                    self.scores.append(scores[slide_num])
-                '''
+            # Checking if the num tiles are equal for both datasets:
+            if abs(np.array(self.slide_data[datasets_location[0][0]]['num tiles']) - np.array(self.slide_data[datasets_location[1][0]]['num tiles'])).sum() != 0:
+                raise Exception('Datasets num tiles are not equal')
 
         bad_num_of_good_tiles //= len(datasets_location)
         slides_with_bad_segmentation //= len(datasets_location)
@@ -1849,27 +1897,20 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
         if slides_with_not_enough_tiles:
             print('There are {}/{} slides with less than {} tiles '.format(slides_with_not_enough_tiles, total_slides, minimum_tiles_in_slide))
 
-        '''if self.is_per_patient:
-            self.patient_keys = list(self.patient_data.keys())
-            print('Skipped {}/{} slides for {}/{} patients (Inconsistent target value for same patient)'.format(
-                slides_from_same_patient_with_different_target_values, total_slides, len(self.bad_patient_list),
-                len(set(patient_list))))
-            print('Initialized Dataset with {} feature slides in {} patients'.format(total_slides - slides_from_same_patient_with_different_target_values - slides_with_not_enough_tiles,
-                                                                                     self.__len__()))
-        else:'''
-
         print('Initialized Dataset with {} feature slides'.format(self.__len__()))
 
     def __len__(self):
-        '''if self.is_per_patient:
-            return len(self.patient_keys)
-        else:'''
-
-        return len(self.slide_data[list(self.slide_data.keys())[0]]['slide names'])
+        if self.is_per_patient:
+            return len(self.patient_list)
+        else:
+            return len(self.slide_data[list(self.slide_data.keys())[0]]['slide names'])
 
     def __getitem__(self, item):
-        '''if self.is_per_patient:
-            patient_data = self.patient_data[self.patient_keys[item]]
+        if self.is_per_patient:
+            patient = self.patient_list[item]
+            dataset_names = list(self.patient_data.keys())
+
+            patient_data = self.patient_data[self.dataset_list[0]][patient]
             num_tiles = int(np.array(patient_data['num tiles']).sum())
 
             if self.is_repeating_tiles:
@@ -1877,106 +1918,41 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
             else:
                 tile_idx = list(range(num_tiles)) if self.is_all_tiles else sample(range(num_tiles), k=self.bag_size)
 
-            return {'labels': np.array(patient_data['labels']).mean(),
-                    'targets': patient_data['target'],
-                    'scores': np.array(patient_data['scores']).mean(),
-                    'tile scores': patient_data['tile scores'][tile_idx],
-                    'features': patient_data['features'][tile_idx],
-                    'num tiles': num_tiles
+            return {dataset_names[0]:
+                        {'targets': self.patient_data[dataset_names[0]][patient]['target'],
+                         'tile scores': self.patient_data[dataset_names[0]][patient]['tile scores'][tile_idx],
+                         'features': self.patient_data[dataset_names[0]][patient]['features'][tile_idx],
+                         'num tiles': int(np.array(self.patient_data[dataset_names[0]][patient]['num tiles']).sum())
+                         },
+                    dataset_names[1]:
+                        {'targets': self.patient_data[dataset_names[1]][patient]['target'],
+                         'tile scores': self.patient_data[dataset_names[1]][patient]['tile scores'][tile_idx],
+                         'features': self.patient_data[dataset_names[1]][patient]['features'][tile_idx],
+                         'num tiles': int(np.array(self.patient_data[dataset_names[1]][patient]['num tiles']).sum())
+                         }
                     }
 
-        else:'''
+        else:
+            tile_idx = list(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item])) if self.is_all_tiles else choices(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item]), k=self.bag_size)
+            dataset_names = list(self.slide_data.keys())
 
-        tile_idx = list(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item])) if self.is_all_tiles else choices(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item]), k=self.bag_size)
-        dataset_names = list(self.slide_data.keys())
-
-        return {dataset_names[0]:
-                    {'targets': self.slide_data[dataset_names[0]]['targets'][item],
-                     'slide scores': self.slide_data[dataset_names[0]]['slide scores'][item],
-                     'tile scores': self.slide_data[dataset_names[0]]['tile scores'][item][tile_idx],
-                     'slide name': self.slide_data[dataset_names[0]]['slide names'][item],
-                     'features': self.slide_data[dataset_names[0]]['features'][item][tile_idx],
-                     'num tiles': self.slide_data[dataset_names[0]]['num tiles'][item]
-                     },
-                dataset_names[1]:
-                    {'targets': self.slide_data[dataset_names[1]]['targets'][item],
-                     'slide scores': self.slide_data[dataset_names[1]]['slide scores'][item],
-                     'tile scores': self.slide_data[dataset_names[1]]['tile scores'][item],
-                     'slide name': self.slide_data[dataset_names[1]]['slide names'][item],
-                     'features': self.slide_data[dataset_names[1]]['features'][item],
-                     'num tiles': self.slide_data[dataset_names[1]]['num tiles'][item]
-                     }
-                }
-
-
-    def __dataset_properties_to_location__(self, dataset_name_list: list, receptor: str, test_fold: int, is_train: bool = False):
-        # Basic data definition:
-        if sys.platform == 'darwin':
-            dataset_full_data_dict = {'TCGA_ABCTB':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Train',
-                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Test',
-                                                     'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
-                                                     }
-                                                }
-                                           },
-                                      'CAT':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train',
-                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test',
-                                                     'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1'}
-                                                }
-                                           },
-                                      'CARMEL':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train',
-                                                     'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test',
-                                                     'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1'
-                                                     }
-                                                }
-                                           }
-                                      }
-        elif sys.platform == 'linux':
-            dataset_full_data_dict = {'TCGA_ABCTB':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features',
-                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/test_inference_w_features',
-                                                     'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
-                                                     }
-                                                }
-                                           },
-                                      'CAT':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features',
-                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features',
-                                                     'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1'}
-                                                }
-                                           },
-                                      'CARMEL':
-                                          {'ER':
-                                               {1:
-                                                    {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/train_w_features',
-                                                     'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features',
-                                                     'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1'
-                                                     }
-                                                }
-                                           }
-                                      }
-
-        dataset_location_list = []
-
-        for dataset in dataset_name_list:
-            location = dataset_full_data_dict[dataset][receptor][test_fold]['Train' if is_train else 'Test']
-            dataset_name = dataset_full_data_dict[dataset][receptor][test_fold]['Dataset name']
-            dataset_location_list.append([dataset, location, dataset_name])
-
-        return dataset_location_list
-
+            return {dataset_names[0]:
+                        {'targets': self.slide_data[dataset_names[0]]['targets'][item],
+                         'slide scores': self.slide_data[dataset_names[0]]['slide scores'][item],
+                         'tile scores': self.slide_data[dataset_names[0]]['tile scores'][item][tile_idx],
+                         'slide name': self.slide_data[dataset_names[0]]['slide names'][item],
+                         'features': self.slide_data[dataset_names[0]]['features'][item][tile_idx],
+                         'num tiles': self.slide_data[dataset_names[0]]['num tiles'][item]
+                         },
+                    dataset_names[1]:
+                        {'targets': self.slide_data[dataset_names[1]]['targets'][item],
+                         'slide scores': self.slide_data[dataset_names[1]]['slide scores'][item],
+                         'tile scores': self.slide_data[dataset_names[1]]['tile scores'][item][tile_idx],
+                         'slide name': self.slide_data[dataset_names[1]]['slide names'][item],
+                         'features': self.slide_data[dataset_names[1]]['features'][item][tile_idx],
+                         'num tiles': self.slide_data[dataset_names[1]]['num tiles'][item]
+                         }
+                    }
 
 
 class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
