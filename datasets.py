@@ -122,6 +122,9 @@ class WSI_Master_Dataset(Dataset):
                 print('slide_per_block: removing ' + str(len(excess_block_slides)) + ' slides')
             else:
                 IOError('slide_per_block only implemented for CARMEL dataset')
+        elif (DataSet == 'LEUKEMIA') and (target_kind in ['ALL', 'is_B']):
+            #remove slides with diagnosis day != 0
+            excess_block_slides = set(self.meta_data_DF.index[self.meta_data_DF['Day_0/15/33_fixed'] != 0])
         else:
             excess_block_slides = set()
 
@@ -258,7 +261,8 @@ class WSI_Master_Dataset(Dataset):
                         self.slides.append(tiles_dir)
                         self.grid_lists.append(0)
                     else:
-                        if self.train_type == 'Infer_All_Folds':
+                        #if self.train_type == 'Infer_All_Folds':
+                        if self.train_type in ['Infer_All_Folds', 'Infer']:
                             self.slides.append(image_file)
                         else:
                             self.slides.append(openslide.open_slide(image_file))
@@ -294,8 +298,6 @@ class WSI_Master_Dataset(Dataset):
             attributes_to_delete = ['image_file_names', 'image_path_names', 'slides', 'presaved_tiles']
             for attribute in attributes_to_delete:
                 delattr(self, attribute)
-
-
 
 
     def __len__(self):
@@ -509,6 +511,7 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.slide_grids = []
         self.grid_lists = []
         self.patient_barcode = []
+        self.slide_dataset = []
 
         ind = 0
         slide_with_not_enough_tiles = 0
@@ -526,6 +529,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
                 self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
                 self.patient_barcode.append(self.all_patient_barcodes[slide_num])
+                self.slide_dataset.append(self.all_image_ids[slide_num])
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
 
                 if self.presaved_tiles[ind]:
@@ -570,7 +574,8 @@ class Infer_Dataset(WSI_Master_Dataset):
             self.slide_num += 1  #RanS 5.5.21
             self.tiles_to_go = self.num_tiles[self.slide_num]
 
-            self.current_slide = self.slides[self.slide_num]
+            #self.current_slide = self.slides[self.slide_num]
+            self.current_slide = openslide.OpenSlide(self.slides[self.slide_num]) #RanS 5.9.21, open the slides one at a time
 
             self.initial_num_patches = self.num_tiles[self.slide_num]
 
@@ -667,11 +672,11 @@ class Infer_Dataset(WSI_Master_Dataset):
                 'Slide Filename': self.image_file_names[self.slide_num],
                 #'Patch loc index': locs_ind,
                 'Patient barcode': self.patient_barcode[self.slide_num],
+                'Slide DataSet': self.slide_dataset[self.slide_num],
                 #'Slide Index Size': self.equivalent_grid_size[self.slide_num],
                 #'Slide Size': self.slide_size,
                 #'Patch Loc': locs,
                 }
-
 
 
 class Full_Slide_Inference_Dataset(WSI_Master_Dataset):

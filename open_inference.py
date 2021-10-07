@@ -5,7 +5,7 @@ from cycler import cycler
 import numpy as np
 import pandas as pd
 import os
-from inference_loader_input import inference_files, inference_dir, save_csv, patient_level, inference_name
+from inference_loader_input import inference_files, inference_dir, save_csv, patient_level, inference_name, dataset
 
 custom_cycler = (cycler(color=['#377eb8', '#ff7f00', '#4daf4a',
                                     '#f781bf', '#a65628', '#984ea3',
@@ -90,11 +90,17 @@ for ind, key in enumerate(inference_files.keys()):
         #results per patient RanS 18.3.21, works only for TCGA, ABCTB
         if patient_level:
             patient_all = []
+            if dataset == 'LEUKEMIA':
+                slides_data_file = r'C:\ran_data\BoneMarrow\slides_data_LEUKEMIA.xlsx'
+                slides_data = pd.read_excel(slides_data_file)
             for name in all_slide_names:
                 if os.path.splitext(name)[-1] == '.svs': #TCGA files
                     patient_all.append(name[8:12])
                 elif os.path.splitext(name)[-1] == '.ndpi' or os.path.splitext(name)[-1] == '.tif': #ABCTB files
                     patient_all.append(name[:9])
+                elif dataset == 'LEUKEMIA':
+                    patient_all.append(slides_data[slides_data['file'] == name]['PatientID'].item())
+
             #patient_all = [all_slide_names[i][8:12] for i in range(all_slide_names.shape[0])] #only TCGA!
             patch_df = pd.DataFrame({'patient': patient_all, 'scores': slide_score_mean, 'targets': all_targets})
             patient_mean_score_df = patch_df.groupby('patient').mean()
@@ -127,6 +133,47 @@ for ind, key in enumerate(inference_files.keys()):
     print('roc_auc:', roc_auc1)
     print('balanced_acc:', balanced_acc)
     print('np.sum(all_labels):', np.sum(all_labels))
+
+    #temp RanS - calc BACC for each thresold
+    plot_threshold = False
+    if plot_threshold:
+        bacc1 = np.zeros(20)
+        tpr1 = np.zeros(20)
+        tnr1 = np.zeros(20)
+        threshs = np.arange(0, 1, 0.05)
+        for ii, threshold in enumerate(threshs):
+            all_preds = (all_scores > threshold).astype(int)
+            true_pos1 = np.sum((all_preds == all_targets) & (all_preds == 1))
+            true_neg1 = np.sum((all_preds == all_targets) & (all_preds == 0))
+            bacc1[ii] = ((true_pos1 + EPS) / (total_pos + EPS) + (true_neg1 + EPS) / (total_neg + EPS)) / 2
+            tpr1[ii] = true_pos1/(total_pos + EPS)
+            tnr1[ii] = true_neg1 / (total_neg + EPS)
+        plt.plot(threshs, tpr1,'r--')
+        plt.plot(threshs, tnr1,'g-.')
+        plt.plot(threshs, bacc1,'b-')
+        plt.xlabel('score threshold')
+        plt.legend(['tpr', 'tnr', 'BACC'],loc='lower left')
+
+    calc_p_value = False
+    if calc_p_value:
+        n_iter = 10000
+        rand_roc_auc = np.zeros(n_iter)
+        N = len(all_labels)
+        for ii in range(n_iter):
+            #rand_preds = np.random.binomial(1, 0.79, size=[N, 1])
+            rand_scores1 = np.random.permutation(all_scores)
+            rand_roc_auc[ii] = roc_auc_score(all_targets, rand_scores1)
+        p_value = np.sum(roc_auc1 <= rand_roc_auc)/n_iter
+
+        #per patient
+        n_iter = 10000
+        rand_roc_auc = np.zeros(n_iter)
+        N = len(patient_mean_score_df)
+        for ii in range(n_iter):
+            # rand_preds = np.random.binomial(1, 0.79, size=[N, 1])
+            rand_scores1 = np.random.permutation(patient_mean_score_df['scores'])
+            rand_roc_auc[ii] = roc_auc_score(patient_mean_score_df['targets'], rand_scores1)
+        p_value_patient = np.sum(roc_auc_patient <= rand_roc_auc) / n_iter
 
 
     if patient_level:
