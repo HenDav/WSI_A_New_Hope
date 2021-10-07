@@ -2,6 +2,7 @@ import utils
 import datasets
 from torch.utils.data import DataLoader
 import torch
+import torch.nn as nn
 import nets_mil
 from tqdm import tqdm
 import argparse
@@ -13,7 +14,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=10411, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=10436, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -40,10 +41,15 @@ cpu_available = utils.get_cpu()
 # Data type definition:
 DATA_TYPE = 'Features'
 
+# Loss criterion definition:
+criterion = nn.CrossEntropyLoss()
+
 # Load saved model:
 print('Loading pre-saved model from Exp. {} and epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, test_fold, _, _, _, _, _, dataset, target, _, model_name, _ = utils.run_data(experiment=args.experiment)
-
+run_data_output = utils.run_data(experiment=args.experiment)
+output_dir, test_fold, dataset, target, model_name, free_bias, CAT_only =\
+    run_data_output['Location'], run_data_output['Test Fold'], run_data_output['Dataset Name'], run_data_output['Receptor'],\
+    run_data_output['Model Name'], run_data_output['Free Bias'], run_data_output['CAT Only']
 if sys.platform == 'darwin':
     # fix output_dir:
     if output_dir.split('/')[1] == 'home':
@@ -77,10 +83,14 @@ if sys.platform == 'darwin':
         dset = 'CAT'
         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
 
+    elif dataset == 'FEATURES: Exp_358-ER-TestFold_1':
+        dset = 'CARMEL'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test'
+
     args.save_tile_scores = False
-    is_per_patient = False
+    is_per_patient = True
     #is_per_patient = False if args.save_tile_scores else True
-    carmel_only = False
+    carmel_only = True
 
 # Get data:
 if dataset == 'Combined Features':
@@ -133,12 +143,22 @@ if args.save_tile_scores and not carmel_only:
 
 # Load model
 model = eval(model_name)
+if free_bias:
+    model.create_free_bias()
+if CAT_only:
+    model.CAT_only = True
+
+total_loss, total_tiles_infered = 0, 0
 for model_num, model_epoch in enumerate(args.from_epoch):
     model_data_loaded = torch.load(os.path.join(output_dir,
                                                 'Model_CheckPoints',
                                                 'model_data_Epoch_' + str(model_epoch) + '.pt'), map_location='cpu')
 
     model.load_state_dict(model_data_loaded['model_state_dict'])
+
+    if model_data_loaded['bias_CAT'] != None:
+        model.bias_CAT = model_data_loaded['bias_CAT']
+        model.bias_CARMEL = model_data_loaded['bias_CARMEL']
 
     scores_reg = [] if dataset != 'Combined Features' else {inf_dset.dataset_list[0]: [], inf_dset.dataset_list[1]: []}
     all_scores_mil, all_labels_mil, all_targets = [], [], []
@@ -154,6 +174,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
     with torch.no_grad():
         for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
             if dataset == 'Combined Features':
+                total_tiles_infered += minibatch[list(minibatch.keys())[0]]['tile scores'].size(1)  #  count the number of tiles in each minibatch
                 target = minibatch['CAT']['targets']
                 data_CAT = minibatch['CAT']['features']
                 data_CARMEL = minibatch['CARMEL']['features']
@@ -174,12 +195,25 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                     scores_reg.append(minibatch['scores'].mean().cpu().item())
 
             outputs, weights_after_sftmx, weights_before_softmax = model(x=None, H=data)
-            #print(data.shape, target.shape, outputs.shape, weights.shape)
+
+            minibatch_loss = criterion(outputs, target)
+            total_loss += minibatch_loss
 
             if dataset == 'Combined Features':
-                for key in list(weights_after_sftmx.keys()):
-                    weights_after_sftmx[key] = weights_after_sftmx[key].cpu().detach().numpy()
-                    weights_before_softmax[key] = weights_before_softmax[key].cpu().detach().numpy()
+                if type(weights_after_sftmx) == list:  # This will work on the model Combined_MIL_Feature_Attention_MultiBag_DEBUG
+                    if len(weights_after_sftmx) == 2:
+                        weights_after_sftmx = {'CAT': weights_after_sftmx[0].cpu().detach().numpy(),
+                                               'CARMEL': weights_after_sftmx[1].cpu().detach().numpy()
+                                               }
+                    elif len(weights_after_sftmx) == 1:
+                        weights_after_sftmx = {'CAT': weights_after_sftmx[0].cpu().detach().numpy(),
+                                               'CARMEL': None
+                                               }
+
+                else:
+                    for key in list(weights_after_sftmx.keys()):
+                        weights_after_sftmx[key] = weights_after_sftmx[key].cpu().detach().numpy()
+                        weights_before_softmax[key] = weights_before_softmax[key].cpu().detach().numpy()
             else:
                 weights_after_sftmx = weights_after_sftmx.cpu().detach().numpy()
                 weights_before_softmax = weights_before_softmax.cpu().detach().numpy()
@@ -331,6 +365,11 @@ plt.legend(legend_labels)
 plt.xlim(0, 1)
 plt.ylim(0, 1)
 plt.grid(b=True)
+title = 'Inference Per {} for Model {}, Loss: {}, Per {} Tiles'.format('Patient' if is_per_patient else 'Slide',
+                                                                       args.experiment,
+                                                                       total_loss,
+                                                                       total_tiles_infered)
+plt.title(title)
 
 if is_per_patient:
     graph_name = 'feature_mil_inference_per_patient_CARMEL_ONLY.png' if carmel_only else 'feature_mil_inference_per_patient.png'

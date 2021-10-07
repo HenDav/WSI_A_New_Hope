@@ -17,6 +17,8 @@ import numpy as np
 import sys
 import pandas as pd
 import copy
+#from torch.nn.modules.module import ModuleAttributeError
+
 
 parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Project')
 #parser.add_argument('-tt', '--transform_type', type=str, default='none', help='keyword for transform type')
@@ -36,7 +38,7 @@ parser.add_argument('-nb', '--num_bags', type=int, default=50, help='Number of b
 parser.add_argument('-tpb', '--tiles_per_bag', type=int, default=100, help='Tiles Per Bag')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate') # RanS 8.12.20
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty') # RanS 7.12.20
-parser.add_argument('--model', default='nets_mil.Combined_MIL_Feature_Attention_MultiBag()', type=str, help='net to use')
+parser.add_argument('--model', default='nets_mil.Combined_MIL_Feature_Attention_MultiBag_DEBUG()', type=str, help='net to use')
 #parser.add_argument('--model', default='nets_mil.MIL_Feature_3_Attention_MultiBag()', type=str, help='net to use')
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 #parser.add_argument('-slide_reps', '--slide_repetitions', type=int, default=1, help='Slide repetitions per epoch')
@@ -45,6 +47,8 @@ parser.add_argument('-llf', dest='last_layer_freeze', action='store_true', help=
 parser.add_argument('-dl', '--data_limit', type=int, default=None, help='Data Limit to a specified number of feature tiles')
 parser.add_argument('-repData', dest='repeating_data', action='store_false', help='sample data with repeat ?')
 parser.add_argument('-free_bias', dest='free_bias', action='store_true', help='train a free bias ?')
+parser.add_argument('-CAT_only', dest='CAT_only', action='store_true', help='zeroize carmel weights for the MIL model ?')
+parser.add_argument('-remark', '--remark', type=str, default='', nargs=argparse.REMAINDER, help='option to add remark for the run')
 
 args = parser.parse_args()
 
@@ -61,6 +65,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     This function trains the model
     :return:
     """
+    if type(dloader_test) is list:
+        dloader_test_per_patient = dloader_test[1]
+        dloader_test = dloader_test[0]
+
     writer_folder = os.path.join(args.output_dir, 'writer')
     all_writer = SummaryWriter(os.path.join(writer_folder, 'all'))
     if args.images:
@@ -120,7 +128,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                     'CARMEL': data_CARMEL}
             optimizer.zero_grad()
 
-            outputs, weights, _ = model(x=None, H=data)
+            outputs, weights, weights_before_softmax = model(x=None, H=data)
 
             if str(outputs.min().item()) == 'nan':
                 print('slides:', minibatch['slide name'])
@@ -133,7 +141,16 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
                 exit()
 
-            weights = np.hstack([weights['CAT'].cpu().detach().numpy(), weights['CARMEL'].cpu().detach().numpy()])
+
+            if len(weights) == 2 and model.model_name == 'nets_mil.Combined_MIL_Feature_Attention_MultiBag_DEBUG()':
+                weights_CAT, weights_CARMEL = weights[0].cpu().detach().numpy(), weights[1].cpu().detach().numpy()
+                weights = np.hstack([weights[0].cpu().detach().numpy(), weights[1].cpu().detach().numpy()])
+            elif len(weights) == 1 and model.model_name == 'nets_mil.Combined_MIL_Feature_Attention_MultiBag_DEBUG()':
+                weights_CAT = weights[0].cpu().detach().numpy()
+                weights = weights[0].cpu().detach().numpy()
+            else:
+                weights = np.hstack([weights['CAT'].cpu().detach().numpy(), weights['CARMEL'].cpu().detach().numpy()])
+                weights_CAT, weights_CARMEL = weights['CAT'].cpu().detach().numpy(), weights['CARMEL'].cpu().detach().numpy()
 
 
 
@@ -153,10 +170,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             loss.backward()
             optimizer.step()
 
-            #scores_train = np.concatenate((scores_train, scores.cpu().detach().numpy().reshape(-1)))
-
-            #print(outputs[:, 1].cpu().detach().numpy().shape, outputs[:, 1].cpu().detach().numpy().min(), outputs[:, 1].cpu().detach().numpy().max())
-            #print(outputs[:, 1].cpu().detach().numpy())
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
 
             true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
@@ -231,6 +244,9 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         all_writer.add_scalar('Train/Accuracy', train_acc, e)
         all_writer.add_scalar('Train/Weights mean Total (per bag)', np.mean(np.sum(weights, axis=1)), e)
         all_writer.add_scalar('Train/Weights mean Variance (per bag)', np.mean(np.var(weights, axis=1)), e)
+        all_writer.add_scalar('Train/Weights CAT mean (per bag)', np.mean(np.sum(weights_CAT, axis=1)), e)
+        if 'weights_CARMEL' in locals():
+            all_writer.add_scalar('Train/Weights CARMEL mean (per bag)', np.mean(np.sum(weights_CARMEL, axis=1)), e)
 
         '''print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
               .format(e,
@@ -263,6 +279,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             # Update 'Last Epoch' at run_data.xlsx file:
             utils.run_data(experiment=experiment, epoch=e)
 
+            if 'dloader_test_per_patient' in locals():
+                check_accuracy(model=model, data_loader=dloader_test_per_patient,
+                               writer_all=all_writer, DEVICE=DEVICE, epoch=e, per_patient=True)
+
             # Save model to file:
             if not os.path.isdir(os.path.join(args.output_dir, 'Model_CheckPoints')):
                 os.mkdir(os.path.join(args.output_dir, 'Model_CheckPoints'))
@@ -271,13 +291,22 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             except AttributeError:
                 model_state_dict = model.state_dict()
 
+            try:
+                bias_CAT = model.bias_CAT
+                bias_CARMEL = model.bias_CARMEL
+            except:  # ModuleAttributeError:
+                bias_CAT = None
+                bias_CARMEL = None
+
             torch.save({'epoch': e,
                         'model_state_dict': model_state_dict,
                         'optimizer_state_dict': optimizer.state_dict(),
                         'loss': loss.item(),
                         'acc_test': acc_test,
                         'bacc_test': bacc_test,
-                        'tiles_per_bag': args.tiles_per_bag},
+                        'tiles_per_bag': args.tiles_per_bag,
+                        'bias_CAT': bias_CAT,
+                        'bias_CARMEL': bias_CARMEL},
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
 
             '''
@@ -304,7 +333,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         image_writer.close()
 
 
-def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int):
+def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE, epoch: int, per_patient: bool = False):
     test_loss, total_test = 0, 0
     correct_labeling_test = 0
     total_pos_test, total_neg_test = 0, 0
@@ -345,9 +374,14 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, writer_all, DEVICE
         fpr, tpr, _ = roc_curve(targets_test, scores_test)
         roc_auc = auc(fpr, tpr)
 
-        writer_all.add_scalar('Test/Accuracy', acc, epoch)
-        writer_all.add_scalar('Test/Balanced Accuracy', balanced_acc, epoch)
-        writer_all.add_scalar('Test/Roc-Auc', roc_auc, epoch)
+        if per_patient:
+            writer_all.add_scalar('Test-Per Patient/Accuracy', acc, epoch)
+            writer_all.add_scalar('Test-Per Patient/Balanced Accuracy', balanced_acc, epoch)
+            writer_all.add_scalar('Test-Per Patient/Roc-Auc', roc_auc, epoch)
+        else:
+            writer_all.add_scalar('Test/Accuracy', acc, epoch)
+            writer_all.add_scalar('Test/Balanced Accuracy', balanced_acc, epoch)
+            writer_all.add_scalar('Test/Roc-Auc', roc_auc, epoch)
 
         '''print('Accuracy of {:.2f}% ({} / {}) over Test set'.format(acc, correct_labeling_test, len(data_loader.dataset)))'''
         print('Slide AUC of {:.2f} over Test set'.format(roc_auc))
@@ -379,10 +413,8 @@ if __name__ == '__main__':
     # These lines are for debugging:
     if sys.platform == 'darwin':
         args.last_layer_freeze = True
-        args.per_patient_training = True
-        args.data_limit = 500
-        args.free_bias = True
-        args.per_patient_training = True
+        args.per_patient_training = False
+        args.CAT_only = False
 
 
     '''
@@ -478,7 +510,7 @@ if __name__ == '__main__':
     '''
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
+        run_data_results = utils.run_data(test_fold=args.test_fold,
                                                      transform_type=None,
                                                      tile_size=0,
                                                      tiles_per_bag=args.tiles_per_bag,
@@ -492,10 +524,19 @@ if __name__ == '__main__':
                                                      MultiSlide=True,
                                                      DataSet_Slide_magnification=0,
                                                      data_limit=args.data_limit,
-                                                     free_bias=args.free_bias)
+                                                     free_bias=args.free_bias,
+                                                     CAT_only=args.CAT_only,
+                                                     Remark=' '.join(args.remark))
+
+        args.output_dir, experiment = run_data_results['Location'], run_data_results['Experiment']
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx,\
-        args.dataset, args.target, is_MultiSlide, args.model, args.mag = utils.run_data(experiment=args.experiment)
+        run_data_output = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx, \
+        args.dataset, args.target, is_MultiSlide, args.model, args.mag, args.free_bias, args.cat_only =\
+            run_data_output['Location'], run_data_output['Test Fold'], run_data_output['Transformations'], run_data_output['Tile Size'],\
+            run_data_output['Tiles Per Bag'], run_data_output['Num Bags'], run_data_output['DX'], run_data_output['Dataset Name'],\
+            run_data_output['Receptor'], run_data_output['MultiSlide'], run_data_output['Model Name'], run_data_output['Desired Slide Magnification'],\
+            run_data_output['Free Bias'], run_data_output['CAT Only']
 
         experiment = args.experiment
 
@@ -512,8 +553,16 @@ if __name__ == '__main__':
                                                            test_fold=args.test_fold,
                                                            is_per_patient=args.per_patient_training)
 
+    if not args.per_patient_training:
+        test_per_patient_dset = Combined_Features_for_MIL_Training_dataset(bag_size=args.tiles_per_bag,
+                                                                           target=args.target,
+                                                                           is_train=False,
+                                                                           test_fold=args.test_fold,
+                                                                           is_per_patient=True)
+
     train_loader = DataLoader(train_dset, batch_size=args.num_bags, shuffle=True, num_workers=cpu_available, pin_memory=True)
     test_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
+    test_per_patient_loader = DataLoader(test_dset, batch_size=args.num_bags, shuffle=False, num_workers=cpu_available, pin_memory=True)
 
     # Load model
     model = eval(args.model)
@@ -545,13 +594,23 @@ if __name__ == '__main__':
 
             last_linear_layer_data = copy.deepcopy(basic_model.linear.state_dict())
 
-            model.classifier[dataset_name].load_state_dict(last_linear_layer_data)
+            #model.classifier[dataset_name].load_state_dict(last_linear_layer_data)
+            # FIXME: for use with model Combined_MIL_Feature_Attention_MultiBag_DEBUG
+            if dataset_name == 'CAT':
+                model.classifier_CAT.load_state_dict(last_linear_layer_data)
+                for p in model.classifier_CAT.parameters():  # This part will freeze the classifier part so it won't change during training
+                    p.requires_grad = False
+            elif dataset_name == 'CARMEL':
+                model.classifier_CARMEL.load_state_dict(last_linear_layer_data)
+                for p in model.classifier_CARMEL.parameters():  # This part will freeze the classifier part so it won't change during training
+                    p.requires_grad = False
 
 
-            for p in model.classifier[dataset_name].parameters():  # This part will freeze the classifier part so it won't change during training
-                p.requires_grad = False
+            #for p in model.classifier[dataset_name].parameters():  # This part will freeze the classifier part so it won't change during training
+            #    p.requires_grad = False
 
-    if model.model_name in ['nets_mil.Combined_MIL_Feature_Attention_MultiBag()',
+    if model.model_name in ['nets_mil.Combined_MIL_Feature_Attention_MultiBag_DEBUG()',
+                            'nets_mil.Combined_MIL_Feature_Attention_MultiBag()',
                             'nets_mil.MIL_Feature_Attention_MultiBag()',
                             'nets_mil.MIL_Feature_2_Attention_MultiBag()',
                             'nets_mil.MIL_Feature_3_Attention_MultiBag()']:
@@ -559,6 +618,10 @@ if __name__ == '__main__':
 
     if args.free_bias:
         model.create_free_bias()
+
+    if args.CAT_only:
+        model.CAT_only = True
+
 
     # Save model data and DataSet size (and some other dataset data) to run_data.xlsx file (Only if this is a new run).
     if args.experiment == 0:
@@ -578,5 +641,5 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
-
-    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+    train(model, train_loader, [test_loader, test_per_patient_loader], DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+    print('Training No. {} has concluded successfully after {} Epochs'.format(experiment, args.epochs))

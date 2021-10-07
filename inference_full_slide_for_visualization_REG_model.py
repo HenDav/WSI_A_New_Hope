@@ -29,7 +29,11 @@ if sys.platform == 'darwin':
 
 # Load saved model:
 print('Loading pre-saved model from Exp. {} and Epoch {}'.format(args.experiment, args.from_epoch))
-output_dir, _, _, TILE_SIZE, _, _, _, _, args.target, _, model_name, desired_magnification = utils.run_data(experiment=args.experiment)
+run_data_output = utils.run_data(experiment=args.experiment)
+output_dir, TILE_SIZE, args.target, model_name, desired_magnification =\
+    run_data_output['Location'], run_data_output['Tile Size'], run_data_output['Receptor'],\
+    run_data_output['Model Name'], run_data_output['Desired Slide Magnification']
+
 model = eval(model_name)
 
 # loading model parameters from the specific epoch

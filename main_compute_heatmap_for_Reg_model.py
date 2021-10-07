@@ -29,8 +29,10 @@ if sys.platform == 'darwin':
 DEVICE = utils.device_gpu_cpu()
 
 print('Loading trained model...')
-args.output_dir, args.test_fold, _, _, _, _, _, args.dataset, args.target, _, args.model_name, args.mag = utils.run_data(experiment=args.experiment)
-
+run_data_output = utils.run_data(experiment=args.experiment)
+args.output_dir, args.test_fold, args.dataset, args.target, args.model_name, args.mag =\
+    run_data_output['Location'], run_data_output['Test Fold'], run_data_output['Dataset Name'],\
+    run_data_output['Receptor'], run_data_output['Model Name'], run_data_output['Desired Slide Magnification']
 # loading basic model type
 model = eval(args.model_name)
 model_data_loaded = torch.load(os.path.join(args.output_dir, 'Model_CheckPoints',

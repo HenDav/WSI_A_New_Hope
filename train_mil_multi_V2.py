@@ -371,7 +371,7 @@ if __name__ == '__main__':
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
-        args.output_dir, experiment = utils.run_data(test_fold=args.test_fold,
+        run_data_results = utils.run_data(test_fold=args.test_fold,
                                                      transform_type=args.transform_type,
                                                      tile_size=TILE_SIZE,
                                                      tiles_per_bag=args.tiles_per_bag,
@@ -381,9 +381,15 @@ if __name__ == '__main__':
                                                      Receptor=args.target,
                                                      MultiSlide=True,
                                                      DataSet_Slide_magnification=args.mag)
+
+        args.output_dir, experiment = run_data_results['Location'], run_data_results['Experiment']
     else:
-        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx,\
-        args.dataset, args.target, is_MultiSlide, args.model, args.mag = utils.run_data(experiment=args.experiment)
+        run_data_output = utils.run_data(experiment=args.experiment)
+        args.output_dir, args.test_fold, args.transformation, TILE_SIZE, args.tiles_per_bag, args.num_bags, args.dx, \
+        args.dataset, args.target, is_MultiSlide, args.model, args.mag =\
+            run_data_output['Location'], run_data_output['Test Fold'], run_data_output['Transformations'], run_data_output['Tile Size'],\
+            run_data_output['Tiles Per Bag'], run_data_output['Num Bags'], run_data_output['DX'], run_data_output['Dataset Name'],\
+            run_data_output['Receptor'], run_data_output['MultiSlide'], run_data_output['Model Name'], run_data_output['Desired Slide Magnification']
 
         experiment = args.experiment
 

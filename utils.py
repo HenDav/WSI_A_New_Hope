@@ -336,7 +336,9 @@ def run_data(experiment: str = None,
              is_repeating_data: bool = False,
              data_limit: int = None,
              free_bias: bool = False,
-             carmel_only: bool = False):
+             carmel_only: bool = False,
+             CAT_only: bool = False,
+             Remark: str = ''):
     """
     This function writes the run data to file
     :param experiment:
@@ -411,7 +413,9 @@ def run_data(experiment: str = None,
                     'Repeating Data': is_repeating_data,
                     'Data Limit': data_limit,
                     'Free Bias': free_bias,
-                    'Carmel Only': carmel_only
+                    'Carmel Only': carmel_only,
+                    'Using Feature from CAT model alone': CAT_only,
+                    'Remark': Remark
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -424,7 +428,10 @@ def run_data(experiment: str = None,
         run_DF.to_excel(run_file_name)
         print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
 
-        return location, experiment
+        #return location, experiment
+        return {'Location': location,
+                'Experiment': experiment
+                }
 
     elif experiment is not None and epoch is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
@@ -472,13 +479,33 @@ def run_data(experiment: str = None,
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
+        free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
+        CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
+
 
         if sys.platform == 'linux':
             if location.split('/')[0] == 'runs':
                 location = location_prefix + location
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
-               DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification
+        '''return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
+               DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification,\
+               free_bias, CAT_only'''
+
+        return {'Location': location,
+                'Test Fold': test_fold,
+                'Transformations': transformations,
+                'Tile Size': tile_size,
+                'Tiles Per Bag': tiles_per_bag,
+                'Num Bags': num_bags,
+                'DX': DX,
+                'Dataset Name': DataSet_name,
+                'Receptor': Receptor,
+                'MultiSlide': MultiSlide,
+                'Model Name': model_name,
+                'Desired Slide Magnification': Desired_Slide_magnification,
+                'Free Bias': free_bias,
+                'CAT Only': CAT_only
+                }
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
