@@ -5,14 +5,14 @@ infer = True
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
                     #'--folds', '123456',
-                    '--folds', '12',
+                    '--folds', '1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'TCGA',
                     '--dataset', 'ABCTB_TCGA',
                     '--num_tiles', '30',
                     '-ex', '321',
-                    '--from_epoch', '0', '16'
-                    #'--save_features'
+                    '--from_epoch', '0', '16',
+                    '--save_features'
                     ])
 else:
     #subprocess.run(['python', 'train_reg.py',
@@ -22,8 +22,8 @@ else:
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'ABCTB',
-                    #'--dataset', 'ABCTB_TCGA',
-                    '--dataset', 'TCGA',
+                    '--dataset', 'ABCTB_TCGA',
+                    #'--dataset', 'TCGA',
                     #'--target', 'ER',
                     '--target', 'ER',
                     #'--target', 'Her2',
@@ -46,6 +46,7 @@ else:
                     #'--loan'
                     #'--er_eq_pr'
                     '-time',
+                    '-baldat'
                     #'--slide_per_block'
                 ])
 
