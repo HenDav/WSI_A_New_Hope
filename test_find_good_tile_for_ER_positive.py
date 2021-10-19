@@ -255,6 +255,7 @@ else:
     slide_name_NEG = 'TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs'
     slide_name_CARMEL_model_355 = ['18-2728_1_1_a.mrxs', '18-2728_1_1_e.mrxs', '19-5229_2_1_e.mrxs']
     slide_name_CARMEL_model_338 = ['18-7361_1_7_b.mrxs', '18-3507_1_1_k.mrxs', '19-6074_1_1_e.mrxs', '19-9915_1_1_e.mrxs']
+    slide_name_CARMEL_model_381 = ['18-2728_1_1_e.mrxs', '19-5229_2_1_e.mrxs']
 
     slide_locations = {}
     slide_locations['18-2728_1_1_a.mrxs'] = [{'TOP': 144000, 'LEFT': 24000},
@@ -301,16 +302,18 @@ if sys.platform == 'darwin':
     Model_ABCTB_TCGA_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/ran_293/model_data_Epoch_1000.pt'
     Model_CAT_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
     Model_CARMEL_ER_Fold_5 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_338-TF_5/model_data_Epoch_1000.pt'
+    Model_CARMEL_ER_Fold_1_Magnification_40 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
 elif sys.platform == 'linux':
     Model_ABCTB_TCGA_ER_Fold_1 = os.path.join(utils.run_data(experiment=293)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
     Model_CAT_ER_Fold_1 = os.path.join(utils.run_data(experiment=355)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
     Model_CARMEL_ER_Fold_5 = os.path.join(utils.run_data(experiment=338)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
+    Model_CARMEL_ER_Fold_1_Magnification_40 = os.path.join(utils.run_data(experiment=381)[0], 'Model_CheckPoints', 'model_data_Epoch_1200.pt')
 
 Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.svs': Model_ABCTB_TCGA_ER_Fold_1,
                   'TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs': Model_ABCTB_TCGA_ER_Fold_1,
-                  '18-2728_1_1_a.mrxs': Model_CAT_ER_Fold_1,
-                  '18-2728_1_1_e.mrxs': Model_CAT_ER_Fold_1,
-                  '19-5229_2_1_e.mrxs': Model_CAT_ER_Fold_1,
+                  #'18-2728_1_1_a.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
+                  '18-2728_1_1_e.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
+                  '19-5229_2_1_e.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
                   '18-3507_1_1_k.mrxs': Model_CARMEL_ER_Fold_5,
                   '18-7361_1_7_b.mrxs': Model_CARMEL_ER_Fold_5,
                   '19-6074_1_1_e.mrxs': Model_CARMEL_ER_Fold_5,
@@ -325,7 +328,8 @@ Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.
                                                  desired_slide_magnification=10,
                                                  num_background_tiles=0)
 '''
-inf_dset = datasets.Batched_Full_Slide_Inference_Dataset(tiles_per_iter=1)
+inf_dset = datasets.Batched_Full_Slide_Inference_Dataset(tiles_per_iter=1,
+                                                         desired_slide_magnification=40)
 
 #inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -347,10 +351,10 @@ features_256_all = []
 tile_scores_256 = []
 
 # Choose slide and tile location:
-slide = slide_name_POS
+slide = slide_name_CARMEL_model_381[0]
 tile_num = 0
 
-location = (slide_locations[slide][tile_num]['TOP'], slide_locations[slide][tile_num]['LEFT'])
+location = (slide_locations[slide][tile_num]['TOP'] + 2048*2, slide_locations[slide][tile_num]['LEFT'] + 2048*2)
 
 # Load Model:
 '''
@@ -372,7 +376,8 @@ model.to(DEVICE)
 with torch.no_grad():
     #for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
     for batch_idx in tqdm(range(len(inf_dset))):
-        minibatch = inf_dset.__getitem__(batch_idx, location=[location], tile_size=2048)
+        #minibatch = inf_dset.__getitem__(batch_idx, location=[location], tile_size=2048)
+        minibatch = inf_dset.__getitem__(batch_idx, location=[location], tile_size=2048 * 2)
         #slide_filename = minibatch['Slide Filename'][0].split('/')[-1]
         slide_filename = minibatch['Slide Filename'].split('/')[-1]
         if slide_filename != slide:
@@ -466,7 +471,7 @@ with torch.no_grad():
         if batch_idx == 0:
             break
 
-extract_MIL_weights = True
+extract_MIL_weights = False
 if extract_MIL_weights:
     # Computing tile weight using MIL:
     mil_model = eval('nets_mil.MIL_Feature_Attention_MultiBag()')
@@ -542,9 +547,9 @@ plt.show()
 
 if True:
     # Saving tile image:
-    matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.png', np.transpose(original_tile_data[0].numpy(), (1, 2, 0)))
-    pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
-    pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
+    matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + slide.split('.')[0] + '_tile_' + str(tile_num) + '_part_3.png', np.transpose(original_tile_data[0].squeeze(0).numpy(), (1, 2, 0)))
+    pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '_part_3.xlsx')
+    #pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
     # Saving both small Heatmaps to excel files:
     '''
     if data.shape[3] == 1024:
@@ -555,7 +560,7 @@ if True:
     f, axarr = plt.subplots(figsize=(11, 4), nrows=1, ncols=3)
     idx = 0
     axarr[0].imshow(np.transpose(small_heat_maps_all[idx].squeeze(0).numpy(), (1, 2, 0)), cmap='gray')
-    axarr[1].imshow(np.transpose(original_tile_data[idx].numpy(), (1, 2, 0)))
+    axarr[1].imshow(np.transpose(original_tile_data[idx].squeeze(0).numpy(), (1, 2, 0)))
     axarr[2].imshow(mil_weights_image_all[idx], cmap='gray')
 
     #f.suptitle('tile score = {:.4f}, tile MIL weight = {:.4f}'.format(tile_scores[idx], weights_all[idx]))

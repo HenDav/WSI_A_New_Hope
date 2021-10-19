@@ -51,7 +51,9 @@ for data_name in MIL_models.keys():
     experiment, epoch = MIL_models[data_name]['experiment'], MIL_models[data_name]['epoch']
 
     print('Loading pre-saved model from Exp. {} and epoch {}'.format(experiment, epoch))
-    output_dir, test_fold, _, _, _, _, _, dataset, target, _, model_name, _ = utils.run_data(experiment=experiment)
+    run_data_output = utils.run_data(experiment=experiment)
+    output_dir, test_fold, dataset, target, model_name =\
+        run_data_output['Location'], run_data_output['Test Fold'], run_data_output['Dataset Name'], run_data_output['Receptor'], run_data_output['Model Name']
     # fix output_dir:
     if output_dir.split('/')[1] == 'home':
         output_dir = '/'.join(output_dir.split('/')[-2:])

@@ -335,7 +335,11 @@ def run_data(experiment: str = None,
              is_per_patient: bool = False,
              is_last_layer_freeze: bool = False,
              is_repeating_data: bool = False,
-             data_limit: int = None):
+             data_limit: int = None,
+             free_bias: bool = False,
+             carmel_only: bool = False,
+             CAT_only: bool = False,
+             Remark: str = ''):
     """
     This function writes the run data to file
     :param experiment:
@@ -410,7 +414,11 @@ def run_data(experiment: str = None,
                     'Per Patient Training': is_per_patient,
                     'Last Layer Freeze': is_last_layer_freeze,
                     'Repeating Data': is_repeating_data,
-                    'Data Limit': data_limit
+                    'Data Limit': data_limit,
+                    'Free Bias': free_bias,
+                    'Carmel Only': carmel_only,
+                    'Using Feature from CAT model alone': CAT_only,
+                    'Remark': Remark
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -423,7 +431,10 @@ def run_data(experiment: str = None,
         run_DF.to_excel(run_file_name)
         print('Created a new Experiment (number {}). It will be saved at location: {}'.format(experiment, location))
 
-        return location, experiment
+        #return location, experiment
+        return {'Location': location,
+                'Experiment': experiment
+                }
 
     elif experiment is not None and epoch is not None:
         index = run_DF[run_DF['Experiment'] == experiment].index.values[0]
@@ -471,13 +482,33 @@ def run_data(experiment: str = None,
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
+        free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
+        CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
+
 
         if sys.platform == 'linux':
             if location.split('/')[0] == 'runs':
                 location = location_prefix + location
 
-        return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
-               DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification
+        '''return location, test_fold, transformations, tile_size, tiles_per_bag, num_bags,\
+               DX, DataSet_name, Receptor, MultiSlide, model_name, Desired_Slide_magnification,\
+               free_bias, CAT_only'''
+
+        return {'Location': location,
+                'Test Fold': test_fold,
+                'Transformations': transformations,
+                'Tile Size': tile_size,
+                'Tiles Per Bag': tiles_per_bag,
+                'Num Bags': num_bags,
+                'DX': DX,
+                'Dataset Name': DataSet_name,
+                'Receptor': Receptor,
+                'MultiSlide': MultiSlide,
+                'Model Name': model_name,
+                'Desired Slide Magnification': Desired_Slide_magnification,
+                'Free Bias': free_bias,
+                'CAT Only': CAT_only
+                }
 
 
 def run_data_multi_model(experiments: List[str] = None, models: List[str] = None,
@@ -1392,5 +1423,80 @@ class EmbedSquare(object):
 
         return output_images
 
+
+def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_fold: int, is_train: bool = False):
+    # Basic data definition:
+    if sys.platform == 'darwin':
+        dataset_full_data_dict = {'TCGA_ABCTB':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Train',
+                                                 'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Test',
+                                                 'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
+                                                 }
+                                            }
+                                       },
+                                  'CAT':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train',
+                                                 'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test',
+                                                 'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1',
+                                                 'Regular model location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'}
+                                            }
+                                       },
+                                  'CARMEL':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train',
+                                                 'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test',
+                                                 'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1',
+                                                 'Regular model location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
+                                                 }
+                                            }
+                                       }
+                                  }
+    elif sys.platform == 'linux':
+        dataset_full_data_dict = {'TCGA_ABCTB':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features',
+                                                 'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/test_inference_w_features',
+                                                 'Dataset name': r'FEATURES: Exp_293-ER-TestFold_1'
+                                                 }
+                                            }
+                                       },
+                                  'CAT':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features',
+                                                 'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features',
+                                                 'Dataset name': r'FEATURES: Exp_355-ER-TestFold_1',
+                                                 'Regular model location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'}
+                                            }
+                                       },
+                                  'CARMEL':
+                                      {'ER':
+                                           {1:
+                                                {'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/train_w_features',
+                                                 'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features',
+                                                 'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1',
+                                                 'Regular model location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                 }
+                                            }
+                                       }
+                                  }
+
+    dataset_location_list = []
+
+    if receptor == 'ER_Features':
+        receptor = 'ER'
+    for dataset in dataset_name_list:
+        location = dataset_full_data_dict[dataset][receptor][test_fold]['Train' if is_train else 'Test']
+        dataset_name = dataset_full_data_dict[dataset][receptor][test_fold]['Dataset name']
+        regular_model_location = dataset_full_data_dict[dataset][receptor][test_fold]['Regular model location']
+        dataset_location_list.append([dataset, location, dataset_name, regular_model_location])
+
+    return dataset_location_list
 
 

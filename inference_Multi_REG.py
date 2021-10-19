@@ -64,12 +64,18 @@ for counter in range(len(args.from_epoch)):
     print('  Exp. {} and Epoch {}'.format(experiment, epoch))
     # Basic meta data will be taken from the first model (ONLY if all inferences are done from the same experiment)
     if counter == 0:
-        output_dir, _, _, TILE_SIZE, _, _, dx, _, args.target, _, model_name, args.mag = utils.run_data(experiment=experiment)
+        run_data_output = utils.run_data(experiment=experiment)
+        output_dir, TILE_SIZE, dx, args.target, model_name, args.mag =\
+            run_data_output['Location'], run_data_output['Tile Size'], run_data_output['DX'], run_data_output['Receptor'],\
+            run_data_output['Model Name'], run_data_output['Desired Slide Magnification']
         if different_experiments:
             Output_Dirs.append(output_dir)
         fix_data_path = True
     elif counter > 0 and different_experiments:
-        output_dir, _, _, _, _, _, dx, _, target, _, model_name, args.mag = utils.run_data(experiment=experiment)
+        run_data_output = utils.run_data(experiment=experiment)
+        output_dir, dx, target, model_name, args.mag =\
+            run_data_output['Location'], run_data_output['DX'], run_data_output['Receptor'],\
+            run_data_output['Model Name'], run_data_output['Desired Slide Magnification']
         Output_Dirs.append(output_dir)
         fix_data_path = True
 

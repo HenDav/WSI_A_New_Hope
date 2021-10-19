@@ -1011,6 +1011,383 @@ class MIL_Feature_Attention_MultiBag(nn.Module):
                 return out, A_after_sftmx
 
 
+class Combined_MIL_Feature_Attention_MultiBag(nn.Module):
+    def __init__(self,
+                 tiles_per_bag: int = 500):
+        super(Combined_MIL_Feature_Attention_MultiBag, self).__init__()
+
+        self.model_name = THIS_FILE + 'Combined_MIL_Feature_Attention_MultiBag()'
+        print('Using model {}'.format(self.model_name))
+
+        self.zero_carmel_weights = False
+
+        self.infer = False
+        self.features_part = False
+
+        self.tiles_per_bag = tiles_per_bag
+        self.free_bias = False
+        self.M = 512
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        # Defining layers for the 1st MIL model:
+        self.attention_V = nn.ModuleDict({
+            'CAT': nn.Sequential(nn.Linear(self.M, self.L),
+                                 nn.Tanh()
+                                 ),
+            'CARMEL': nn.Sequential(nn.Linear(self.M, self.L),
+                                    nn.Tanh()
+                                    )
+        })
+        self.attention_U = nn.ModuleDict({
+            'CAT': nn.Sequential(nn.Linear(self.M, self.L),
+                                 nn.Sigmoid()
+                                 ),
+            'CARMEL': nn.Sequential(nn.Linear(self.M, self.L),
+                                    nn.Sigmoid()
+                                    )
+        })
+        self.attention_weights = nn.ModuleDict({
+            'CAT': nn.Linear(self.L, self.K),
+            'CARMEL': nn.Linear(self.L, self.K)
+        })
+        self.classifier = nn.ModuleDict({
+            'CAT': nn.Linear(self.M * self.K, 2),
+            'CARMEL': nn.Linear(self.M * self.K, 2)
+        })
+
+        self.key_list = list(self.attention_U.keys())
+
+
+    def zeroize_carmel_weights(self):
+        self.attention_weights['CARMEL'].bias.data = torch.zeros_like(self.attention_weights['CARMEL'].bias.data)
+        self.attention_weights['CARMEL'].weight.data = torch.zeros_like(self.attention_weights['CARMEL'].weight.data)
+        self.attention_weights['CARMEL'].bias.requires_grad = False
+        self.attention_weights['CARMEL'].weight.requires_grad = False
+        self.zero_carmel_weights = True
+
+    def create_free_bias(self):
+        self.free_bias_layer = nn.Linear(2, 2)
+        self.free_bias_layer.weight.data = torch.eye(2)
+        self.free_bias_layer.weight.requires_grad = False
+        self.free_bias_layer.bias.requires_grad = True
+        self.free_bias = True
+
+    def forward(self, x, H=None, A=None):
+
+        H_shape = H[self.key_list[0]].shape
+        if len(H_shape) == 2:
+            num_of_bags = 1
+            tiles_amount = H_shape[0]
+            DividedSlides_Flag = False
+        elif len(H_shape) == 3:
+            num_of_bags = H_shape[0]
+            tiles_amount = H_shape[1]
+            DividedSlides_Flag = True
+
+        if tiles_amount != self.tiles_per_bag and self.infer is False:
+            raise Exception('Declared tiles per bag is different than the input (tiles_amount')
+
+        if x != None:
+            raise Exception('Model in features only mode expects to get x=None and H=features')
+
+
+        A_V, A_U, A, M, A_after_sftmx = {}, {}, {}, {}, {}
+        bias_relative_part = {}
+        a, h = {}, {}
+
+        for key in self.key_list:
+            if key == 'CARMEL':  # DEBUGGING
+                continue
+
+            A_V[key] = self.attention_V[key](H[key])  # NxL
+            A_U[key] = self.attention_U[key](H[key])  # NxL
+            A[key] = self.attention_weights[key](A_V[key] * A_U[key])  # element wise multiplication # NxK
+
+            if DividedSlides_Flag:  # DividedSlides_Flag tells if all the feature from all slides are gathered together in the same dimension or divided between dimensions
+                A[key] = torch.transpose(A[key], 2, 1)
+            else:
+                A[key] = torch.transpose(A[key], 1, 0)  # KxN
+
+
+            # A = F.softmax(A, dim=1)  # softmax over N
+
+            if torch.cuda.is_available():
+                M[key] = torch.zeros(0).cuda()
+                A_after_sftmx[key] = torch.zeros(0).cuda()
+                bias_relative_part[key] = torch.zeros(0).cuda()
+            else:
+                M[key] = torch.zeros(0)
+                A_after_sftmx[key] = torch.zeros(0)
+                bias_relative_part[key] = torch.zeros(0)
+
+        '''# The following if statement is needed in cases where the accuracy checking (testing phase) is done in
+        # a 1 bag per mini-batch mode
+        if num_of_bags == 1 and not self.training:
+            A_after_sftmx = F.softmax(A, dim=1)
+            M = torch.mm(A_after_sftmx, H)
+
+        else:'''
+        if DividedSlides_Flag:
+            for i in range(num_of_bags):
+
+                '''if self.zero_carmel_weights:                    
+                    if A[self.key_list[0]][i, :, :].sum().item() == 0:
+                        A[self.key_list[0]][i, :, :] = torch.ones_like(A[self.key_list[0]][i, :, :]) * -1e9
+                    elif A[self.key_list[1]][i, :, :].sum().item() == 0:
+                        A[self.key_list[1]][i, :, :] = torch.ones_like(A[self.key_list[1]][i, :, :]) * -1e9'''
+
+                #aa = torch.cat([A[self.key_list[0]][i, :, :], A[self.key_list[1]][i, :, :]], dim=1)
+                aa = A['CAT'][i, :, :]  # DEBUGGING
+                aa = F.softmax(aa, dim=1)
+                a['CAT'] = aa[:, :tiles_amount]  # DEBUGGING
+                #a['CARMEL'] = aa[:, tiles_amount:]  # DEBUGGING
+                '''a[self.key_list[0]] = aa[:, :tiles_amount]
+                a[self.key_list[1]] = aa[:, tiles_amount:]'''
+
+                for key in self.key_list:
+                    if key == 'CARMEL':  # DEBUGGING
+                        continue
+                    bias_relative_part[key] = torch.cat((bias_relative_part[key], torch.reshape(a[key].sum().detach(), (1,))))
+
+                    h = H[key][i, :, :]
+                    try:
+                        m = torch.mm(a[key], h)
+                    except RuntimeError as e:
+                        raise e
+
+                    M[key] = torch.cat((M[key], m))
+
+                    A_after_sftmx[key] = torch.cat((A_after_sftmx[key], a[key]))
+        else:
+            raise Exception('Not Implemented')
+            '''
+            for i in range(num_of_bags):
+                first_tile_idx = i * self.tiles_per_bag
+                a = A[:, first_tile_idx: first_tile_idx + self.tiles_per_bag]
+                a = F.softmax(a, dim=1)
+
+                h = H[first_tile_idx: first_tile_idx + self.tiles_per_bag, :]
+                m = torch.mm(a, h)
+                M = torch.cat((M, m))
+
+                A_after_sftmx = torch.cat((A_after_sftmx, a))
+            '''
+
+        # Before using the classifier we'll change the bias to 0 and than add it manually after using the weights for the bias
+        DEVICE = self.classifier['CAT'].bias.device
+        out = {}
+        if self.free_bias is False:
+            bias = {}
+            for key in self.key_list:
+                if key == 'CARMEL':  # DEBUGGING
+                    continue
+                bias[key] = torch.tensor([self.classifier[key].bias[0].item(), self.classifier[key].bias[1].item()])
+                self.classifier[key].bias.data = torch.tensor([0, 0], dtype=torch.float32, device=DEVICE)
+                out[key] = self.classifier[key](M[key])
+
+                # Computing and adding the weighted bias:
+                new_bias = torch.zeros_like(out[key])
+                new_bias[:, 0] = bias[key][0] * bias_relative_part[key]
+                new_bias[:, 1] = bias[key][1] * bias_relative_part[key]
+
+                out[key] += new_bias
+        else:
+            for key in self.key_list:
+                if key == 'CARMEL':  # DEBUGGING
+                    continue
+                self.classifier[key].bias.data = torch.tensor([0, 0], dtype=torch.float32, device=DEVICE)
+                out[key] = self.classifier[key](M[key])
+                # Adding the free bias:
+                out[key] = self.free_bias_layer(out[key])
+
+        #out_total = out[self.key_list[0]] + out[self.key_list[1]]
+        out_total = out['CAT']  # DEBUGGING
+
+        A_after_sftmx['CARMEL'] = torch.zeros_like(A_after_sftmx['CAT'])  # DEBUGGING
+        A['CARMEL'] = torch.zeros_like(A['CAT'])  # DEBUGGING
+
+        return out_total, A_after_sftmx, A
+
+
+class Combined_MIL_Feature_Attention_MultiBag_DEBUG(nn.Module):
+    def __init__(self,
+                 tiles_per_bag: int = 500):
+        super(Combined_MIL_Feature_Attention_MultiBag_DEBUG, self).__init__()
+
+        self.model_name = THIS_FILE + 'Combined_MIL_Feature_Attention_MultiBag_DEBUG()'
+        print('Using model {}'.format(self.model_name))
+
+        self.infer = False
+        self.CAT_only = False
+
+        self.tiles_per_bag = tiles_per_bag
+        self.free_bias = False
+        self.M = 512
+        self.L = 128
+        self.K = 1  # in the paper referred a 1.
+
+        # Defining layers for the 1st MIL model:
+        # Modules for CAT:
+        self.attention_V_CAT = nn.Sequential(nn.Linear(self.M, self.L),
+                                           nn.Tanh()
+                                           )
+        self.attention_U_CAT = nn.Sequential(nn.Linear(self.M, self.L),
+                                           nn.Sigmoid()
+                                           )
+        self.attention_weights_CAT = nn.Linear(self.L, self.K)
+        self.classifier_CAT = nn.Linear(self.M * self.K, 2)
+        self.bias_CAT = None
+
+        # Modules for CARMEL:
+        self.attention_V_CARMEL = nn.Sequential(nn.Linear(self.M, self.L),
+                                           nn.Tanh()
+                                           )
+        self.attention_U_CARMEL = nn.Sequential(nn.Linear(self.M, self.L),
+                                           nn.Sigmoid()
+                                           )
+        self.attention_weights_CARMEL = nn.Linear(self.L, self.K)
+        self.classifier_CARMEL = nn.Linear(self.M * self.K, 2)
+        self.bias_CARMEL = None
+
+
+    def forward(self, x, H=None, A=None):
+
+        H_shape = H['CAT'].shape
+        if len(H_shape) == 2:
+            num_of_bags = 1
+            tiles_amount = H_shape[0]
+            DividedSlides_Flag = False
+        elif len(H_shape) == 3:
+            num_of_bags = H_shape[0]
+            tiles_amount = H_shape[1]
+            DividedSlides_Flag = True
+
+        if tiles_amount != self.tiles_per_bag and self.infer is False:
+            raise Exception('Declared tiles per bag is different than the input (tiles_amount')
+
+        if x != None:
+            raise Exception('Model in features only mode expects to get x=None and H=features')
+
+        A_V_CAT = self.attention_V_CAT(H['CAT'])  # NxL
+        A_U_CAT = self.attention_U_CAT(H['CAT'])  # NxL
+        A_CAT = self.attention_weights_CAT(A_V_CAT * A_U_CAT)  # element wise multiplication # NxK
+
+        if not self.CAT_only:
+            A_V_CARMEL = self.attention_V_CARMEL(H['CARMEL'])  # NxL
+            A_U_CARMEL = self.attention_U_CARMEL(H['CARMEL'])  # NxL
+            A_CARMEL = self.attention_weights_CARMEL(A_V_CARMEL * A_U_CARMEL)  # element wise multiplication # NxK
+
+        if DividedSlides_Flag:  # DividedSlides_Flag tells if all the feature from all slides are gathered together in the same dimension or divided between dimensions
+            A_CAT = torch.transpose(A_CAT, 2, 1)
+            if not self.CAT_only:
+                A_CARMEL = torch.transpose(A_CARMEL, 2, 1) # Zeroizing CARMEL
+        else:
+            A_CAT = torch.transpose(A_CAT, 1, 0)  # KxN
+            if not self.CAT_only:
+                A_CARMEL = torch.transpose(A_CARMEL, 1, 0)  # Zeroizing CARMEL
+
+        '''if torch.cuda.is_available():
+            M_CAT = torch.zeros(0).cuda()
+            A_after_sftmx_CAT = torch.zeros(0).cuda()
+            bias_relative_part_CAT = torch.zeros(0).cuda()
+
+            if not self.CAT_only:
+                M_CARMEL = torch.zeros(0).cuda()
+                A_after_sftmx_CARMEL = torch.zeros(0).cuda()
+                bias_relative_part_CARMEL = torch.zeros(0).cuda()
+        else:
+            M_CAT = torch.zeros(0)
+            A_after_sftmx_CAT = torch.zeros(0)
+            bias_relative_part_CAT = torch.zeros(0)
+
+            if not self.CAT_only:
+                M_CARMEL = torch.zeros(0)
+                A_after_sftmx_CARMEL = torch.zeros(0)
+                bias_relative_part_CARMEL = torch.zeros(0)'''
+
+        if DividedSlides_Flag:
+            if self.CAT_only:
+                A_total = A_CAT
+            else:
+                A_total = torch.cat([A_CAT, A_CARMEL], dim=2)
+
+            A_after_sftmx = F.softmax(A_total, dim=2).squeeze(1)
+
+            A_after_sftmx_CAT = A_after_sftmx[:, :tiles_amount]
+            bias_relative_part_CAT = A_after_sftmx_CAT.sum(dim=1)
+            M_CAT = torch.matmul(A_after_sftmx_CAT.unsqueeze(1), H['CAT']).squeeze(1)
+            if not self.CAT_only:
+                A_after_sftmx_CARMEL = A_after_sftmx[:, tiles_amount:]
+                bias_relative_part_CARMEL = A_after_sftmx_CARMEL.sum(dim=1)
+                M_CARMEL = torch.matmul(A_after_sftmx_CARMEL.unsqueeze(1), H['CARMEL']).squeeze(1)
+
+            '''for i in range(num_of_bags):
+                aa = A_CAT[i, :, :]  # Zeroizing CARMEL   torch.cat([A_CAT[i, :, :], A_CARMEL[i, :, :]], dim=1)
+                aa = F.softmax(aa, dim=1)
+                a_CAT = aa[:, :tiles_amount]
+                if not self.CAT_only:
+                    a_CARMEL = aa[:, tiles_amount:]
+
+                bias_relative_part_CAT = torch.cat((bias_relative_part_CAT, torch.reshape(a_CAT.sum().detach(), (1,))))
+                h_CAT = H['CAT'][i, :, :]
+                m_CAT = torch.mm(a_CAT, h_CAT)
+                M_CAT = torch.cat((M_CAT, m_CAT))
+                A_after_sftmx_CAT = torch.cat((A_after_sftmx_CAT, a_CAT))
+
+                if not self.CAT_only:
+                    bias_relative_part_CARMEL = torch.cat((bias_relative_part_CARMEL, torch.reshape(a_CARMEL.sum().detach(), (1,))))
+                    h_CARMEL = H['CARMEL'][i, :, :]
+                    m_CARMEL = torch.mm(a_CARMEL, h_CARMEL)
+                    M_CARMEL = torch.cat((M_CARMEL, m_CARMEL))
+                    A_after_sftmx_CARMEL = torch.cat((A_after_sftmx_CARMEL, a_CARMEL))'''
+        else:
+            raise Exception('Not Implemented')
+
+        # Before using the classifier we'll change the bias to 0 and than add it manually after using the weights for the bias
+        DEVICE = self.classifier_CAT.bias.device
+
+        if self.free_bias is False:
+            if self.bias_CAT is None:
+                self.bias_CAT = torch.tensor([self.classifier_CAT.bias[0].item(), self.classifier_CAT.bias[1].item()])
+                self.classifier_CAT.bias.data = torch.tensor([0, 0], dtype=torch.float32, device=DEVICE)
+                self.bias_CARMEL = torch.tensor([self.classifier_CARMEL.bias[0].item(), self.classifier_CARMEL.bias[1].item()])
+                self.classifier_CARMEL.bias.data = torch.tensor([0, 0], dtype=torch.float32, device=DEVICE)
+
+            out_CAT = self.classifier_CAT(M_CAT)
+
+            if not self.CAT_only:
+                out_CARMEL = self.classifier_CARMEL(M_CARMEL)
+
+            # Computing and adding the weighted bias:
+            new_bias_CAT = torch.zeros_like(out_CAT)
+            new_bias_CAT[:, 0] = self.bias_CAT[0] * bias_relative_part_CAT
+            new_bias_CAT[:, 1] = self.bias_CAT[1] * bias_relative_part_CAT
+
+            if not self.CAT_only:
+                new_bias_CARMEL = torch.zeros_like(out_CARMEL)
+                new_bias_CARMEL[:, 0] = self.bias_CARMEL[0] * bias_relative_part_CARMEL
+                new_bias_CARMEL[:, 1] = self.bias_CARMEL[1] * bias_relative_part_CARMEL
+
+            out_CAT += new_bias_CAT
+            if not self.CAT_only:
+                out_CARMEL += new_bias_CARMEL  # Zeroizing CARMEL
+        else:
+            print('NOT IMPLEMENTED !')
+            '''for key in self.key_list:
+                self.classifier[key].bias.data = torch.tensor([0, 0], dtype=torch.float32, device=DEVICE)
+                out[key] = self.classifier[key](M[key])
+                # Adding the free bias:
+                out[key] = self.free_bias_layer(out[key])'''
+
+        if self.CAT_only:
+            out_total = out_CAT #+ out_CARMEL # Zeroizing CARMEL
+            return out_total, [A_after_sftmx_CAT], [A_CAT]
+        else:
+            out_total = out_CAT + out_CARMEL
+            return out_total, [A_after_sftmx_CAT, A_after_sftmx_CARMEL], [A_CAT, A_CARMEL]
+
+
 class MIL_Feature_2_Attention_MultiBag(nn.Module):
     def __init__(self,
                  tiles_per_bag: int = 500):
