@@ -4,7 +4,7 @@ from matplotlib import image as plt_image
 import os
 import pandas as pd
 import glob
-from random import sample
+from random import sample, seed
 import random
 import torch
 from torchvision import transforms
@@ -75,7 +75,8 @@ def _choose_data(grid_list: list,
                  tile_size: int = 256,
                  print_timing: bool = False,
                  desired_mag: int = 20,
-                 loan: bool = False):
+                 loan: bool = False,
+                 random_shift: bool = True):
     """
     This function choose and returns data to be held by DataSet.
     The function is in the PreLoad Version. It works with slides already loaded to memory.
@@ -108,7 +109,7 @@ def _choose_data(grid_list: list,
                                         output_tile_sz=tile_size,
                                         best_slide_level=best_slide_level,
                                         print_timing=print_timing,
-                                        random_shift=True,
+                                        random_shift=random_shift,
                                         loan=loan)
 
     return image_tiles, time_list, labels
@@ -801,6 +802,8 @@ def get_datasets_dir_dict(Dataset: str):
     CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
     TCGA_LUNG_gipdeep_path = r'/mnt/gipmed_new/Data/Lung/TCGA_Lung/TCGA_LUNG'
     LEUKEMIA_gipdeep_path = r'/mnt/gipmed_new/Data/BoneMarrow/LEUKEMIA'
+    Ipatimup_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Ipatimup'
+    Covilha_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Covilha'
 
     TCGA_ran_path = r'C:\ran_data\TCGA_example_slides\TCGA_examples_131020_flat\TCGA'
     HEROHE_ran_path = r'C:\ran_data\HEROHE_examples'
@@ -918,6 +921,11 @@ def get_datasets_dir_dict(Dataset: str):
         if sys.platform == 'linux':  # GIPdeep
             dir_dict['LEUKEMIA'] = LEUKEMIA_gipdeep_path
 
+    elif Dataset == 'IC':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['Ipatimup'] = Ipatimup_gipdeep_path
+            dir_dict['Covilha'] = Covilha_gipdeep_path
+
     return dir_dict
 
 
@@ -928,16 +936,19 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('For PORTO_PDL1 DataSet, target should be PDL1')
     elif DataSet == 'HEROHE' and target_kind != 'Her2':
         raise ValueError('for HEROHE DataSet, target should be Her2')
-    elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+    #elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+    elif (DataSet in ['TCGA', 'CARMEL', 'CAT', 'IC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')
     elif DataSet == 'SHEBA' and target_kind != 'Onco':
         raise ValueError('for SHEBA DataSet, target should be Onco')
-    elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD']:
+    elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD', 'is_full_cancer']:
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
-    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B']:
-        raise ValueError('for LEUKEMIA DataSet, target should be ALL or is_B')
+    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B']:
+        raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B')
+    elif (DataSet == 'ABCTB') and target_kind not in ['ER', 'PR', 'Her2', 'survival']:
+        raise ValueError('target should be one of: ER, PR, Her2, survival')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
@@ -1263,6 +1274,32 @@ def gather_per_patient_data(all_targets, all_scores_for_class_1, all_patient_bar
         all_scores_for_class_1_per_patient.append(scores_mean)
 
     return all_targets_per_patient, all_scores_for_class_1_per_patient
+
+
+def balance_dataset(meta_data_DF):
+    seed(2021)
+    meta_data_DF['use_in_balanced_data_ER'] = 0
+    meta_data_DF.loc[meta_data_DF['ER status'] == 'Negative', 'use_in_balanced_data_ER'] = 1  # take all negatives
+    # from all positives, take the same amount as negatives
+    patient_list, patient_ind_list, patient_inverse_list = np.unique(
+        np.array(meta_data_DF['patient barcode']).astype('str'), return_index=True, return_inverse=True)
+
+    # get patient status for each patient
+    # for patients with multiple statuses, the first one will be taken. These cases are rare.
+    patient_status = []
+    for i_patient in patient_ind_list:
+        patient_status.append(meta_data_DF.loc[i_patient, 'ER status'])
+
+    N_negative_patients = np.sum(np.array(patient_status) == 'Negative')
+    positive_patient_ind_list = np.where(np.array(patient_status) == 'Positive')
+
+    # take N_negative_patients positive patient
+    positive_patients_inds_to_take = sample(list(positive_patient_ind_list[0]), k=N_negative_patients)
+    for patient_to_take in positive_patients_inds_to_take:
+        meta_data_DF.loc[patient_inverse_list == patient_to_take, 'use_in_balanced_data_ER'] = 1
+
+    return meta_data_DF
+
 
 class FocalLoss(torch.nn.Module):
     def __init__(self, weight=None, gamma=2):

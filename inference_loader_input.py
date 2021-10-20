@@ -2,24 +2,24 @@ import os
 import re, glob
 inference_files = {}
 
-is_herohe = False
-exp = 383
-fold = 1
-target = 'is_B'
-dataset = 'LEUKEMIA'
-#subdir = ''
-subdir = 'bacc'
+exp = 393
+fold = 2
+target = 'ER'
+dataset = 'CAT'
+subdir = ''
+#subdir = 'bacc'
 #subdir = 'CARMEL'
 #subdir = 'test_inference_aug21_TCGA_corrections'
 is_other = False
 
-if is_herohe or dataset == 'CARMEL' or dataset == 'CAT' or subdir == 'CARMEL' or dataset == 'TCGA_LUNG':
+patientless_list = ['CARMEL', 'CAT', 'TCGA_LUNG', 'HEROHE']
+if dataset in patientless_list or subdir in patientless_list:
     patient_level = False
 else:
     patient_level = True
 save_csv = True
 
-#patient_level = False #temp
+patient_level = False #temp
 
 if is_other:
     inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4', dataset + '_runs', 'other', 'exp' + str(exp), 'Inference')
@@ -35,10 +35,8 @@ epochs.sort()
 
 key_list = [''.join((target, '_fold', str(fold), '_exp', str(exp), '_epoch', str(epoch), '_test_500')) for epoch in epochs]
 
-if is_herohe:
-    val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', target, '-Tiles_500_herohe.data')) for epoch in epochs]
-else:
-    val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', target, '-Tiles_500.data')) for epoch in epochs]
+
+val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', target, '-Tiles_500.data')) for epoch in epochs]
 #val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']', '-Tiles_500.data')) for epoch in epochs]
 #key_list = [''.join(('exp', str(exp), '_fold', str(fold), '_epoch', str(epoch), '_test_500_herohe')) for epoch in epochs]
 

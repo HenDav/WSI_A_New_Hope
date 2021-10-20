@@ -19,11 +19,12 @@ parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], h
 parser.add_argument('-fe', '--from_epoch', nargs='+', type=int, default=[1395, 1390], help='Use this epoch models for inference')
 parser.add_argument('-nt', '--num_tiles', type=int, default=10, help='Number of tiles to use')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
-parser.add_argument('-f', '--folds', type=list, nargs="+", default=[1], help=' folds to infer')
+parser.add_argument('-f', '--folds', type=list, nargs="+", default=1, help=' folds to infer')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches') #RanS 8.2.21
 parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed path of rons model') #RanS 16.3.21 r'/home/rschley/Pathnet/results/fold_1_ER_large/checkpoint/ckpt_epoch_1467.pth'
 parser.add_argument('--save_features', action='store_true', help='save features') #RanS 1.7.21
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides') #RanS 3.8.21, override run_data
+parser.add_argument('--resume', type=int, default=0, help='resume a failed feature extraction') #RanS 5.10.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
@@ -45,6 +46,16 @@ data_path = ''
 print('Loading pre-saved models:')
 models = []
 dx = False
+
+#RanS 30.9.21 - if more than one epoch, save features from epoch 1000
+#returns an error if 1000 is not on the epoch list
+if args.save_features and len(args.from_epoch) > 1:
+    if sys.platform == 'win32':
+        feature_epoch_ind = (args.from_epoch).index(16)
+    else:
+        feature_epoch_ind = (args.from_epoch).index(1000)
+elif args.save_features and len(args.from_epoch) == 1:
+    feature_epoch_ind = 0
 
 for counter in range(len(args.from_epoch)):
     epoch = args.from_epoch[counter]
@@ -124,6 +135,10 @@ if sys.platform == 'linux':
 elif sys.platform == 'win32':
     TILE_SIZE = 256
 
+#slide_num = 0
+#if args.resume > 0 and args.save_features: #RanS 5.10.21
+slide_num = args.resume
+
 inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   tile_size=TILE_SIZE,
                                   tiles_per_iter=tiles_per_iter,
@@ -131,7 +146,8 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   folds=args.folds,
                                   num_tiles=args.num_tiles,
                                   desired_slide_magnification=args.mag,
-                                  dx=dx
+                                  dx=dx,
+                                  resume_slide=slide_num,
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -146,27 +162,46 @@ print('NUM_SLIDES: ', str(NUM_SLIDES))
 all_targets = []
 all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
-#patch_locs_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2))
-#patch_locs_inds_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2))
-features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
+#patch_locs_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2)) #RanS 17.10.21
+patch_locs_all = np.empty((NUM_SLIDES, args.num_tiles, 2)) #RanS 17.10.21
+if args.save_features:
+    #features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
+    features_all = np.empty((NUM_SLIDES_SAVE, 1, args.num_tiles, 512)) #RanS 30.9.21
+    features_all[:] = np.nan
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
 all_slide_datasets = np.zeros(NUM_SLIDES, dtype=object)
-#all_slide_size = np.zeros((NUM_SLIDES,2))
-#all_slide_size_ind = np.zeros((NUM_SLIDES,2))
 patch_scores[:] = np.nan
-features_all[:] = np.nan
-#patch_locs_all[:] = np.nan
-#patch_locs_inds_all[:] = np.nan
-slide_num = 0
+patch_locs_all[:] = np.nan
+
 # The following 2 lines initialize variables to compute AUC for train dataset.
 total_pos, total_neg = 0, 0
-#correct_pos, correct_neg = [0] * NUM_MODELS, [0] * NUM_MODELS
 correct_pos = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
 correct_neg = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
 
+if args.resume:
+    # load the inference state
+    resume_file_name = os.path.join(data_path, output_dir, 'Inference',
+                                    'Exp_' + str(args.from_epoch[args.experiment])
+                                    + '-Folds_' + str(args.folds) + '_' + str(
+                                        args.target) + '-Tiles_' + str(
+                                        args.num_tiles) + '_resume_slide_num_' + str(slide_num) + '.data')
+    with open(resume_file_name, 'rb') as filehandle:
+        resume_data = pickle.load(filehandle)
+    all_labels, all_targets, all_scores, total_pos, correct_pos, total_neg, \
+    correct_neg, patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES, patch_locs_all = resume_data
+else:
+    resume_file_name = 0
+
+if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
+    os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+
+print('slide_num0 = ', str(slide_num)) #temp
 with torch.no_grad():
-    #for batch_idx, (data, target, time_list, last_batch, _, slide_file, patient) in enumerate(tqdm(inf_loader)):
     for batch_idx, MiniBatch_Dict in enumerate(tqdm(inf_loader)):
+        #print('slide num = ', str(inf_loader.dataset.slide_num), 'batch_num = ', str(batch_idx)) #temp
+        #if args.resume and (inf_loader.dataset.slide_num < slide_num):
+        #    print('skip') #temp
+        #    continue
 
         # Unpacking the data:
         data = MiniBatch_Dict['Data']
@@ -175,28 +210,33 @@ with torch.no_grad():
         last_batch = MiniBatch_Dict['Is Last Batch']
         slide_file = MiniBatch_Dict['Slide Filename']
         slide_dataset = MiniBatch_Dict['Slide DataSet']
-        #patch_locs = MiniBatch_Dict['Patch Loc']
+        patch_locs = MiniBatch_Dict['Patch Loc']
         #patch_loc_inds = MiniBatch_Dict['Patch loc index']
         #slide_size_ind = MiniBatch_Dict['Slide Index Size']
         #slide_size = MiniBatch_Dict['Slide Size']
 
         if new_slide:
-            n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
+            #n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
+            n_tiles = inf_loader.dataset.num_tiles[slide_num - args.resume]  # RanS 6.10.21
             #scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
             #scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
             scores_0 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)] # RanS 12.7.21
             scores_1 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]  # RanS 12.7.21
-            #patch_locs_1 = [np.zeros((n_tiles, 2)) for ii in range(NUM_MODELS)]  # RanS 10.8.21
+            patch_locs_1_slide = np.zeros((n_tiles, 2))  # RanS 10.8.21
             #patch_locs_inds_1 = [np.zeros((n_tiles, 2)) for ii in range(NUM_MODELS)]  # RanS 10.8.21
             if args.save_features:
                 #feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
-                feature_arr = [np.zeros((n_tiles, 512)) for ii in range(NUM_MODELS)]  # RanS 1.7.21
+                #feature_arr = [np.zeros((n_tiles, 512)) for ii in range(NUM_MODELS)]  # RanS 1.7.21
+                feature_arr = [np.zeros((n_tiles, 512))]  # RanS 30.9.21
             target_current = target
             slide_batch_num = 0
             new_slide = False
 
         data = data.squeeze(0)
         data, target = data.to(DEVICE), target.to(DEVICE)
+
+        #patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21
+        patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = np.asarray(patch_locs)  # RanS 19.10.21
 
         for index, model in enumerate(models):
             model.to(DEVICE)
@@ -205,14 +245,12 @@ with torch.no_grad():
 
             scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
 
-            #scores_0[index] = np.concatenate((scores_0[index], scores[:, 0].cpu().detach().numpy()))
-            #scores_1[index] = np.concatenate((scores_1[index], scores[:, 1].cpu().detach().numpy()))
-            scores_0[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 0].cpu().detach().numpy() #RanS 1.7.21
-            scores_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 1].cpu().detach().numpy() # RanS 1.7.21
-            #patch_locs_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21
-            #patch_locs_inds_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_loc_inds  # RanS 10.8.21
-            if args.save_features:
-                feature_arr[index][slide_batch_num*tiles_per_iter: slide_batch_num*tiles_per_iter + len(data), :] = features.cpu().detach().numpy() #RanS 1.7.21
+            scores_0[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 0].cpu().detach().numpy()
+            scores_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 1].cpu().detach().numpy()
+            #patch_locs_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21, cancelled
+
+            if args.save_features and index == feature_epoch_ind:
+                feature_arr[0][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = features.cpu().detach().numpy()
 
         slide_batch_num += 1
 
@@ -225,18 +263,18 @@ with torch.no_grad():
             else:
                 total_neg += 1
 
-            #all_slide_size[slide_num,:] = slide_size #RanS 10.8.21
-            #all_slide_size_ind[slide_num, :] = slide_size_ind  # RanS 10.8.21
+            if args.save_features:
+                features_all[slide_num % NUM_SLIDES_SAVE, 0, :len(feature_arr[0])] = feature_arr[0]
+
+            patch_locs_all[slide_num, :len(patch_locs_1_slide), :] = patch_locs_1_slide #RanS 17.10.21
 
             for model_num in range(NUM_MODELS):
                 current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num]))
 
                 predicted = current_slide_tile_scores.mean(1).argmax()
                 patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
-                #patch_locs_all[slide_num, model_num, :len(patch_locs_1[model_num]), :] = patch_locs_1[model_num]
-                #patch_locs_inds_all[slide_num, model_num, :len(patch_locs_inds_1[model_num]), :] = patch_locs_inds_1[model_num]
-                if args.save_features:
-                    features_all[slide_num % NUM_SLIDES_SAVE, model_num, :len(feature_arr[model_num])] = feature_arr[model_num] #RanS 1.7.21
+
+                #patch_locs_all[slide_num, model_num, :len(patch_locs_1[model_num]), :] = patch_locs_1[model_num] #cancelled
                 all_scores[slide_num, model_num] = scores_1[model_num].mean()
                 all_labels[slide_num, model_num] = predicted
                 all_slide_names[slide_num] = slide_file[0]
@@ -250,44 +288,63 @@ with torch.no_grad():
             slide_num += 1
 
             # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
-            if args.save_features and slide_num % NUM_SLIDES_SAVE == 0:
-                for model_num in range(NUM_MODELS):
+            if slide_num % NUM_SLIDES_SAVE == 0:
+                #save the inference state
+                prev_resume_file_name = resume_file_name
+                resume_file_name = os.path.join(data_path, output_dir, 'Inference',
+                                                 'Exp_' + str(args.experiment[0])
+                                                 + '-Folds_' + str(args.folds) + '_' + str(
+                                                     args.target) + '-Tiles_' + str(
+                                                     args.num_tiles) + '_resume_slide_num_' + str(slide_num) + '.data')
+                resume_data = [all_labels, all_targets, all_scores,
+                                  total_pos, correct_pos, total_neg, correct_neg,
+                                  patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES]
+                with open(resume_file_name, 'wb') as filehandle:
+                    pickle.dump(resume_data, filehandle)
+                #delete previous resume file
+                if os.path.isfile(prev_resume_file_name):
+                    os.remove(prev_resume_file_name)
+
+                #save features
+                if args.save_features:
+                    #for model_num in range(NUM_MODELS):
                     feature_file_name = os.path.join(data_path, output_dir, 'Inference',
-                                                     'Model_Epoch_' + str(args.from_epoch[model_num])
+                                                     'Model_Epoch_' + str(args.from_epoch[feature_epoch_ind])
                                                      + '-Folds_' + str(args.folds) + '_' + str(
                                                          args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
-                    inference_data = [all_labels[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
+                    inference_data = [all_labels[slide_num-NUM_SLIDES_SAVE:slide_num, feature_epoch_ind],
                                       all_targets[slide_num-NUM_SLIDES_SAVE:slide_num],
-                                      all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num],
-                                      np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, model_num, :]),
+                                      all_scores[slide_num-NUM_SLIDES_SAVE:slide_num, feature_epoch_ind],
+                                      np.squeeze(patch_scores[slide_num-NUM_SLIDES_SAVE:slide_num, feature_epoch_ind, :]),
                                       all_slide_names[slide_num-NUM_SLIDES_SAVE:slide_num],
                                       features_all,
-                                      all_slide_datasets[slide_num-NUM_SLIDES_SAVE:slide_num]]
+                                      all_slide_datasets[slide_num-NUM_SLIDES_SAVE:slide_num],
+                                      patch_locs_all[slide_num-NUM_SLIDES_SAVE:slide_num]]
                     with open(feature_file_name, 'wb') as filehandle:
                         pickle.dump(inference_data, filehandle)
-                print('saved output for ', str(slide_num), ' slides')
-                features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
-                features_all[:] = np.nan
+                    print('saved output for ', str(slide_num), ' slides')
+                    features_all = np.empty((NUM_SLIDES_SAVE, 1, args.num_tiles, 512))
+                    features_all[:] = np.nan
 
 #save features for last slides
 if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
-    for model_num in range(NUM_MODELS):
-        feature_file_name = os.path.join(data_path, output_dir, 'Inference',
-                                         'Model_Epoch_' + str(args.from_epoch[model_num])
-                                         + '-Folds_' + str(args.folds) + '_' + str(
-                                             args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
-        last_save = slide_num // NUM_SLIDES_SAVE * NUM_SLIDES_SAVE
-        inference_data = [all_labels[last_save:slide_num, model_num],
-                          all_targets[last_save:slide_num],
-                          all_scores[last_save:slide_num, model_num],
-                          np.squeeze(patch_scores[last_save:slide_num, model_num, :]),
-                          all_slide_names[last_save:slide_num],
-                          features_all[:slide_num-last_save],
-                          all_slide_datasets[last_save:slide_num]]
-        with open(feature_file_name, 'wb') as filehandle:
-            pickle.dump(inference_data, filehandle)
-        print('saved output for ', str(slide_num), ' slides')
-
+    #for model_num in range(NUM_MODELS):
+    feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+                                     'Model_Epoch_' + str(args.from_epoch[feature_epoch_ind])
+                                     + '-Folds_' + str(args.folds) + '_' + str(
+                                         args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
+    last_save = slide_num // NUM_SLIDES_SAVE * NUM_SLIDES_SAVE
+    inference_data = [all_labels[last_save:slide_num, feature_epoch_ind],
+                      all_targets[last_save:slide_num],
+                      all_scores[last_save:slide_num, feature_epoch_ind],
+                      np.squeeze(patch_scores[last_save:slide_num, feature_epoch_ind, :]),
+                      all_slide_names[last_save:slide_num],
+                      features_all[:slide_num-last_save],
+                      all_slide_datasets[last_save:slide_num],
+                      patch_locs_all[last_save:slide_num]]
+    with open(feature_file_name, 'wb') as filehandle:
+        pickle.dump(inference_data, filehandle)
+    print('saved output for ', str(slide_num), ' slides')
 
 for model_num in range(NUM_MODELS):
     if different_experiments:
@@ -296,14 +353,12 @@ for model_num in range(NUM_MODELS):
     fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
-    if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
-        os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
-
     file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
-                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], len(inf_dset),
-                      np.squeeze(patch_scores[:, model_num, :]), all_slide_names, all_slide_datasets]
+                      total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], NUM_SLIDES,
+                      np.squeeze(patch_scores[:, model_num, :]), all_slide_names, all_slide_datasets,
+                      np.squeeze(patch_locs_all)]
                       #np.squeeze(patch_scores[:, model_num, :]), all_slide_names, np.squeeze(patch_locs_all[:, model_num, :, :]), np.squeeze(patch_locs_inds_all[:, model_num, :, :]), all_slide_size, all_slide_size_ind]
 
     with open(file_name, 'wb') as filehandle:
@@ -327,7 +382,7 @@ if os.path.isfile('mail_cfg.txt'):
     port = 465  # For SSL
     sender_email = "gipmed.python@gmail.com"
 
-    message = 'Subject: finished running experiment ' + str(args.experiment)
+    message = 'Subject: finished inference for experiment ' + str(args.experiment)
 
     # Create a secure SSL context
     context = ssl.create_default_context()

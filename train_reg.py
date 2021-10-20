@@ -46,7 +46,7 @@ parser.add_argument('--loan', action='store_true', help='Localized Annotation fo
 parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
 parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
 parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
-#parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
+parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
 
 
 args = parser.parse_args()
@@ -257,21 +257,21 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             true_pos_test += predicted[targets.eq(1)].eq(1).sum().item()
             true_neg_test += predicted[targets.eq(0)].eq(0).sum().item()
 
-        if not args.bootstrap:
-            acc = 100 * float(correct_labeling_test) / total_test
-            bacc = 100. * ((true_pos_test + EPS) / (total_pos_test + EPS) + (true_neg_test + EPS) / (total_neg_test + EPS)) / 2
-            roc_auc = np.nan
-            if not all(true_labels_test == true_labels_test[0]): #more than one label
-                fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
-                roc_auc = auc(fpr, tpr)
-
-            #RanS 8.12.20, perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
-            slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]): #more than one label
-                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-        else: #bootstrap, RanS 16.12.20
+        #if not args.bootstrap:
+        acc = 100 * float(correct_labeling_test) / total_test
+        bacc = 100. * ((true_pos_test + EPS) / (total_pos_test + EPS) + (true_neg_test + EPS) / (total_neg_test + EPS)) / 2
+        roc_auc = np.nan
+        if not all(true_labels_test == true_labels_test[0]): #more than one label
+            fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
+            roc_auc = auc(fpr, tpr)
+        #RanS 8.12.20, perform slide inference
+        patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
+        slide_mean_score_df = patch_df.groupby('slide').mean()
+        roc_auc_slide = np.nan
+        if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]): #more than one label
+            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+        #else: #bootstrap
+        if args.bootstrap:
             # load dataset
             # configure bootstrap
             n_iterations = 100
@@ -314,13 +314,13 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
                 slide_mean_score_df = patch_df.groupby('slide').mean()
                 if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  # more than one label
                     slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            roc_auc = np.nanmean(roc_auc_array)
-            roc_auc_slide = np.nanmean(slide_roc_auc_array)
+            #roc_auc = np.nanmean(roc_auc_array)
+            #roc_auc_slide = np.nanmean(slide_roc_auc_array)
             roc_auc_std = np.nanstd(roc_auc_array)
             roc_auc_slide_std = np.nanstd(slide_roc_auc_array)
-            acc = np.nanmean(acc_array)
+            #acc = np.nanmean(acc_array)
             acc_err = np.nanstd(acc_array)
-            bacc = np.nanmean(bacc_array)
+            #bacc = np.nanmean(bacc_array)
             bacc_err = np.nanstd(bacc_array)
 
             all_writer.add_scalar('Test_errors/Accuracy error', acc_err, epoch)
@@ -413,7 +413,8 @@ if __name__ == '__main__':
                                          DX=args.dx,
                                          loan=args.loan,
                                          er_eq_pr=args.er_eq_pr,
-                                         slide_per_block=args.slide_per_block
+                                         slide_per_block=args.slide_per_block,
+                                         balanced_dataset=args.balanced_dataset
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,

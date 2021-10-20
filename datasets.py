@@ -11,8 +11,8 @@ from torch.utils.data import Dataset
 from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks, map_original_grid_list_to_equiv_grid_list
 from utils import HEDColorJitter, define_transformations, assert_dataset_target
-from utils import show_patches_and_transformations, get_datasets_dir_dict
 from utils import dataset_properties_to_location
+from utils import show_patches_and_transformations, get_datasets_dir_dict, balance_dataset
 import openslide
 from tqdm import tqdm
 import sys
@@ -42,7 +42,8 @@ class WSI_Master_Dataset(Dataset):
                  slide_repetitions: int = 1,
                  loan: bool = False,
                  er_eq_pr: bool = False,
-                 slide_per_block: bool = False
+                 slide_per_block: bool = False,
+                 balanced_dataset: bool = False
                  ):
 
         # Check if the target receptor is available for the requested train DataSet:
@@ -90,6 +91,12 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
+        if balanced_dataset and self.target_kind == 'ER':
+            self.meta_data_DF = balance_dataset(self.meta_data_DF)
+            #take only selected patients
+            self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['use_in_balanced_data_ER'] == 1]
+            self.meta_data_DF.reset_index(inplace=True)
+
         if self.target_kind == 'OR':
             PR_targets = list(self.meta_data_DF['PR status'])
             ER_targets = list(self.meta_data_DF['ER status'])
@@ -122,7 +129,7 @@ class WSI_Master_Dataset(Dataset):
                 print('slide_per_block: removing ' + str(len(excess_block_slides)) + ' slides')
             else:
                 IOError('slide_per_block only implemented for CARMEL dataset')
-        elif (DataSet == 'LEUKEMIA') and (target_kind in ['ALL', 'is_B']):
+        elif (DataSet == 'LEUKEMIA') and (target_kind in ['ALL', 'is_B', 'is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B']):
             #remove slides with diagnosis day != 0
             excess_block_slides = set(self.meta_data_DF.index[self.meta_data_DF['Day_0/15/33_fixed'] != 0])
         else:
@@ -336,7 +343,8 @@ class WSI_Master_Dataset(Dataset):
                                             # Fix boundaries with scale
                                             print_timing=self.print_time,
                                             desired_mag=self.desired_magnification,
-                                            loan=self.loan)
+                                            loan=self.loan,
+                                            random_shift=self.train)
 
         if not self.loan:
             label = [1] if self.target[idx] == 'Positive' else [0]
@@ -438,7 +446,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  desired_slide_magnification: int = 10,
                  loan: bool = False,
                  er_eq_pr: bool = False,
-                 slide_per_block: bool = False
+                 slide_per_block: bool = False,
+                 balanced_dataset: bool = False
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -455,7 +464,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              n_tiles=n_tiles,
                                              desired_slide_magnification=desired_slide_magnification,
                                              er_eq_pr=er_eq_pr,
-                                             slide_per_block=slide_per_block)
+                                             slide_per_block=slide_per_block,
+                                             balanced_dataset=balanced_dataset)
 
         self.loan = loan
         print(
@@ -488,7 +498,8 @@ class Infer_Dataset(WSI_Master_Dataset):
                  folds: List = [1],
                  num_tiles: int = 500,
                  dx: bool = False,
-                 desired_slide_magnification: int = 10
+                 desired_slide_magnification: int = 10,
+                 resume_slide: int = 0
                  ):
         super(Infer_Dataset, self).__init__(DataSet=DataSet,
                                             tile_size=tile_size,
@@ -515,19 +526,23 @@ class Infer_Dataset(WSI_Master_Dataset):
 
         ind = 0
         slide_with_not_enough_tiles = 0
+
+        self.valid_slide_indices = self.valid_slide_indices[resume_slide:] #RanS 6.10.21
+        self.tissue_tiles = self.tissue_tiles[resume_slide:] #RanS 7.10.21
+        self.image_file_names = self.image_file_names[resume_slide:] #RanS 7.10.21
+        self.image_path_names = self.image_path_names[resume_slide:] #RanS 7.10.21
+
         for _, slide_num in enumerate(self.valid_slide_indices):
             if (self.DX and self.all_is_DX_cut[slide_num]) or not self.DX:
                 if num_tiles <= self.all_tissue_tiles[slide_num] and self.all_tissue_tiles[slide_num] > 0:
                     self.num_tiles.append(num_tiles)
                 else:
-                    # self.num_patches.append(self.all_tissue_tiles[slide_num])
-                    self.num_tiles.append(int(self.all_tissue_tiles[slide_num]))  # RanS 10.3.21
+                    self.num_tiles.append(int(self.all_tissue_tiles[slide_num]))
                     slide_with_not_enough_tiles += 1
                     '''print('{} Slide available tiles are less than {}'.format(self.all_image_file_names[slide_num],
                                                                              num_tiles))'''
 
-                # self.magnification.extend([self.all_magnifications[slide_num]] * self.num_patches[-1])
-                self.magnification.extend([self.all_magnifications[slide_num]])  # RanS 11.3.21
+                self.magnification.extend([self.all_magnifications[slide_num]])
                 self.patient_barcode.append(self.all_patient_barcodes[slide_num])
                 self.slide_dataset.append(self.all_image_ids[slide_num])
                 which_patches = sample(range(int(self.tissue_tiles[ind])), self.num_tiles[-1])
@@ -675,7 +690,7 @@ class Infer_Dataset(WSI_Master_Dataset):
                 'Slide DataSet': self.slide_dataset[self.slide_num],
                 #'Slide Index Size': self.equivalent_grid_size[self.slide_num],
                 #'Slide Size': self.slide_size,
-                #'Patch Loc': locs,
+                'Patch Loc': locs,
                 }
 
 
@@ -1289,7 +1304,8 @@ class WSI_Segmentation_Master_Dataset(Dataset):
                                             tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
                                             # Fix boundaries with scale
                                             print_timing=self.print_time,
-                                            desired_mag=self.desired_magnification)
+                                            desired_mag=self.desired_magnification,
+                                            random_shift=self.train)
 
         label = [1] if self.target[idx] == 'Positive' else [0]
         label = torch.LongTensor(label)

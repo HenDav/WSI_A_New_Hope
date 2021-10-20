@@ -42,25 +42,35 @@ legend_labels = []
 roc_auc = []
 slide_score_all = []
 
+if len(inference_files) == 0:
+    IOError('No inference files found!')
+
 for ind, key in enumerate(inference_files.keys()):
     with open(os.path.join(inference_dir, inference_files[key]), 'rb') as filehandle:
         inference_data = pickle.load(filehandle)
 
     if infer_type == 'REG':
-        try: #temp for transition period
-            fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
-            num_slides, patch_scores, all_slide_names, patch_locs, patch_locs_inds, all_slide_size, all_slide_size_ind = inference_data
-        except:
+        if len(inference_data) == 14: #current format
+            fpr, tpr, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+            num_slides, patch_scores, all_slide_names, all_slide_datasets, patch_locs = inference_data
+        elif len(inference_data) == 13: #old format, before locations
+            fpr, tpr, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+            num_slides, patch_scores, all_slide_names, all_slide_datasets = inference_data
+        elif len(inference_data) == 12: #old format
             fpr, tpr, all_labels, all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
             num_slides, patch_scores, all_slide_names = inference_data
+        elif len(inference_data) == 16: #temp old format with patch locs
+            fpr, tpr, all_labels,  all_targets, all_scores, total_pos, true_pos, total_neg, true_neg, \
+            num_slides, patch_scores, all_slide_names, patch_locs, patch_locs_inds, all_slide_size, all_slide_size_ind = inference_data
+        else:
+            IOError('inference data is of unsupported size!')
+
         if save_csv:
             patch_scores_df = pd.DataFrame(patch_scores)
             patch_scores_df.insert(0, "slide_name", all_slide_names)
+            patch_scores_df.insert(0, "slide_label", all_targets)
             patch_scores_df.to_csv(os.path.join(inference_dir, key + '_patch_scores.csv'))
 
-            #patch coordinates RanS 10.8.21
-            #if len(patch_locs.shape) == 4: #temp
-            #    patch_locs = np.squeeze(patch_locs[:, 1, :, :])
             try:
                 patch_x_df = pd.DataFrame(patch_locs[:, :, 0])
                 patch_x_df.insert(0, "slide_name", all_slide_names)
@@ -87,7 +97,7 @@ for ind, key in enumerate(inference_files.keys()):
 
         slide_score_all.append(slide_score_mean)
 
-        #results per patient RanS 18.3.21, works only for TCGA, ABCTB
+        #results per patient
         if patient_level:
             patient_all = []
             if dataset == 'LEUKEMIA':
@@ -178,10 +188,10 @@ for ind, key in enumerate(inference_files.keys()):
 
     if patient_level:
         plt.plot(fpr_patient, tpr_patient)
-        legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 2)) + ')')
+        legend_labels.append(key + ' (patient AUC=' + str(round(roc_auc_patient, 3)) + ')')
     else:
         plt.plot(fpr, tpr)
-        legend_labels.append(key + ' (AUC=' + str(round(roc_auc[-1], 2)) +')')
+        legend_labels.append(key + ' (AUC=' + str(round(roc_auc[-1], 3)) +')')
 
 #combine several models, RanS 11.4.21
 slide_score_mean_all = np.mean(np.array(slide_score_all), axis=0)
@@ -194,7 +204,7 @@ if patient_level and combine_all_models:
     fpr_patient_all, tpr_patient_all, thresholds_patient_all = roc_curve(patient_mean_score_all_df['targets'],
                                                              patient_mean_score_all_df['scores'])
     plt.plot(fpr_patient_all, tpr_patient_all)
-    legend_labels.append(' (all models combined patient AUC=' + str(round(roc_auc_all_patient, 2)) + ')')
+    legend_labels.append(' (all models combined patient AUC=' + str(round(roc_auc_all_patient, 3)) + ')')
 
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
@@ -204,10 +214,11 @@ plt.ylim(0, 1)
 plt.grid(b=True)
 
 if patient_level:
-    print('average AUC per patient: ' + str(np.round(np.mean(roc_auc_patient), 2)))
+    print('average AUC per patient: ' + str(np.round(np.mean(roc_auc_patient), 3)))
+    plt.savefig(os.path.join(inference_dir, inference_name + '_inference_patient.png'))
 else:
-    print('average AUC per slide: ' + str(np.round(np.mean(roc_auc), 2)))
-plt.savefig(os.path.join(inference_dir, inference_name + '_inference.png'))
+    print('average AUC per slide: ' + str(np.round(np.mean(roc_auc), 3)))
+    plt.savefig(os.path.join(inference_dir, inference_name + '_inference.png'))
 print('finished')
 #plt.show()
 
