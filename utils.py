@@ -338,7 +338,8 @@ def run_data(experiment: str = None,
              free_bias: bool = False,
              carmel_only: bool = False,
              CAT_only: bool = False,
-             Remark: str = ''):
+             Remark: str = '',
+             Class_Relation: float = None):
     """
     This function writes the run data to file
     :param experiment:
@@ -417,7 +418,8 @@ def run_data(experiment: str = None,
                     'Free Bias': free_bias,
                     'Carmel Only': carmel_only,
                     'Using Feature from CAT model alone': CAT_only,
-                    'Remark': Remark
+                    'Remark': Remark,
+                    'Class Relation': Class_Relation
                     }
         run_DF = run_DF.append([run_dict], ignore_index=True)
         if not os.path.isdir('runs'):
@@ -483,7 +485,7 @@ def run_data(experiment: str = None,
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
         free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
         CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
-
+        Class_Relation = float(run_DF_exp.loc[[experiment], ['Class Relation']].values[0][0])
 
         if sys.platform == 'linux':
             if location.split('/')[0] == 'runs':
@@ -506,7 +508,8 @@ def run_data(experiment: str = None,
                 'Model Name': model_name,
                 'Desired Slide Magnification': Desired_Slide_magnification,
                 'Free Bias': free_bias,
-                'CAT Only': CAT_only
+                'CAT Only': CAT_only,
+                'Class Relation': Class_Relation
                 }
 
 
@@ -1417,6 +1420,17 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
                                                  'Regular model location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
                                                  }
                                             }
+                                       },
+                                  'CARMEL_40':
+                                      {'ER':
+                                           {1:
+                                                {
+                                                    'Train': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Train',
+                                                    'Test': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Test',
+                                                    'Dataset name': r'FEATURES: Exp_381-ER-TestFold_1',
+                                                    'Regular model location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
+                                                    }
+                                            }
                                        }
                                   }
     elif sys.platform == 'linux':
@@ -1447,7 +1461,18 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
                                                  'Regular model location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
                                                  }
                                             }
-                                       }
+                                       },
+                                  'CARMEL_40':
+                                      {'ER':
+                                          {1:
+                                              {
+                                                  'Train': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/train_w_features',
+                                                  'Test': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/test_w_features',
+                                                  'Dataset name': r'FEATURES: Exp_358-ER-TestFold_1',
+                                                  'Regular model location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1200.pt'
+                                              }
+                                          }
+                                      }
                                   }
 
     dataset_location_list = []

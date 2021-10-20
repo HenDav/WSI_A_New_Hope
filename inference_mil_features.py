@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 parser = argparse.ArgumentParser(description='WSI_MIL Features Slide inference')
-parser.add_argument('-ex', '--experiment', type=int, default=10436, help='Continue train of this experiment')
+parser.add_argument('-ex', '--experiment', type=int, default=10415, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=[500], help='Use this epoch model for inference')
 parser.add_argument('-sts', '--save_tile_scores', dest='save_tile_scores', action='store_true', help='save tile scores')
 #parser.add_argument('-nt', '--num_tiles', type=int, default=500, help='Number of tiles to use')
@@ -87,6 +87,10 @@ if sys.platform == 'darwin':
         dset = 'CARMEL'
         test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test'
 
+    elif dataset == 'FEATURES: Exp_381-ER-TestFold_1':
+        dset = 'CARMEL_40'
+        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Test'
+
     args.save_tile_scores = False
     is_per_patient = True
     #is_per_patient = False if args.save_tile_scores else True
@@ -94,7 +98,16 @@ if sys.platform == 'darwin':
 
 # Get data:
 if dataset == 'Combined Features':
-    inf_dset = datasets.Combined_Features_for_MIL_Training_dataset(is_all_tiles=True,
+    inf_dset = datasets.Combined_Features_for_MIL_Training_dataset(dataset_list=['CAT', 'CARMEL'],
+                                                                   is_all_tiles=True,
+                                                                   target=target,
+                                                                   is_train=False,
+                                                                   test_fold=test_fold,
+                                                                   is_per_patient=is_per_patient)
+
+elif dataset == 'Combined Features - Multi Resolution':
+    inf_dset = datasets.Combined_Features_for_MIL_Training_dataset(dataset_list=['CARMEL', 'CARMEL_40'],
+                                                                   is_all_tiles=True,
                                                                    target=target,
                                                                    is_train=False,
                                                                    test_fold=test_fold,
@@ -132,9 +145,9 @@ if args.save_tile_scores and not carmel_only:
     all_slides_tile_scores_list.append({})
     all_slides_scores_list.append({})
 
-    if dataset == 'Combined Features':
-        all_slides_tile_scores_list_ran = {'CAT': [{}], 'CARMEL': [{}]}
-        all_slides_scores_list_ran = {'CAT': [{}], 'CARMEL': [{}]}
+    if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
+        all_slides_tile_scores_list_ran = {inf_dset.dataset_list[0]: [{}], inf_dset.dataset_list[1]: [{}]}
+        all_slides_scores_list_ran = {inf_dset.dataset_list[0]: [{}], inf_dset.dataset_list[1]: [{}]}
     else:
         all_slides_tile_scores_list_ran = []
         all_slides_scores_list_ran = []
@@ -146,7 +159,7 @@ model = eval(model_name)
 if free_bias:
     model.create_free_bias()
 if CAT_only:
-    model.CAT_only = True
+    model.Model_1_only = True
 
 total_loss, total_tiles_infered = 0, 0
 for model_num, model_epoch in enumerate(args.from_epoch):
@@ -156,11 +169,13 @@ for model_num, model_epoch in enumerate(args.from_epoch):
 
     model.load_state_dict(model_data_loaded['model_state_dict'])
 
-    if model_data_loaded['bias_CAT'] != None:
-        model.bias_CAT = model_data_loaded['bias_CAT']
-        model.bias_CARMEL = model_data_loaded['bias_CARMEL']
+    if dataset in ['Combined Features', 'Combined Features - Multi Resolution'] and model_data_loaded['bias_Model_1'] != None:
+        model.bias_Model_1 = model_data_loaded['bias_Model_1']
+        model.bias_Model_2 = model_data_loaded['bias_Model_2']
+        if 'class relation' in model_data_loaded.keys() and model_data_loaded['class relation'] != None:
+            model.relation = model_data_loaded['class relation']
 
-    scores_reg = [] if dataset != 'Combined Features' else {inf_dset.dataset_list[0]: [], inf_dset.dataset_list[1]: []}
+    scores_reg = [] if dataset not in ['Combined Features', 'Combined Features - Multi Resolution'] else {inf_dset.dataset_list[0]: [], inf_dset.dataset_list[1]: []}
     all_scores_mil, all_labels_mil, all_targets = [], [], []
     total, correct_pos, correct_neg = 0, 0, 0
     total_pos, total_neg = 0, 0
@@ -173,37 +188,37 @@ for model_num, model_epoch in enumerate(args.from_epoch):
 
     with torch.no_grad():
         for batch_idx, minibatch in enumerate(tqdm(inf_loader)):
-            if dataset == 'Combined Features':
+            if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
                 total_tiles_infered += minibatch[list(minibatch.keys())[0]]['tile scores'].size(1)  #  count the number of tiles in each minibatch
-                target = minibatch['CAT']['targets']
-                data_CAT = minibatch['CAT']['features']
-                data_CARMEL = minibatch['CARMEL']['features']
+                target = minibatch[inf_dset.dataset_list[0]]['targets']
+                data_Model_1 = minibatch[inf_dset.dataset_list[0]]['features']
+                data_Model_2 = minibatch[inf_dset.dataset_list[1]]['features']
 
-                data_CAT, data_CARMEL, target = data_CAT.to(DEVICE), data_CARMEL.to(DEVICE), target.to(DEVICE)
-                data = {'CAT': data_CAT,
-                        'CARMEL': data_CARMEL}
+                data_Model_1, data_Model_2, target = data_Model_1.to(DEVICE), data_Model_2.to(DEVICE), target.to(DEVICE)
+                data = {inf_dset.dataset_list[0]: data_Model_1,
+                        inf_dset.dataset_list[1]: data_Model_2}
             else:
                 target = minibatch['targets']
                 data = minibatch['features']
                 data, target = data.to(DEVICE), target.to(DEVICE)
 
             if model_num == 0:
-                if dataset == 'Combined Features':
-                    scores_reg['CAT'].append(minibatch['CAT']['tile scores'].mean().cpu().item())
-                    scores_reg['CARMEL'].append(minibatch['CARMEL']['tile scores'].mean().cpu().item())
+                if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
+                    scores_reg[inf_dset.dataset_list[0]].append(minibatch[inf_dset.dataset_list[0]]['tile scores'].mean().cpu().item())
+                    scores_reg[inf_dset.dataset_list[1]].append(minibatch[inf_dset.dataset_list[1]]['tile scores'].mean().cpu().item())
                 else:
                     scores_reg.append(minibatch['scores'].mean().cpu().item())
 
-            outputs, weights_after_sftmx, weights_before_softmax = model(x=None, H=data)
+            outputs, weights_after_sftmx, weights_before_sftmx = model(x=None, H=data)
 
             minibatch_loss = criterion(outputs, target)
             total_loss += minibatch_loss
 
-            if dataset == 'Combined Features':
+            if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
                 if type(weights_after_sftmx) == list:  # This will work on the model Combined_MIL_Feature_Attention_MultiBag_DEBUG
                     if len(weights_after_sftmx) == 2:
-                        weights_after_sftmx = {'CAT': weights_after_sftmx[0].cpu().detach().numpy(),
-                                               'CARMEL': weights_after_sftmx[1].cpu().detach().numpy()
+                        weights_after_sftmx = {inf_dset.dataset_list[0]: weights_after_sftmx[0].cpu().detach().numpy(),
+                                               inf_dset.dataset_list[1]: weights_after_sftmx[1].cpu().detach().numpy()
                                                }
                     elif len(weights_after_sftmx) == 1:
                         weights_after_sftmx = {'CAT': weights_after_sftmx[0].cpu().detach().numpy(),
@@ -213,16 +228,16 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                 else:
                     for key in list(weights_after_sftmx.keys()):
                         weights_after_sftmx[key] = weights_after_sftmx[key].cpu().detach().numpy()
-                        weights_before_softmax[key] = weights_before_softmax[key].cpu().detach().numpy()
+                        weights_before_sftmx[key] = weights_before_sftmx[key].cpu().detach().numpy()
             else:
                 weights_after_sftmx = weights_after_sftmx.cpu().detach().numpy()
-                weights_before_softmax = weights_before_softmax.cpu().detach().numpy()
+                weights_before_sftmx = weights_before_sftmx.cpu().detach().numpy()
 
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             _, predicted = outputs.max(1)
 
             if args.save_tile_scores and not carmel_only:
-                if dataset == 'Combined Features':
+                if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
                     for key in list(minibatch.keys()):
                         slide_name = minibatch[key]['slide name']
                         tile_scores_ran = minibatch[key]['tile scores'].cpu().detach().numpy()[0]
@@ -324,27 +339,27 @@ for model_num, model_epoch in enumerate(args.from_epoch):
                                               all_slides_weights_before_sftmx_list, all_slides_weights_after_sftmx_list,
                                               [model], output_dir, args.from_epoch, '')
     if model_num == 0:
-        if dataset == 'Combined Features':
+        if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
             fpr_reg, tpr_reg, roc_auc_reg = {}, {}, {}
-            fpr_reg['CAT'], tpr_reg['CAT'], _ = roc_curve(true_targets, np.array(scores_reg['CAT']))
-            fpr_reg['CARMEL'], tpr_reg['CARMEL'], _ = roc_curve(true_targets, np.array(scores_reg['CARMEL']))
-            roc_auc_reg['CAT'] = auc(fpr_reg['CAT'], tpr_reg['CAT'])
-            roc_auc_reg['CARMEL'] = auc(fpr_reg['CARMEL'], tpr_reg['CARMEL'])
-            plt.plot(fpr_reg['CAT'], tpr_reg['CAT'])
-            plt.plot(fpr_reg['CARMEL'], tpr_reg['CARMEL'])
+            fpr_reg[inf_dset.dataset_list[0]], tpr_reg[inf_dset.dataset_list[0]], _ = roc_curve(true_targets, np.array(scores_reg[inf_dset.dataset_list[0]]))
+            fpr_reg[inf_dset.dataset_list[1]], tpr_reg[inf_dset.dataset_list[1]], _ = roc_curve(true_targets, np.array(scores_reg[inf_dset.dataset_list[1]]))
+            roc_auc_reg[inf_dset.dataset_list[0]] = auc(fpr_reg[inf_dset.dataset_list[0]], tpr_reg[inf_dset.dataset_list[0]])
+            roc_auc_reg[inf_dset.dataset_list[1]] = auc(fpr_reg[inf_dset.dataset_list[1]], tpr_reg[inf_dset.dataset_list[1]])
+            plt.plot(fpr_reg[inf_dset.dataset_list[0]], tpr_reg[inf_dset.dataset_list[0]])
+            plt.plot(fpr_reg[inf_dset.dataset_list[1]], tpr_reg[inf_dset.dataset_list[1]])
         else:
             fpr_reg, tpr_reg, _ = roc_curve(true_targets, np.array(scores_reg))
             roc_auc_reg = auc(fpr_reg, tpr_reg)
             plt.plot(fpr_reg, tpr_reg)
 
         postfix = 'Patient' if is_per_patient else 'Slide'
-        if dataset == 'Combined Features':
+        if dataset in ['Combined Features', 'Combined Features - Multi Resolution']:
             for key in list(minibatch.keys()):
                 label_reg = 'REG [' + key + '] Per ' + postfix + ' AUC='
-                legend_labels.append(label_reg + str(round(roc_auc_reg[key], 3)) + ')')
+                legend_labels.append(label_reg + str(round(roc_auc_reg[key] * 100, 2)) + '%)')
         else:
             label_reg = 'REG Per ' + postfix + ' AUC='
-            legend_labels.append(label_reg + str(round(roc_auc_reg, 3)) + ')')
+            legend_labels.append(label_reg + str(round(roc_auc_reg * 100, 2)) + '%)')
 
         label_MIL = 'Model' + str(model_epoch) + ': MIL Per ' + postfix + ' AUC='
 
@@ -356,7 +371,7 @@ for model_num, model_epoch in enumerate(args.from_epoch):
     fpr_mil, tpr_mil, _ = roc_curve(true_targets, scores_mil)
     roc_auc_mil = auc(fpr_mil, tpr_mil)
     plt.plot(fpr_mil, tpr_mil)
-    legend_labels.append(label_MIL + str(round(roc_auc_mil, 3)) + ')')
+    legend_labels.append(label_MIL + str(round(roc_auc_mil * 100, 2)) + '%)')
 
 
 plt.xlabel('False Positive Rate')

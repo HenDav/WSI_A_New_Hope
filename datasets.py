@@ -1363,10 +1363,17 @@ class Features_MILdataset(Dataset):
         patient_list = []
 
         data_files = glob(os.path.join(data_location, '*.data'))
-        if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
+
+        data_files = glob(os.path.join(data_location, '*.data'))
+        for data_file in data_files:
+            if 'features' not in data_file.split('_'):
+                data_files.remove(data_file)
+
+
+        '''if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
             data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data'))
         if os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data') in data_files:
-            data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
+            data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))'''
 
         if sys.platform == 'darwin':
             if dataset == 'TCGA_ABCTB':
@@ -1385,6 +1392,12 @@ class Features_MILdataset(Dataset):
             elif dataset == 'CARMEL':
                 grid_location_dict = {
                     'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+            elif dataset == 'CARMEL_40':
+                grid_location_dict = {
+                    'CARMEL_40': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_40_Grid_data.xlsx'}
                 slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
                 slides_data_DF_CARMEL.set_index('file', inplace=True)
 
@@ -1411,6 +1424,12 @@ class Features_MILdataset(Dataset):
                 slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
                 slides_data_DF_CARMEL.set_index('file', inplace=True)
 
+            elif dataset == 'CARMEL_40':
+                grid_location_dict = {
+                    'CARMEL_40': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_40_Grid_data.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
             else:
                 raise Exception("Need to write which dictionaries to use in this receptor case")
 
@@ -1426,7 +1445,10 @@ class Features_MILdataset(Dataset):
                 inference_data = pickle.load(filehandle)
 
             try:
-                labels, targets, scores, patch_scores, slide_names, features = inference_data
+                if len(inference_data) == 6:
+                    labels, targets, scores, patch_scores, slide_names, features = inference_data
+                elif len(inference_data) == 7:
+                    labels, targets, scores, patch_scores, slide_names, features, batch_number = inference_data
             except ValueError:
                 raise Exception('Debug')
 
@@ -1452,8 +1474,9 @@ class Features_MILdataset(Dataset):
                 feature_1 = features[slide_num, :, :, 0]
                 nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
                 tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+                column_title = 'Legitimate tiles - 256 compatible @ X10' if len(dataset.split('_')) == 1 else 'Legitimate tiles - 256 compatible @ X' + dataset.split('_')[1]
                 try:
-                    tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10'])
+                    tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], column_title])
                 except TypeError:
                     raise Exception('Debug')
 
@@ -1591,7 +1614,7 @@ class Features_MILdataset(Dataset):
 
 class Combined_Features_for_MIL_Training_dataset(Dataset):
     def __init__(self,
-                 dataset_list: list = ['CAT', 'CARMEL'],
+                 dataset_list: list = ['CAT', 'CARMEL'],  # for Multi_Resolution [CARMEL_10, CARMEL_40]
                  similar_dataset: str = 'CARMEL',
                  bag_size: int = 100,
                  minimum_tiles_in_slide: int = 50,
@@ -1647,10 +1670,14 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                 dataset_tile_scores = []
 
             data_files = glob(os.path.join(data_location, '*.data'))
-            if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
+            for data_file in data_files:
+                if 'features' not in data_file.split('_'):
+                    data_files.remove(data_file)
+
+            '''if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
                 data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data'))
             if os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data') in data_files:
-                data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))
+                data_files.remove(os.path.join(data_location, 'Model_Epoch_1000-Folds_[1]_ER-Tiles_500.data'))'''
 
             if sys.platform == 'darwin':
                 if dataset == 'CAT':
@@ -1664,6 +1691,11 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                 elif dataset == 'CARMEL':
                     grid_location_dict = {
                         'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+                elif dataset == 'CARMEL_40':
+                    grid_location_dict = {
+                        'CARMEL_40': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_40_Grid_data.xlsx'}
                     slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
                     slides_data_DF_CARMEL.set_index('file', inplace=True)
 
@@ -1685,6 +1717,12 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                     slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
                     slides_data_DF_CARMEL.set_index('file', inplace=True)
 
+                elif dataset == 'CARMEL_40':
+                    grid_location_dict = {
+                        'CARMEL_40': r'/home/womer/project/All Data/Ran_Features/Grid_data/CARMEL_40_Grid_data.xlsx'}
+                    slides_data_DF_CARMEL = pd.read_excel('/home/womer/project/All Data/Ran_Features/Grid_data/slides_data_CARMEL_ALL.xlsx')
+                    slides_data_DF_CARMEL.set_index('file', inplace=True)
+
                 else:
                     raise Exception("Need to write which dictionaries to use in this receptor case")
 
@@ -1700,7 +1738,10 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                     inference_data = pickle.load(filehandle)
 
                 try:
-                    labels, targets, scores, patch_scores, slide_names, features = inference_data
+                    if len(inference_data) == 6:
+                        labels, targets, scores, patch_scores, slide_names, features = inference_data
+                    elif len(inference_data) == 7:
+                        labels, targets, scores, patch_scores, slide_names, features, batch_number = inference_data
                 except ValueError:
                     raise Exception('Debug')
 
@@ -1724,8 +1765,9 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                     feature_1 = features[slide_num, :, :, 0]
                     nan_indices = np.argwhere(np.isnan(feature_1)).tolist()
                     tiles_in_slide = nan_indices[0][1] if bool(nan_indices) else max_tile_num  # check if there are any nan values in feature_1
+                    column_title = 'Legitimate tiles - 256 compatible @ X10' if len(dataset.split('_')) == 1 else 'Legitimate tiles - 256 compatible @ X' + dataset.split('_')[1]
                     try:
-                        tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], 'Legitimate tiles - 256 compatible @ X10'])
+                        tiles_in_slide_from_grid_data = int(grid_DF.loc[slide_names[slide_num], column_title])
                     except TypeError:
                         raise Exception('Debug')
 
@@ -1842,8 +1884,50 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                     raise Exception('Datasets has different amount of slides for patient {}. This case is not implemented'.format(patient))
 
         else:
-            if set(self.slide_data[datasets_location[0][0]]['slide names']) - set(self.slide_data[datasets_location[1][0]]['slide names']):
-                raise Exception('Datasets has different amount of slides. This case is not implemented')
+            set_1 = set(self.slide_data[datasets_location[0][0]]['slide names'])
+            set_2 = set(self.slide_data[datasets_location[1][0]]['slide names'])
+            set_1_2 = set_1 - set_2
+            set_2_1 = set_2 - set_1
+            if bool(set_1_2) or bool(set_2_1):
+                print('Datasets has different amount of slides. Removing slides that don\'t reside in both datasets')
+
+                if len(set_1_2) != 0:
+                    different_slides_1_2 = list(set_1_2)
+                    slide_location_1_2 = []
+                    for slide in different_slides_1_2:
+                        slide_location_1_2.append(self.slide_data[datasets_location[0][0]]['slide names'].index(slide))
+
+                    # Removing all slide data that do not reside in the other dataset:
+                    for slide_location in slide_location_1_2:
+                        del self.slide_data[datasets_location[0][0]]['slide names'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['features'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['tile scores'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['labels'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['targets'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['slide scores'][slide_location]
+                        del self.slide_data[datasets_location[0][0]]['num tiles'][slide_location]
+
+                    print('Removed slides {} from {} dataset'.format(different_slides_1_2, datasets_location[0][0]))
+
+                if len(set_2_1) != 0:
+                    different_slides_2_1 = list(set_2_1)
+                    slide_location_2_1 = []
+                    for slide in different_slides_2_1:
+                        slide_location_2_1.append(self.slide_data[datasets_location[1][0]]['slide names'].index(slide))
+
+                    # Removing all slide data that do not reside in the other dataset:
+                    for slide_location in slide_location_2_1:
+                        del self.slide_data[datasets_location[1][0]]['slide names'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['features'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['tile scores'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['labels'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['targets'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['slide scores'][slide_location]
+                        del self.slide_data[datasets_location[1][0]]['num tiles'][slide_location]
+
+                    print('Removed slides {} from {} dataset'.format(different_slides_2_1, datasets_location[1][0]))
+
+                #raise Exception('Datasets has different amount of slides. This case is not implemented')
 
         # Sorting both datasets:
         print('Sorting the Data per {} ...'.format('Patient' if self.is_per_patient else 'Slide'))
@@ -1854,25 +1938,40 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                 # We already checked that both dataset contain the same patients and each patient has the same slides
                 for patient in list(self.patient_data[dataset].keys()):
                     sort_order = np.argsort(np.array(self.patient_data[dataset][patient]['slide names']))
-                    self.patient_data[dataset][patient]['slide names'] =    list(np.array(self.patient_data[dataset][patient]['slide names'])[sort_order])
+                    self.patient_data[dataset][patient]['slide names'] = [self.patient_data[dataset][patient]['slide names'][index] for index in sort_order]
+                    self.patient_data[dataset][patient]['features'] = [self.patient_data[dataset][patient]['features'][index] for index in sort_order]
+                    self.patient_data[dataset][patient]['tile scores'] = [self.patient_data[dataset][patient]['tile scores'][index] for index in sort_order]
+                    self.patient_data[dataset][patient]['labels'] = [self.patient_data[dataset][patient]['labels'][index] for index in sort_order]
+                    self.patient_data[dataset][patient]['slide scores'] = [self.patient_data[dataset][patient]['slide scores'][index] for index in sort_order]
+                    self.patient_data[dataset][patient]['num tiles'] = [self.patient_data[dataset][patient]['num tiles'][index] for index in sort_order]
+
+                    '''self.patient_data[dataset][patient]['slide names'] =    list(np.array(self.patient_data[dataset][patient]['slide names'])[sort_order])
                     self.patient_data[dataset][patient]['features'] =       list(np.array(self.patient_data[dataset][patient]['features'], dtype=object)[sort_order])
                     self.patient_data[dataset][patient]['tile scores'] =    list(np.array(self.patient_data[dataset][patient]['tile scores'], dtype=object)[sort_order])
                     self.patient_data[dataset][patient]['labels'] =         list(np.array(self.patient_data[dataset][patient]['labels'])[sort_order])
                     self.patient_data[dataset][patient]['slide scores'] =   list(np.array(self.patient_data[dataset][patient]['slide scores'])[sort_order])
-                    self.patient_data[dataset][patient]['num tiles'] =      list(np.array(self.patient_data[dataset][patient]['num tiles'])[sort_order])
+                    self.patient_data[dataset][patient]['num tiles'] =      list(np.array(self.patient_data[dataset][patient]['num tiles'])[sort_order])'''
 
                     # We'll now convert the Features (self.patient_data[dataset][patient]['features']) and the tile scores into one big array:
                     self.patient_data[dataset][patient]['features'] = np.concatenate(self.patient_data[dataset][patient]['features'], axis=0).astype(np.float32)
                     self.patient_data[dataset][patient]['tile scores'] = np.concatenate(self.patient_data[dataset][patient]['tile scores'], axis=0).astype(np.float32)
             else:
                 sort_order = np.argsort(np.array(self.slide_data[dataset]['slide names']))
-                self.slide_data[dataset]['slide names'] = list(np.array(self.slide_data[dataset]['slide names'])[sort_order])
+                self.slide_data[dataset]['slide names'] = [self.slide_data[dataset]['slide names'][index] for index in sort_order]
+                self.slide_data[dataset]['features'] = [self.slide_data[dataset]['features'][index] for index in sort_order]
+                self.slide_data[dataset]['tile scores'] = [self.slide_data[dataset]['tile scores'][index] for index in sort_order]
+                self.slide_data[dataset]['labels'] = [self.slide_data[dataset]['labels'][index] for index in sort_order]
+                self.slide_data[dataset]['targets'] = [self.slide_data[dataset]['targets'][index] for index in sort_order]
+                self.slide_data[dataset]['slide scores'] = [self.slide_data[dataset]['slide scores'][index] for index in sort_order]
+                self.slide_data[dataset]['num tiles'] = [self.slide_data[dataset]['num tiles'][index] for index in sort_order]
+
+                '''self.slide_data[dataset]['slide names'] = list(np.array(self.slide_data[dataset]['slide names'])[sort_order])
                 self.slide_data[dataset]['features'] = list(np.array(self.slide_data[dataset]['features'], dtype=object)[sort_order])
                 self.slide_data[dataset]['tile scores'] = list(np.array(self.slide_data[dataset]['tile scores'], dtype=object)[sort_order])
                 self.slide_data[dataset]['labels'] = list(np.array(self.slide_data[dataset]['labels'])[sort_order])
                 self.slide_data[dataset]['targets'] = list(np.array(self.slide_data[dataset]['targets'])[sort_order])
                 self.slide_data[dataset]['slide scores'] = list(np.array(self.slide_data[dataset]['slide scores'])[sort_order])
-                self.slide_data[dataset]['num tiles'] = list(np.array(self.slide_data[dataset]['num tiles'])[sort_order])
+                self.slide_data[dataset]['num tiles'] = list(np.array(self.slide_data[dataset]['num tiles'])[sort_order])'''
 
         if self.is_per_patient:
             self.patient_list = list(patient_list)
@@ -1884,12 +1983,12 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
 
         else:
             # Checking that the targets are equal for both datasets and that there is an equal number of tiles per slide:
-            if (np.array(self.slide_data[datasets_location[0][0]]['targets']) - np.array(self.slide_data[datasets_location[1][0]]['targets'])).sum() != 0:
+            if abs(np.array(self.slide_data[datasets_location[0][0]]['targets']) - np.array(self.slide_data[datasets_location[1][0]]['targets'])).sum() != 0:
                 raise Exception('Datasets targets are not equal')
 
             # Checking if the num tiles are equal for both datasets:
             if abs(np.array(self.slide_data[datasets_location[0][0]]['num tiles']) - np.array(self.slide_data[datasets_location[1][0]]['num tiles'])).sum() != 0:
-                raise Exception('Datasets num tiles are not equal')
+                print('Datasets num tiles are not equal')
 
         bad_num_of_good_tiles //= len(datasets_location)
         slides_with_bad_segmentation //= len(datasets_location)
@@ -1911,7 +2010,7 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
             return len(self.slide_data[list(self.slide_data.keys())[0]]['slide names'])
 
     def __getitem__(self, item):
-        if self.is_per_patient:
+        if self.is_per_patient:  # Retrieving data per patient
             patient = self.patient_list[item]
             dataset_names = list(self.patient_data.keys())
 
@@ -1937,7 +2036,7 @@ class Combined_Features_for_MIL_Training_dataset(Dataset):
                          }
                     }
 
-        else:
+        else:  # Retrieving data per slide
             tile_idx = list(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item])) if self.is_all_tiles else choices(range(self.slide_data[list(self.slide_data.keys())[0]]['num tiles'][item]), k=self.bag_size)
             dataset_names = list(self.slide_data.keys())
 

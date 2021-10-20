@@ -24,7 +24,7 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('-ds', '--dataset', type=str, default='CARMEL', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='CARMEL_40', help='DataSet to use')
 parser.add_argument('-tar', '--target', type=str, default='ER', help='Target to train for')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
@@ -443,6 +443,15 @@ if __name__ == '__main__':
                     test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test'
                     basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
 
+        elif args.dataset == 'CARMEL_40':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_381-ER-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Test'
+                    basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
+
+
     elif sys.platform == 'linux':
         if args.dataset == 'TCGA_ABCTB':
             if args.target == 'ER':
@@ -488,25 +497,32 @@ if __name__ == '__main__':
                     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features'
                     basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
+        elif args.dataset == 'CARMEL_40':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_381-ER-TestFold_1'
+                    train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/train_w_features'
+                    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/test_w_features'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1200.pt'
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         run_data_results = utils.run_data(test_fold=args.test_fold,
-                                                     transform_type=None,
-                                                     tile_size=0,
-                                                     tiles_per_bag=args.tiles_per_bag,
-                                                     num_bags=args.num_bags,
-                                                     DX=None,
-                                                     DataSet_name=Dataset_name,
-                                                     is_per_patient=args.per_patient_training,
-                                                     is_last_layer_freeze=args.last_layer_freeze,
-                                                     is_repeating_data=args.repeating_data,
-                                                     Receptor=args.target + '_Features',
-                                                     MultiSlide=True,
-                                                     DataSet_Slide_magnification=0,
-                                                     data_limit=args.data_limit,
-                                                     carmel_only=args.carmel_only,
-                                                     Remark=' '.join(args.remark))
+                                          transform_type=None,
+                                          tile_size=0,
+                                          tiles_per_bag=args.tiles_per_bag,
+                                          num_bags=args.num_bags,
+                                          DX=None,
+                                          DataSet_name=Dataset_name,
+                                          is_per_patient=args.per_patient_training,
+                                          is_last_layer_freeze=args.last_layer_freeze,
+                                          is_repeating_data=args.repeating_data,
+                                          Receptor=args.target + '_Features',
+                                          MultiSlide=True,
+                                          DataSet_Slide_magnification=0,
+                                          data_limit=args.data_limit,
+                                          carmel_only=args.carmel_only,
+                                          Remark=' '.join(args.remark))
 
         args.output_dir, experiment = run_data_results['Location'], run_data_results['Experiment']
     else:
