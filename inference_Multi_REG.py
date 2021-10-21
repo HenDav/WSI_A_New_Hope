@@ -236,7 +236,7 @@ with torch.no_grad():
         data, target = data.to(DEVICE), target.to(DEVICE)
 
         #patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21
-        patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = np.asarray(patch_locs)  # RanS 19.10.21
+        patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = np.array(patch_locs)  # RanS 19.10.21
 
         for index, model in enumerate(models):
             model.to(DEVICE)

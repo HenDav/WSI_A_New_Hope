@@ -2,10 +2,10 @@ import os
 import re, glob
 inference_files = {}
 
-exp = 393
-fold = 2
-target = 'ER'
-dataset = 'CAT'
+exp = 405
+fold = 1
+target = 'survival'
+dataset = 'ABCTB'
 subdir = ''
 #subdir = 'bacc'
 #subdir = 'CARMEL'

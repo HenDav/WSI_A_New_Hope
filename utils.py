@@ -482,8 +482,12 @@ def run_data(experiment: str = None,
         MultiSlide = str(run_DF_exp.loc[[experiment], ['MultiSlide Per Bag']].values[0][0])
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
-        free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
-        CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
+        try:
+            free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
+            CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
+        except:
+            free_bias = np.nan
+            CAT_only = np.nan
 
 
         if sys.platform == 'linux':
@@ -825,6 +829,14 @@ def get_datasets_dir_dict(Dataset: str):
                 dir_dict['CARMEL' + str(ii)] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + str(ii), 'CARMEL' + str(ii))
         elif sys.platform == 'darwin':  # Omer
             dir_dict['CARMEL'] = CARMEL_omer_path
+
+    elif (Dataset[:6] == 'CARMEL') and (len(Dataset) > 6):
+        batch_num = Dataset[6:]
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict[Dataset] = os.path.join(CARMEL_gipdeep_path, 'Batch_' + batch_num, 'CARMEL' + batch_num)
+        elif sys.platform == 'win32':  # Ran local
+            dir_dict[Dataset] = TCGA_ran_path #temp for debug only
+
     elif Dataset == 'CAT':
         if sys.platform == 'linux':  # GIPdeep
             for ii in np.arange(1, 9):

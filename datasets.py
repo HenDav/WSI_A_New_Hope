@@ -139,6 +139,10 @@ class WSI_Master_Dataset(Dataset):
         # Let's compute which slides are these:
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
+        #inference on unknown labels
+        if len(valid_slide_indices) == 0:
+            valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Missing Data']) == True)[0]
+
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
             self.tile_size) + ' compatible @ X' + str(self.desired_magnification)] == -1])
