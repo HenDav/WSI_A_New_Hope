@@ -1511,4 +1511,10 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
 
     return dataset_location_list
 
-
+def get_label(target):
+    if target == 'Positive':
+        return [1]
+    elif target == 'Negative':
+        return [0]
+    else: #unknown
+        return [-1]

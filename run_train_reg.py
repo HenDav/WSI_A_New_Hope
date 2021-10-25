@@ -4,16 +4,18 @@ infer = True
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
-                    #'--folds', '123456',
-                    '--folds', '1',
+                    '--folds', '12345',
+                    #'--folds', '2',
                     #'--dataset', 'Breast',
-                    #'--dataset', 'TCGA',
+                    '--dataset', 'TCGA',
                     #'--dataset', 'ABCTB_TCGA',
-                    '--dataset', 'CARMEL9',
+                    #'--dataset', 'CARMEL9',
                     '--num_tiles', '30',
                     '-ex', '321',
-                    '--from_epoch', '0', '16',
-                    '--save_features'
+                    #'--from_epoch', '0', '16',
+                    '--from_epoch', '16',
+                    '--patch_dir', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
+                    #'--save_features'
                     ])
 else:
     #subprocess.run(['python', 'train_reg.py',

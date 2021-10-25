@@ -25,6 +25,7 @@ parser.add_argument('-mp', '--model_path', type=str, default='', help='fixed pat
 parser.add_argument('--save_features', action='store_true', help='save features') #RanS 1.7.21
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides') #RanS 3.8.21, override run_data
 parser.add_argument('--resume', type=int, default=0, help='resume a failed feature extraction') #RanS 5.10.21
+parser.add_argument('--patch_dir', type=str, default='', help='patch locations directory, for use with predecided patches') #RanS 24.10.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
@@ -148,6 +149,7 @@ inf_dset = datasets.Infer_Dataset(DataSet=args.dataset,
                                   desired_slide_magnification=args.mag,
                                   dx=dx,
                                   resume_slide=slide_num,
+                                  patch_dir=args.patch_dir
                                   )
 inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
