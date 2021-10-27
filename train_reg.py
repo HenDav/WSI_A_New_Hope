@@ -18,6 +18,7 @@ from sklearn.utils import resample
 import smtplib, ssl
 import psutil
 import nets, PreActResNets, resnet_v2
+from Cox_Loss import Cox_loss
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -25,9 +26,9 @@ parser.add_argument('-e', '--epochs', default=1001, type=int, help='Epochs to ru
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='ABCTB_TIF', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
+parser.add_argument('-tar', '--target', default='Survival Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time')
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
@@ -102,6 +103,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             model.to(DEVICE)
             optimizer.zero_grad()
             outputs, _ = model(data)
+
+            print('Data in shape: {}'.format(data.shape))
+            print('outputs shape: {}'.format(outputs.shape))
+            print('outputs: {}'.format(outputs))
 
             #cancelled RanS 11.8.21, this is buggy
             '''if batch_idx == 0:
@@ -442,6 +447,10 @@ if __name__ == '__main__':
         do_shuffle = False  # the sampler shuffles
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
 
+
+    args.batch_size = 2
+
+
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
@@ -458,6 +467,8 @@ if __name__ == '__main__':
 
     # Load model
     model = eval(args.model)
+    if args.target == 'Survival Time':
+        model.change_num_classes(num_classes=1)  # This will convert the liner (classifier) layer into the beta layer
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
     if args.experiment == 0:
@@ -514,6 +525,8 @@ if __name__ == '__main__':
     if args.focal:
         criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
         criterion.to(DEVICE) #RanS 20.7.21
+    elif args.target == 'Survival Time':
+        criterion = Cox_loss
     else:
         criterion = nn.CrossEntropyLoss()
 

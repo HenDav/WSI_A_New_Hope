@@ -137,7 +137,10 @@ class WSI_Master_Dataset(Dataset):
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
         # Let's compute which slides are these:
-        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) is True)[0]
+        if self.target_kind == 'Survival Time':
+            valid_slide_indices = np.where(np.isnan(np.array(all_targets)) == False)[0]
+
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
@@ -335,19 +338,22 @@ class WSI_Master_Dataset(Dataset):
             slide = self.slides[idx]
 
             tiles, time_list, label = _choose_data(grid_list=self.grid_lists[idx],
-                                            slide=slide,
-                                            how_many=self.bag_size,
-                                            magnification=self.magnification[idx],
-                                            #tile_size=int(self.tile_size / (1 - self.scale_factor)),
-                                            tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
-                                            # Fix boundaries with scale
-                                            print_timing=self.print_time,
-                                            desired_mag=self.desired_magnification,
-                                            loan=self.loan,
-                                            random_shift=self.train)
+                                                   slide=slide,
+                                                   how_many=self.bag_size,
+                                                   magnification=self.magnification[idx],
+                                                   #tile_size=int(self.tile_size / (1 - self.scale_factor)),
+                                                   tile_size=self.tile_size, #RanS 28.4.21, scale out cancelled for simplicity
+                                                   # Fix boundaries with scale
+                                                   print_timing=self.print_time,
+                                                   desired_mag=self.desired_magnification,
+                                                   loan=self.loan,
+                                                   random_shift=self.train)
 
         if not self.loan:
             label = [1] if self.target[idx] == 'Positive' else [0]
+            if self.target_kind == 'Survival Time':
+                label = [self.target[idx]]
+
         label = torch.LongTensor(label)
 
         # X will hold the images after all the transformations
@@ -1370,6 +1376,7 @@ class Features_MILdataset(Dataset):
         self.num_tiles = []
         self.scores = []
         self.tile_scores = []
+        self.tile_location = []
         self.patient_data = {}
         self.bad_patient_list = []
         self.fixed_tile_num = fixed_tile_num  # This instance variable indicates what is the number of fixed tiles to be used. if "None" than all tiles will be used. This feature is used to check the necessity in using more than 500 feature tiles for training
@@ -1378,9 +1385,13 @@ class Features_MILdataset(Dataset):
         slides_with_not_enough_tiles, slides_with_bad_segmentation = 0, 0
         patient_list = []
 
-        data_files = glob(os.path.join(data_location, '*.data'))
+        if type(data_location) is str:
+            data_files = glob(os.path.join(data_location, '*.data'))
+        elif type(data_location) is dict:
+            data_files = []
+            for data_key in data_location.keys():
+                data_files.extend(glob(os.path.join(data_location[data_key], '*.data')))
 
-        data_files = glob(os.path.join(data_location, '*.data'))
         for data_file in data_files:
             if 'features' not in data_file.split('_'):
                 data_files.remove(data_file)
@@ -1409,6 +1420,12 @@ class Features_MILdataset(Dataset):
                 grid_location_dict = {
                     'CARMEL': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data.xlsx'}
                 slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_ALL.xlsx')
+                slides_data_DF_CARMEL.set_index('file', inplace=True)
+
+            elif dataset == 'CARMEL 9-11':
+                grid_location_dict = {
+                    'CARMEL Batch 9-11': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/CARMEL_Grid_data_9_11.xlsx'}
+                slides_data_DF_CARMEL = pd.read_excel('/Users/wasserman/Developer/WSI_MIL/All Data/Features/Grids_data/slides_data_CARMEL_9_11.xlsx')
                 slides_data_DF_CARMEL.set_index('file', inplace=True)
 
             elif dataset == 'CARMEL_40':
@@ -1457,14 +1474,19 @@ class Features_MILdataset(Dataset):
         grid_DF.set_index('file', inplace=True)
 
         for file_idx, file in enumerate(tqdm(data_files)):
-            with open(os.path.join(data_location, file), 'rb') as filehandle:
+            #with open(os.path.join(data_location, file), 'rb') as filehandle:
+            with open(file, 'rb') as filehandle:
                 inference_data = pickle.load(filehandle)
 
             try:
                 if len(inference_data) == 6:
                     labels, targets, scores, patch_scores, slide_names, features = inference_data
+                    tile_location = np.array([[(np.nan, np.nan)] * patch_scores.shape[1]] * patch_scores.shape[0])
                 elif len(inference_data) == 7:
                     labels, targets, scores, patch_scores, slide_names, features, batch_number = inference_data
+                    tile_location = np.array([[np.nan, np.nan] * patch_scores.shape[1]] * patch_scores.shape[0])
+                elif len(inference_data) == 8:
+                    labels, targets, scores, patch_scores, slide_names, features, batch_number, tile_location = inference_data
             except ValueError:
                 raise Exception('Debug')
 
@@ -1576,6 +1598,8 @@ class Features_MILdataset(Dataset):
                     self.labels.append(int(labels[slide_num]))
                     self.targets.append(int(targets[slide_num]))
                     self.scores.append(scores[slide_num])
+                    #self.tile_location.append(tile_location[slide_num, :tiles_in_slide, :])
+                    self.tile_location.append(tile_location[slide_num, :tiles_in_slide])
 
         print('There are {}/{} slides with \"bad number of good tile\" '.format(bad_num_of_good_tiles, total_slides))
         print('There are {}/{} slides with \"bad segmentation\" '.format(slides_with_bad_segmentation, total_slides))
@@ -1624,7 +1648,8 @@ class Features_MILdataset(Dataset):
                     'tile scores': self.tile_scores[item][tile_idx],
                     'slide name': self.slide_names[item],
                     'features': self.features[item][tile_idx],
-                    'num tiles': self.num_tiles[item]
+                    'num tiles': self.num_tiles[item],
+                    'tile locations': self.tile_location[item][tile_idx] if hasattr(self, 'tile_location') else None
                     }
 
 
@@ -2384,3 +2409,34 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                 'Original Data': tiles_non_augmented,
                 'Slide Dimensions': self.slide_size[self.slide_num]
                 }
+
+
+class C_Index_Test_Dataset(Dataset):
+    def __init__(self,
+                 train: bool = True):
+
+        if sys.platform == 'darwin':
+            file_location = r'/Users/wasserman/Developer/WSI_MIL/All Data/survival_synthetic/Survival_time_synthetic.xlsx'
+        elif sys.platform == 'linux':
+            file_location = r'/home/womer/project/All Data/survival_synthetic/Survival_time_synthetic.xlsx'
+        DF = pd.read_excel(file_location)
+
+        num_cases = DF.shape[0]
+
+        legit_cases = list(range(0, int(0.8 * num_cases)) if train else range(int(0.8 * num_cases), num_cases))
+
+        all_targets = DF['survival time']
+
+        self.data = []
+        for case_index in tqdm(legit_cases):
+            case = {'Target': DF.loc[case_index, 'survival time'],
+                    'Features': np.array(DF.loc[case_index, [0, 1, 2, 3, 4, 5, 6, 7]]).astype(np.float32),
+                    'Censored': DF.loc[case_index, 'Censored']
+                    }
+            self.data.append(case)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]

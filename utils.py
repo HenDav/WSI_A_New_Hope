@@ -485,7 +485,7 @@ def run_data(experiment: str = None,
         model_name = str(run_DF_exp.loc[[experiment], ['Model']].values[0][0])
         Desired_Slide_magnification = int(run_DF_exp.loc[[experiment], ['Desired Slide Magnification']].values[0][0])
         free_bias = bool(run_DF_exp.loc[[experiment], ['Free Bias']].values[0][0])
-        CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0])
+        CAT_only = bool(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0]) if not np.isnan(run_DF_exp.loc[[experiment], ['Using Feature from CAT model alone']].values[0][0]) else False
         Class_Relation = float(run_DF_exp.loc[[experiment], ['Class Relation']].values[0][0])
 
         if sys.platform == 'linux':
@@ -947,8 +947,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
     elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B']:
         raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B')
-    elif (DataSet == 'ABCTB') and target_kind not in ['ER', 'PR', 'Her2', 'survival']:
-        raise ValueError('target should be one of: ER, PR, Her2, survival')
+    elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and target_kind not in ['ER', 'PR', 'Her2', 'survival', 'Survival Time']:
+        raise ValueError('target should be one of: ER, PR, Her2, survival, Survival Time')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
@@ -1525,3 +1525,246 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
     return dataset_location_list
 
 
+def get_MIL_Features_dataset_location_dict(train_DataSet: str, target: str, test_fold: int):
+    All_Data_Dict = {'linux': {'CAT': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_355-ER-TestFold_1',
+                                                         'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features',
+                                                         'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features',
+                                                         'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                         },
+                                                  'Her2': {'DataSet Name': r'FEATURES: Exp_392-Her2-TestFold_1',
+                                                           'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/train_w_features',
+                                                           'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/test_w_features',
+                                                           'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                           },
+                                                  'PR': {'DataSet Name': None,
+                                                         'TrainSet Location': None,
+                                                         'TestSet Location': None,
+                                                         'REG Model Location': None
+                                                         }
+                                                  },
+                                       'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_393-ER-TestFold_2',
+                                                         'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Inference/train_w_features',
+                                                         'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Inference/test_w_features',
+                                                         'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                         }
+                                                  }
+                                       },
+
+                               'CAT with Location': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_355-ER-TestFold_1 With Locations',
+                                                                       'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features_locs',
+                                                                       'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features_locs',
+                                                                       'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                                       },
+                                                                'Her2': {'DataSet Name': None,
+                                                                         'TrainSet Location': None,
+                                                                         'TestSet Location': None,
+                                                                         'REG Model Location': None
+                                                                         },
+                                                                'PR': {'DataSet Name': None,
+                                                                       'TrainSet Location': None,
+                                                                       'TestSet Location': None,
+                                                                       'REG Model Location': None
+                                                                       }
+                                                                }
+                                                     },
+                               'CARMEL': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_358-ER-TestFold_1',
+                                                            'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/train_w_features',
+                                                            'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features',
+                                                            'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                            },
+                                                     'Her2': {'DataSet Name': None,
+                                                              'TrainSet Location': None,
+                                                              'TestSet Location': None,
+                                                              'REG Model Location': None
+                                                              },
+                                                     'PR': {'DataSet Name': None,
+                                                            'TrainSet Location': None,
+                                                            'TestSet Location': None,
+                                                            'REG Model Location': None
+                                                            }
+                                                     }
+                                          },
+                               'TCGA_ABCTB': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_293-ER-TestFold_1',
+                                                                'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/train_inference_w_features',
+                                                                'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Inference/test_inference_w_features',
+                                                                'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_293-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                                },
+                                                         'Her2': {'DataSet Name': r'FEATURES: Exp_308-Her2-TestFold_1',
+                                                                  'TrainSet Location': r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Train',
+                                                                  'TestSet Location': r'/home/womer/project/All Data/Ran_Features/Her2/Fold_1/Test',
+                                                                  'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_308-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                                  },
+                                                         'PR': {'DataSet Name': r'FEATURES: Exp_309-PR-TestFold_1',
+                                                                'TrainSet Location': r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Train',
+                                                                'TestSet Location': r'/home/womer/project/All Data/Ran_Features/PR/Fold_1/Test',
+                                                                'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_309-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                                }
+                                                         },
+                                              'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_299-ER-TestFold_2',
+                                                                'TrainSet Location': r'/home/womer/project/All Data/Ran_Features/299/Train',
+                                                                'TestSet Location': r'/home/womer/project/All Data/Ran_Features/299/Test',
+                                                                'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_299-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                                },
+                                                         'Her2': {'DataSet Name': None,
+                                                                  'TrainSet Location': None,
+                                                                  'TestSet Location': None,
+                                                                  'REG Model Location': None
+                                                                  },
+                                                         'PR': {'DataSet Name': None,
+                                                                'TrainSet Location': None,
+                                                                'TestSet Location': None,
+                                                                'REG Model Location': None
+                                                                }
+                                                         }
+                                              },
+                               'CARMEL_40': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_381-ER-TestFold_1',
+                                                               'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/train_w_features',
+                                                               'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/test_w_features',
+                                                               'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1200.pt'
+                                                               },
+                                                        'Her2': {'DataSet Name': None,
+                                                                 'TrainSet Location': None,
+                                                                 'TestSet Location': None,
+                                                                 'REG Model Location': None
+                                                                 },
+                                                        'PR': {'DataSet Name': None,
+                                                               'TrainSet Location': None,
+                                                               'TestSet Location': None,
+                                                               'REG Model Location': None
+                                                               }
+                                                        }
+                                             }
+                               },
+                     'darwin': {'CAT': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_355-ER-TestFold_1',
+                                                          'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train',
+                                                          'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test',
+                                                          'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+                                                          },
+                                                   'Her2': {'DataSet Name': r'FEATURES: Exp_392-Her2-TestFold_1',
+                                                            'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Train',
+                                                            'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Test',
+                                                            'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+                                                            },
+                                                   'PR': {'DataSet Name': None,
+                                                          'TrainSet Location': None,
+                                                          'TestSet Location': None,
+                                                          'REG Model Location': None
+                                                          }
+                                                   },
+                                        'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_393-ER-TestFold_2',
+                                                          'TrainSet Location': None,
+                                                          'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_393-TestFold_2/Test',
+                                                          'REG Model Location': None
+                                                          }
+                                                   }
+                                        },
+                                'CAT with Location': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_355-ER-TestFold_1 With Locations',
+                                                                        'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train_with_location',
+                                                                        'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test_with_location',
+                                                                        'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+                                                                        },
+                                                                 'Her2': {'DataSet Name': None,
+                                                                          'TrainSet Location': None,
+                                                                          'TestSet Location': None,
+                                                                          'REG Model Location': None
+                                                                          },
+                                                                 'PR': {'DataSet Name': None,
+                                                                        'TrainSet Location': None,
+                                                                        'TestSet Location': None,
+                                                                        'REG Model Location': None
+                                                                        }
+                                                                 }
+                                                      },
+                                'CARMEL': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_358-ER-TestFold_1',
+                                                             'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train',
+                                                             'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test',
+                                                             'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
+                                                             },
+                                                      'Her2': {'DataSet Name': None,
+                                                               'TrainSet Location': None,
+                                                               'TestSet Location': None,
+                                                               'REG Model Location': None
+                                                               },
+                                                      'PR': {'DataSet Name': None,
+                                                             'TrainSet Location': None,
+                                                             'TestSet Location': None,
+                                                             'REG Model Location': None
+                                                             }
+                                                      }
+                                           },
+                                'CARMEL 9-11': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Model From Exp_355-ER-TestFold_1, CARMEL ONLY Slides Batch 9-11',
+                                                                  'TrainSet Location': None,
+                                                                  'TestSet Location': {'Carmel 9': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Carmel9',
+                                                                                       'Carmel 10': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Carmel10',
+                                                                                       'Carmel 11': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Carmel11'
+                                                                                       },
+                                                                  'REG Model Location': None
+                                                                  },
+                                                           'Her2': {'DataSet Name': None,
+                                                                    'TrainSet Location': None,
+                                                                    'TestSet Location': None,
+                                                                    'REG Model Location': None
+                                                                    },
+                                                           'PR': {'DataSet Name': None,
+                                                                  'TrainSet Location': None,
+                                                                  'TestSet Location': None,
+                                                                  'REG Model Location': None
+                                                                  }
+                                                           }
+                                                },
+                                'TCGA_ABCTB': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_293-ER-TestFold_1',
+                                                                 'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Train',
+                                                                 'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_293-TestFold_1/Test',
+                                                                 'REG Model Location': None
+                                                                 },
+                                                          'Her2': {'DataSet Name': r'FEATURES: Exp_308-Her2-TestFold_1',
+                                                                   'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Train',
+                                                                   'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/Her2/Fold_1/Test',
+                                                                   'REG Model Location': None
+                                                                   },
+                                                          'PR': {'DataSet Name': r'FEATURES: Exp_309-PR-TestFold_1',
+                                                                 'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Train',
+                                                                 'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/PR/Fold_1/Test',
+                                                                 'REG Model Location': None
+                                                                 }
+                                                          },
+                                               'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_299-ER-TestFold_2',
+                                                                 'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Train',
+                                                                 'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/ran_299-Fold_2/Test',
+                                                                 'REG Model Location': None
+                                                                 },
+                                                          'Her2': {'DataSet Name': None,
+                                                                   'TrainSet Location': None,
+                                                                   'TestSet Location': None,
+                                                                   'REG Model Location': None
+                                                                   },
+                                                          'PR': {'DataSet Name': None,
+                                                                 'TrainSet Location': None,
+                                                                 'TestSet Location': None,
+                                                                 'REG Model Location': None
+                                                                 }
+                                                          }
+                                               },
+                                'CARMEL_40': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_381-ER-TestFold_1',
+                                                                'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Train',
+                                                                'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Test',
+                                                                'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
+                                                                },
+                                                         'Her2': {'DataSet Name': None,
+                                                                  'TrainSet Location': None,
+                                                                  'TestSet Location': None,
+                                                                  'REG Model Location': None
+                                                                  },
+                                                         'PR': {'DataSet Name': None,
+                                                                'TrainSet Location': None,
+                                                                'TestSet Location': None,
+                                                                'REG Model Location': None
+                                                                }
+                                                         }
+                                              }
+                                }
+                     }
+
+
+
+    return All_Data_Dict[sys.platform][train_DataSet]['Fold ' + str(test_fold)][target]

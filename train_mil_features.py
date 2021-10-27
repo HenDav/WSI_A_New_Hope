@@ -24,8 +24,8 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('-ds', '--dataset', type=str, default='CARMEL_40', help='DataSet to use')
-parser.add_argument('-tar', '--target', type=str, default='ER', help='Target to train for')
+parser.add_argument('-ds', '--dataset', type=str, default='CAT', help='DataSet to use')
+parser.add_argument('-tar', '--target', type=str, default='Her2', help='Target to train for')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
@@ -398,7 +398,7 @@ if __name__ == '__main__':
         args.per_patient_training = True
         args.data_limit = 500
     '''
-
+    '''
     if sys.platform == 'darwin':
         if args.dataset == 'TCGA_ABCTB':
             if args.target == 'ER':
@@ -434,6 +434,13 @@ if __name__ == '__main__':
                     train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Train'
                     test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
                     basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+
+                elif args.target == 'Her2':
+                    if args.test_fold == 1:
+                        Dataset_name = r'FEATURES: Exp_392-Her2-TestFold_1'
+                        train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Train'
+                        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Test'
+                        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
 
         elif args.dataset == 'CARMEL':
             if args.target == 'ER':
@@ -489,6 +496,13 @@ if __name__ == '__main__':
                     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features'
                     basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
+                elif args.target == 'Her2':
+                    if args.test_fold == 1:
+                        Dataset_name = r'FEATURES: Exp_392-Her2-TestFold_1'
+                        train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/train_w_features'
+                        test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/test_w_features'
+                        basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
         elif args.dataset == 'CARMEL':
             if args.target == 'ER':
                 if args.test_fold == 1:
@@ -504,6 +518,8 @@ if __name__ == '__main__':
                     train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/train_w_features'
                     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/test_w_features'
                     basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1200.pt'
+    '''
+    data_location = utils.get_MIL_Features_dataset_location_dict(train_DataSet=args.dataset, target=args.target, test_fold=args.test_fold)
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
@@ -513,7 +529,7 @@ if __name__ == '__main__':
                                           tiles_per_bag=args.tiles_per_bag,
                                           num_bags=args.num_bags,
                                           DX=None,
-                                          DataSet_name=Dataset_name,
+                                          DataSet_name=data_location['DataSet Name'],
                                           is_per_patient=args.per_patient_training,
                                           is_last_layer_freeze=args.last_layer_freeze,
                                           is_repeating_data=args.repeating_data,
@@ -537,7 +553,7 @@ if __name__ == '__main__':
 
     # Get data:
     train_dset = datasets.Features_MILdataset(dataset=args.dataset,
-                                              data_location=train_data_dir,
+                                              data_location=data_location['TrainSet Location'],
                                               is_per_patient=args.per_patient_training,
                                               is_repeating_tiles=args.repeating_data,
                                               bag_size=args.tiles_per_bag,
@@ -548,7 +564,7 @@ if __name__ == '__main__':
                                               carmel_only=args.carmel_only)
 
     test_dset = datasets.Features_MILdataset(dataset=args.dataset,
-                                             data_location=test_data_dir,
+                                             data_location=data_location['TestSet Location'],
                                              is_per_patient=args.per_patient_training,
                                              bag_size=args.tiles_per_bag,
                                              target=args.target,
