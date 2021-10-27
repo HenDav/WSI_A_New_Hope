@@ -252,7 +252,7 @@ with torch.no_grad():
             #patch_locs_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21, cancelled
 
             if args.save_features and index == feature_epoch_ind:
-                feature_arr[0][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = features.cpu().detach().numpy()
+                feature_arr[0][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = features.cpu().detach().numpy()
 
         slide_batch_num += 1
 

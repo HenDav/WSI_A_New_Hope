@@ -51,20 +51,26 @@ def make_dir(dirname):
 def get_optimal_slide_level(slide, magnification, desired_mag, tile_size):
     desired_downsample = magnification / desired_mag  # downsample needed for each dimension (reflected by level_downsamples property)
 
-    level, best_next_level = -1, -1
-    for index, downsample in enumerate(slide.level_downsamples):
-        if isclose(desired_downsample, downsample, rel_tol=1e-3):
-            level = index
-            level_downsample = 1
-            break
+    if desired_downsample < 1: #upsample
+        best_slide_level = 0
+        level_0_tile_size = int(desired_downsample * tile_size)
+        adjusted_tile_size = level_0_tile_size
+    else:
+        level, best_next_level = -1, -1
+        for index, downsample in enumerate(slide.level_downsamples):
+            if isclose(desired_downsample, downsample, rel_tol=1e-3):
+                level = index
+                level_downsample = 1
+                break
 
-        elif downsample < desired_downsample:
-            best_next_level = index
-            level_downsample = int(desired_downsample / slide.level_downsamples[best_next_level])
+            elif downsample < desired_downsample:
+                best_next_level = index
+                level_downsample = int(desired_downsample / slide.level_downsamples[best_next_level])
 
-    adjusted_tile_size = tile_size * level_downsample
-    best_slide_level = level if level > best_next_level else best_next_level
-    level_0_tile_size = int(desired_downsample) * tile_size
+        adjusted_tile_size = tile_size * level_downsample
+        best_slide_level = level if level > best_next_level else best_next_level
+        level_0_tile_size = int(desired_downsample) * tile_size
+
     return best_slide_level, adjusted_tile_size, level_0_tile_size
 
 
@@ -946,7 +952,9 @@ def assert_dataset_target(DataSet, target_kind):
     elif DataSet == 'HEROHE' and target_kind != 'Her2':
         raise ValueError('for HEROHE DataSet, target should be Her2')
     #elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
-    elif (DataSet in ['TCGA', 'CARMEL', 'CAT', 'IC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+    elif (DataSet in ['TCGA', 'CAT', 'IC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+        raise ValueError('target should be one of: ER, PR, Her2, OR')
+    elif (DataSet == 'CARMEL') and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')

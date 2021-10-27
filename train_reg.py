@@ -18,6 +18,7 @@ from sklearn.utils import resample
 import smtplib, ssl
 import psutil
 import nets, PreActResNets, resnet_v2
+from datetime import datetime
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -93,7 +94,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
         # RanS 11.7.21
         process = psutil.Process(os.getpid())
-        print('RAM usage:', process.memory_info().rss/1e9, 'GB')
+        print('RAM usage:', np.round(process.memory_info().rss/1e9), 'GB, time: ', datetime.now())
 
         model.train()
         for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):

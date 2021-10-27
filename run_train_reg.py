@@ -1,6 +1,6 @@
 import subprocess
 
-infer = True
+infer = False
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -25,8 +25,8 @@ else:
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'ABCTB',
-                    '--dataset', 'ABCTB_TCGA',
-                    #'--dataset', 'TCGA',
+                    #'--dataset', 'ABCTB_TCGA',
+                    '--dataset', 'TCGA',
                     #'--target', 'ER',
                     '--target', 'ER',
                     #'--target', 'Her2',
@@ -42,14 +42,14 @@ else:
                     #'--transform_type', 'aug_receptornet',
                     #'--transform_type', 'rvf',
                     '--transform_type', 'pcbnfrsc',
-                    '--mag', '10',
+                    '--mag', '160',
                     '--eval_rate', '10',
                     #'-d',
                     #'-im'
                     #'--loan'
                     #'--er_eq_pr'
-                    '-time',
-                    '-baldat'
+                    #'-time',
+                    #'-baldat'
                     #'--slide_per_block'
                 ])
 
