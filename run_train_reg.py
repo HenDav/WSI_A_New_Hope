@@ -1,6 +1,6 @@
 import subprocess
 
-infer = False
+infer = True
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -14,8 +14,9 @@ if infer:
                     '-ex', '321',
                     #'--from_epoch', '0', '16',
                     '--from_epoch', '16',
-                    '--patch_dir', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
+                    #'--patch_dir', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
                     #'--save_features'
+                    '--model_path', 'torchvision.models.resnet34(pretrained=True)'
                     ])
 else:
     #subprocess.run(['python', 'train_reg.py',

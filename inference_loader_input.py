@@ -43,7 +43,7 @@ val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', ta
 #manual
 temp = True
 if temp:
-    val_list = ['Model_Epoch_16-Folds_[1, 2, 3, 4, 5]_ER-Tiles_30.data']
+    val_list = ['Model_Epoch_resnet34(pretrained=True)-Folds_[1, 2, 3, 4, 5]_ER-Tiles_30.data']
     key_list = ['temp']
     inference_dir = r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
 

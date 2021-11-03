@@ -13,6 +13,7 @@ import resnet_v2
 from collections import OrderedDict
 import smtplib, ssl
 import nets, PreActResNets, resnet_v2
+import torchvision
 
 parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-ex', '--experiment', nargs='+', type=int, default=[241], help='Use models from this experiment')
@@ -54,7 +55,10 @@ if args.save_features and len(args.from_epoch) > 1:
     if sys.platform == 'win32':
         feature_epoch_ind = (args.from_epoch).index(16)
     else:
-        feature_epoch_ind = (args.from_epoch).index(1000)
+        if args.model_path == '':
+            feature_epoch_ind = (args.from_epoch).index(1000)
+        else: #take model path, the last model on the list
+            feature_epoch_ind = len(args.from_epoch)-1
 elif args.save_features and len(args.from_epoch) == 1:
     feature_epoch_ind = 0
 
@@ -108,24 +112,6 @@ for counter in range(len(args.from_epoch)):
 if args.dx:
     dx = args.dx
 
-#RanS 16.3.21, support ron's model as well
-if args.model_path != '':
-    args.from_epoch.append('rons_model')
-    model = resnet_v2.PreActResNet50()
-    model_data_loaded = torch.load(os.path.join(args.model_path), map_location='cpu')
-
-    try:
-        model.load_state_dict(model_data_loaded['net'])
-    except:
-        state_dict = model_data_loaded['net']
-        new_state_dict = OrderedDict()
-        for k, v in state_dict.items():
-            name = k[7:]  # remove 'module.' of dataparallel
-            new_state_dict[name] = v
-        model.load_state_dict(new_state_dict)
-    model.eval()
-    models.append(model)
-
 TILE_SIZE = 128
 tiles_per_iter = 20
 if sys.platform == 'linux':
@@ -135,6 +121,34 @@ if sys.platform == 'linux':
         tiles_per_iter = 100
 elif sys.platform == 'win32':
     TILE_SIZE = 256
+
+#RanS 16.3.21, support ron's model as well
+if args.model_path != '':
+    if os.path.exists(args.model_path):
+        args.from_epoch.append('rons_model')
+        model = resnet_v2.PreActResNet50()
+        model_data_loaded = torch.load(os.path.join(args.model_path), map_location='cpu')
+
+        try:
+            model.load_state_dict(model_data_loaded['net'])
+        except:
+            state_dict = model_data_loaded['net']
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                name = k[7:]  # remove 'module.' of dataparallel
+                new_state_dict[name] = v
+            model.load_state_dict(new_state_dict)
+    else:
+        #RanS 27.10.21, use pretrained model
+        args.from_epoch.append(args.model_path.split('.')[-1])
+        model = eval(args.model_path)
+        model.fc = torch.nn.Identity()
+        tiles_per_iter = 100
+    model.eval()
+    models.append(model)
+
+if args.save_features:
+    print('features will be taken from model ', str(args.from_epoch[feature_epoch_ind]))
 
 #slide_num = 0
 #if args.resume > 0 and args.save_features: #RanS 5.10.21
@@ -243,7 +257,12 @@ with torch.no_grad():
         for index, model in enumerate(models):
             model.to(DEVICE)
 
-            scores, features = model(data)
+            if model._get_name() == 'PreActResNet_Ron':
+                scores, features = model(data)
+            else:
+                #use resnet only for features, dump scores RanS 27.10.21
+                features = model(data)
+                scores = torch.zeros((len(data), 2))
 
             scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
 
