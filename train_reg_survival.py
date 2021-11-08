@@ -28,26 +28,26 @@ parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue t
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
 parser.add_argument('-ds', '--dataset', type=str, default='Survival Synthetic', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='Survival Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
+parser.add_argument('-tar', '--target', default='Survival_Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time')
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
 parser.add_argument('--weight_decay', default=5e-5, type=float, help='L2 penalty')
 parser.add_argument('-balsam', '--balanced_sampling', dest='balanced_sampling', action='store_true', help='balanced_sampling')
 parser.add_argument('--transform_type', default='rvf', type=str, help='none / flip / wcfrs (weak color+flip+rotate+scale)')
-parser.add_argument('--batch_size', default=18, type=int, help='size of batch')
+parser.add_argument('--batch_size', default=20, type=int, help='size of batch')
 parser.add_argument('--model', default='PreActResNets.PreActResNet50_Ron()', type=str, help='net to use')
 #parser.add_argument('--model', default='nets.ResNet50(pretrained=True)', type=str, help='net to use')
-parser.add_argument('--bootstrap', action='store_true', help='use bootstrap to estimate test AUC error')
+
 parser.add_argument('--eval_rate', type=int, default=5, help='Evaluate validation set every # epochs')
 parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
 parser.add_argument('-im', dest='images', action='store_true', help='save data images?')
 parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
-parser.add_argument('--loan', action='store_true', help='Localized Annotation for strongly supervised training') #RanS 17.6.21
+
 parser.add_argument('--er_eq_pr', action='store_true', help='while training, take only er=pr examples') #RanS 27.6.21
-parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
+
 parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
-parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
+
 
 
 args = parser.parse_args()
@@ -83,11 +83,15 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
     previous_epoch_loss = 1e5
 
     for e in range(from_epoch, epoch):
-        outputs_train = np.zeros(0)
-        all_targets, all_outputs, all_censored = [], [], []
+        if args.target == 'Survival_Binary':
+            total_train, correct_pos_train, correct_neg_train = 0, 0, 0
+            total_pos_train, total_neg_train = 0, 0
+            true_targets_train, scores_train = np.zeros(0), np.zeros(0)
+
+        all_targets, all_outputs, all_censored, all_cont_targets = [], [], [], []
         train_loss = 0
 
-        slide_names = []
+        #slide_names = []
         print('Epoch {}:'.format(e))
 
         # RanS 11.7.21
@@ -95,63 +99,92 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         #print('RAM usage:', process.memory_info().rss/1e9, 'GB')
 
         model.train()
+        model.to(DEVICE)
 
         for batch_idx, minibatch in enumerate(tqdm(dloader_train)):
             time_stamp = batch_idx + e * len(train_loader)
-            data = minibatch['Features']
-            target = minibatch['Target']
-            censored = minibatch['Censored']
-            all_targets.extend(target.numpy())
-            all_censored.extend(censored.numpy())
-            data, target = data.to(DEVICE), target.to(DEVICE)
-            model.to(DEVICE)
-            optimizer.zero_grad()
-            outputs = model(data)
-            outputs = torch.reshape(outputs, [outputs.size(0)])
-            all_outputs.extend(outputs.detach().cpu().numpy())
 
-            loss = criterion(outputs, target, censored)
+            data = minibatch['Features']
+            target = minibatch['Binary Target']
+            censored = minibatch['Censored']
+            target_cont = minibatch['Target']
+
+            all_targets.extend(target.numpy())
+            all_cont_targets.extend(target_cont.numpy())
+            all_censored.extend(censored.numpy())
+
+            optimizer.zero_grad()
+
+            if args.target == 'Survival_Binary':
+
+                data, target = data.to(DEVICE), target.to(DEVICE)
+                outputs = model(data)
+
+                loss = criterion(outputs, target)
+
+                outputs = torch.nn.functional.softmax(outputs, dim=1)
+                _, predicted = outputs.max(1)
+                all_outputs.extend(- outputs[:, 1].detach().cpu().numpy())
+
+                scores_train = np.concatenate((scores_train, outputs[:, 1].detach().cpu().numpy()))
+                true_targets_train = np.concatenate((true_targets_train, target.detach().cpu().numpy()))
+                total_train += target.size(0)
+                total_pos_train += target.eq(1).sum().item()
+                total_neg_train += target.eq(0).sum().item()
+                correct_pos_train += predicted[target.eq(1)].eq(1).sum().item()
+                correct_neg_train += predicted[target.eq(0)].eq(0).sum().item()
+
+            elif args.target == 'Survival_Time':
+
+                data, target_cont = data.to(DEVICE), target_cont.to(DEVICE)
+                outputs = model(data)
+
+                loss = criterion(outputs, target_cont, censored)
+                outputs = torch.reshape(outputs, [outputs.size(0)])
+                all_outputs.extend(outputs.detach().cpu().numpy())
+
+            else:
+                Exception('Not implemented')
+
+            train_loss += loss.item()
             loss.backward()
             optimizer.step()
-            train_loss += loss.item()
 
             all_writer.add_scalar('Train/Loss per Minibatch', loss, time_stamp)
 
-            if DEVICE.type == 'cuda' and print_timing:
-                res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-                #print(f'gpu: {res.gpu}%, gpu-mem: {res.memory}%')
-                all_writer.add_scalar('GPU/gpu', res.gpu, batch_idx + e * len(dloader_train))
-                all_writer.add_scalar('GPU/gpu-mem', res.memory, batch_idx + e * len(dloader_train))
+        # Compute C index
+        c_index, num_concordant_pairs, num_discordant_pairs, _, _ = concordance_index_censored(np.invert(all_censored), all_cont_targets, all_outputs)
+        # Compute AUC:
+        if args.target == 'Survival_Binary':
+            fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
+            roc_auc_train = auc(fpr_train, tpr_train)
 
-        c_index, num_concordant_pairs, num_discordant_pairs, _, _ = concordance_index_censored(np.invert(all_censored), all_targets, all_outputs)
-        all_writer.add_scalar('Train/Loss Per Epoch Per Instance', train_loss / len(all_targets), e)
-        all_writer.add_scalar('Train/Accuracy', c_index, e)
-        #print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
+        elif args.target == 'Survival_Time':
+            # Compute AUC:
+            not_censored_indices = np.where(np.array(all_censored) == False)
+            relevant_targets = np.array(all_targets)[not_censored_indices]
+            relevant_outputs = np.array(all_outputs)[not_censored_indices]
+            fpr_train, tpr_train, _ = roc_curve(relevant_targets, - relevant_outputs)
+            roc_auc_train = auc(fpr_train, tpr_train)
 
-        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train C-index per patch: {:.3f}'
+        print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train C-index: {:.3f}, Train AUC: {:.3f}'
               .format(e,
                       train_loss,
                       previous_epoch_loss - train_loss,
-                      c_index))
+                      c_index,
+                      100 * roc_auc_train))
+
+        all_writer.add_scalar('Train/Loss Per Epoch Per Instance', train_loss / len(all_targets), e)
+        all_writer.add_scalar('Train/C-index Per Epoch', c_index, e)
+        all_writer.add_scalar('Train/AUC Per Epoch', roc_auc_train, e)
+
         previous_epoch_loss = train_loss
 
         # Update 'Last Epoch' at run_data.xlsx file:
         utils.run_data(experiment=experiment, epoch=e)
 
-        # Save model to file:
-        try:
-            model_state_dict = model.module.state_dict()
-        except AttributeError:
-            model_state_dict = model.state_dict()
-        torch.save({'epoch': e,
-                    'model_state_dict': model_state_dict,
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'tile_size': TILE_SIZE,
-                    'tiles_per_bag': 1},
-                   os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Last_Epoch.pt'))
-
         if e % args.eval_rate == 0:
-            c_index_test = check_accuracy(e, all_writer)
+            check_accuracy(e, all_writer)
             # Save model to file:
             try:
                 model_state_dict = model.module.state_dict()
@@ -174,39 +207,85 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
 
 def check_accuracy(epoch: int, all_writer):
+    total_test, correct_pos_test, correct_neg_test = 0, 0, 0
+    total_pos_test, total_neg_test = 0, 0
+    true_targets_test, scores_test = np.zeros(0), np.zeros(0)
 
+    all_outputs, all_targets, all_censored, all_cont_targets = [], [], [], []
     test_loss = 0
-    all_outputs, all_targets, all_censored = [], [], []
-    slide_names = []
 
     model.eval()
+    model.to(DEVICE)
 
     with torch.no_grad():
         for idx, minibatch in enumerate(test_loader):
+
             data = minibatch['Features']
-            target = minibatch['Target']
+            target = minibatch['Binary Target']
             censored = minibatch['Censored']
+            target_cont = minibatch['Target']
+
             all_targets.extend(target.numpy())
+            all_cont_targets.extend(target_cont.numpy())
             all_censored.extend(censored.numpy())
 
-            data, target = data.to(device=DEVICE), target.to(device=DEVICE)
-            model.to(DEVICE)
+            if args.target == 'Survival_Binary':
 
-            outputs = model(data)
-            outputs = torch.reshape(outputs, [outputs.size(0)])
-            all_outputs.extend(outputs.detach().cpu().numpy())
+                data, target = data.to(device=DEVICE), target.to(device=DEVICE)
+                outputs = model(data)
 
-            loss = criterion(outputs, target, censored)
+                loss = criterion(outputs, target)
+
+                outputs = torch.nn.functional.softmax(outputs, dim=1)
+                _, predicted = outputs.max(1)
+                all_outputs.extend(- outputs[:, 1].detach().cpu().numpy())
+
+                scores_test = np.concatenate((scores_test, outputs[:, 1].detach().cpu().numpy()))
+                true_targets_test = np.concatenate((true_targets_test, target.detach().cpu().numpy()))
+                total_test += target.size(0)
+                total_pos_test += target.eq(1).sum().item()
+                total_neg_test += target.eq(0).sum().item()
+                correct_pos_test += predicted[target.eq(1)].eq(1).sum().item()
+                correct_neg_test += predicted[target.eq(0)].eq(0).sum().item()
+
+            elif args.target == 'Survival_Time':
+
+                data, target_cont = data.to(device=DEVICE), target_cont.to(device=DEVICE)
+                outputs = model(data)
+
+                loss = criterion(outputs, target_cont, censored)
+                outputs = torch.reshape(outputs, [outputs.size(0)])
+                all_outputs.extend(outputs.detach().cpu().numpy())
+
+            else:
+                Exception('Not implemented')
+
             test_loss += loss.item()
 
-        c_index, num_concordant_pairs, num_discordant_pairs, _, _ = concordance_index_censored(np.invert(all_censored), all_targets, all_outputs)
-        print('Test C-index: {:.3f}'.format(c_index))
+        # Compute C index
+        c_index, num_concordant_pairs, num_discordant_pairs, _, _ = concordance_index_censored(np.invert(all_censored), all_cont_targets, all_outputs)
+        # Compute AUC:
+        if args.target == 'Survival_Binary':
+            fpr_test, tpr_test, _ = roc_curve(true_targets_test, scores_test)
+            roc_auc_test = auc(fpr_test, tpr_test)
+
+        elif args.target == 'Survival_Time':
+
+            # Compute AUC:
+            not_censored_indices = np.where(np.array(all_censored) == False)
+            relevant_targets = np.array(all_targets)[not_censored_indices]
+            relevant_outputs = np.array(all_outputs)[not_censored_indices]
+            fpr_test, tpr_test, _ = roc_curve(relevant_targets, - relevant_outputs)
+            roc_auc_test = auc(fpr_test, tpr_test)
+
+        print('Test C-index: {:.3f}, Test AUC: {:.3f}'.format(c_index, 100 * roc_auc_test))
+
         all_writer.add_scalar('Test/C-index Per Epoch', c_index, epoch)
         all_writer.add_scalar('Test/Loss Per Epoch Per Instance', test_loss / len(all_targets), epoch)
-
+        all_writer.add_scalar('Test/AUC Per Epoch', roc_auc_test, epoch)
 
     model.train()
-    return c_index
+
 
 ########################################################################################################
 ########################################################################################################
@@ -255,74 +334,31 @@ if __name__ == '__main__':
     # Get number of available CPUs and compute number of workers:
     cpu_available = utils.get_cpu()
     num_workers = cpu_available
-    #num_workers = cpu_available * 2 #temp RanS 9.8.21
-    #num_workers = cpu_available//2  # temp RanS 9.8.21
-    #num_workers = 4 #temp RanS 24.3.21
-
-    if sys.platform == 'win32':
-        num_workers = 0 #temp RanS 3.5.21
 
     print('num workers = ', num_workers)
 
     # Get data:
+    if args.target == 'Survival_Binary':
+        binary_target = True
+    elif args.target == 'Survival_Time':
+        binary_target = False
+
     if args.dataset == 'Survival Synthetic':
-        train_dset = datasets.C_Index_Test_Dataset(train=True)
-        test_dset = datasets.C_Index_Test_Dataset(train=False)
+        train_dset = datasets.C_Index_Test_Dataset(train=True,
+                                                   binary_target=binary_target)
+        test_dset = datasets.C_Index_Test_Dataset(train=False,
+                                                  binary_target=binary_target)
     else:
-        train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                             tile_size=TILE_SIZE,
-                                             target_kind=args.target,
-                                             test_fold=args.test_fold,
-                                             train=True,
-                                             print_timing=args.time,
-                                             transform_type=args.transform_type,
-                                             n_tiles=args.n_patches_train,
-                                             color_param=args.c_param,
-                                             get_images=args.images,
-                                             desired_slide_magnification=args.mag,
-                                             DX=args.dx,
-                                             loan=args.loan,
-                                             er_eq_pr=args.er_eq_pr,
-                                             slide_per_block=args.slide_per_block,
-                                             balanced_dataset=args.balanced_dataset
-                                             )
-        test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
-                                            tile_size=TILE_SIZE,
-                                            target_kind=args.target,
-                                            test_fold=args.test_fold,
-                                            train=False,
-                                            print_timing=False,
-                                            transform_type='none',
-                                            n_tiles=args.n_patches_test,
-                                            get_images=args.images,
-                                            desired_slide_magnification=args.mag,
-                                            DX=args.dx,
-                                            loan=args.loan,
-                                            er_eq_pr=args.er_eq_pr
-                                            )
+        print('NOT Implemented')
+        exit()
+
     sampler = None
     do_shuffle = True
-    if args.balanced_sampling:
-        labels = pd.DataFrame(train_dset.target * train_dset.factor)
-        n_pos = np.sum(labels == 'Positive').item()
-        n_neg = np.sum(labels == 'Negative').item()
-        weights = pd.DataFrame(np.zeros(len(train_dset)))
-        weights[np.array(labels == 'Positive')] = 1 / n_pos
-        weights[np.array(labels == 'Negative')] = 1 / n_neg
-        do_shuffle = False  # the sampler shuffles
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(), num_samples=len(train_dset))
-
-    args.batch_size = 20
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
                              num_workers=num_workers, pin_memory=True)
-
-    # RanS 20.6.21
-    if args.loan:
-        train_labels_df = pd.DataFrame({'slide_name': train_loader.dataset.image_file_names, 'label': train_loader.dataset.target})
-        test_labels_df = pd.DataFrame({'slide_name': test_loader.dataset.image_file_names, 'label': test_loader.dataset.target})
 
     # Save transformation data to 'run_data.xlsx'
     if args.dataset != 'Survival Synthetic':
@@ -331,19 +367,27 @@ if __name__ == '__main__':
 
     # Load model
     if args.dataset == 'Survival Synthetic':
-        model = nn.Linear(8, 1)
-        model.model_name = 'Survival_Synthetic'
+        if args.target == 'Survival_Time':
+            model = nn.Linear(8, 1)
+            model.model_name = 'Survival_Synthetic_Continous'
+        elif args.target == 'Survival_Binary':
+            model = nn.Linear(8, 2)
+            model.model_name = 'Survival_Synthetic_Binary'
 
     else:
-        model = eval(args.model)
-    if args.target == 'Survival Time' and args.dataset != 'Survival Synthetic':
-        model.change_num_classes(num_classes=1)  # This will convert the liner (classifier) layer into the beta layer
+        print('NOT Implemented')
+        exit()
+
+        '''model = eval(args.model)
+    if args.target == 'Survival_Time' and args.dataset != 'Survival Synthetic':
+        model.change_num_classes(num_classes=1)  # This will convert the liner (classifier) layer into the beta layer'''
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
-    if args.experiment == 0 and args.dataset != 'Survival Synthetic':
+    if args.experiment == 0:
         utils.run_data(experiment=experiment, model=model.model_name)
-        utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
-        utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
+        if args.dataset != 'Survival Synthetic':
+            utils.run_data(experiment=experiment, DataSet_size=(train_dset.real_length, test_dset.real_length))
+            utils.run_data(experiment=experiment, DataSet_Slide_magnification=train_dset.desired_magnification)
 
         # Saving code files, args and main file name (this file) to Code directory within the run files.
         utils.save_code_files(args, train_dset)
@@ -373,7 +417,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if DEVICE.type == 'cuda':
-        model = torch.nn.DataParallel(model) #DataParallel, RanS 1.8.21
+        model = torch.nn.DataParallel(model)
         cudnn.benchmark = True
 
         # RanS 28.1.21
@@ -391,32 +435,10 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
-    if args.focal:
-        criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
-        criterion.to(DEVICE) #RanS 20.7.21
-    elif args.target == 'Survival Time':
+
+    if args.target == 'Survival_Time':
         criterion = Cox_loss
     else:
         criterion = nn.CrossEntropyLoss()
 
     train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
-
-    #finished training, send email if possible
-    if os.path.isfile('mail_cfg.txt'):
-        with open("mail_cfg.txt", "r") as f:
-            text = f.readlines()
-            receiver_email = text[0][:-1]
-            password = text[1]
-
-        port = 465  # For SSL
-        sender_email = "gipmed.python@gmail.com"
-
-        message = 'Subject: finished running experiment ' + str(experiment)
-
-        # Create a secure SSL context
-        context = ssl.create_default_context()
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
-            server.login(sender_email, password)
-            server.sendmail(sender_email, receiver_email, message)
-            print('email sent to ' + receiver_email)

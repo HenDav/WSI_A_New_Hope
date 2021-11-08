@@ -43,7 +43,8 @@ class WSI_Master_Dataset(Dataset):
                  loan: bool = False,
                  er_eq_pr: bool = False,
                  slide_per_block: bool = False,
-                 balanced_dataset: bool = False
+                 balanced_dataset: bool = False,
+                 censor_balancing: float = None
                  ):
 
         # Check if the target receptor is available for the requested train DataSet:
@@ -63,6 +64,10 @@ class WSI_Master_Dataset(Dataset):
         self.train_type = train_type
         self.color_param = color_param
         self.loan = loan
+        self.censor_balancing = censor_balancing
+
+        if censor_balancing != None:
+            balanced_dataset = False
 
         # Get DataSets location:
         self.dir_dict = get_datasets_dir_dict(Dataset=self.DataSet)
@@ -106,6 +111,14 @@ class WSI_Master_Dataset(Dataset):
                     all_targets[ii] = 'Positive'
                 elif (PR_target == 'Negative' or ER_target == 'Negative'): #avoid 'Missing Data'
                     all_targets[ii] = 'Negative'
+        if self.target_kind in ['Survival_Time', 'Survival_Binary']:
+            all_censored = list(self.meta_data_DF['Censored'])
+            all_targets = list(self.meta_data_DF['Time (months)'])
+            all_binary_targets = list(self.meta_data_DF['Survival Binary (5 Yr)'])
+            if self.target_kind == 'Survival_Binary':
+                all_targets_cont = all_targets
+                all_targets = all_binary_targets
+
         else:
             all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
@@ -137,10 +150,10 @@ class WSI_Master_Dataset(Dataset):
 
         # We'll use only the valid slides - the ones with a Negative or Positive label. (Some labels have other values)
         # Let's compute which slides are these:
-        valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) is True)[0]
-        if self.target_kind == 'Survival Time':
-            valid_slide_indices = np.where(np.isnan(np.array(all_targets)) == False)[0]
-
+        if self.target_kind == 'Survival_Time':
+            valid_slide_indices = np.where(np.invert(np.isnan(all_targets)) == True)[0]
+        else:
+            valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) is True)[0]
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
@@ -241,52 +254,124 @@ class WSI_Master_Dataset(Dataset):
             self.all_image_ids = all_image_ids
             self.all_targets = all_targets
 
-        self.image_file_names = []
-        self.image_path_names = []
-        self.in_fold = []
-        self.tissue_tiles = []
-        self.target = []
-        self.magnification = []
-        self.slides = []
-        self.grid_lists = []
-        self.presaved_tiles = []
+        if self.censor_balancing is None:
+            self.image_file_names = []
+            self.image_path_names = []
+            self.in_fold = []
+            self.tissue_tiles = []
+            self.target = []
+            self.magnification = []
+            self.slides = []
+            self.grid_lists = []
+            self.presaved_tiles = []
+        else:
+            self.image_file_names = {'Censored': [], 'UnCensored': []}
+            self.image_path_names = {'Censored': [], 'UnCensored': []}
+            self.in_fold = {'Censored': [], 'UnCensored': []}
+            self.tissue_tiles = {'Censored': [], 'UnCensored': []}
+            self.target = {'Censored': [], 'UnCensored': []}
+            self.magnification = {'Censored': [], 'UnCensored': []}
+            self.slides = {'Censored': [], 'UnCensored': []}
+            self.grid_lists = {'Censored': [], 'UnCensored': []}
+            self.presaved_tiles = []
+
+
+        if self.target_kind == 'Survival_Time':
+            #self.target_binary, self.censored = [], []
+            self.target_binary, self.censored = {'Censored': [], 'UnCensored': []}, {'Censored': [], 'UnCensored': []}
+        elif self.target_kind == 'Survival_Binary':
+            #self.target_cont, self.censored = [], []
+            self.target_cont, self.censored = {'Censored': [], 'UnCensored': []}, {'Censored': [], 'UnCensored': []}
 
         for _, index in enumerate(tqdm(valid_slide_indices)):
-            if (self.DX and all_is_DX_cut[index]) or not self.DX:
-                self.image_file_names.append(all_image_file_names[index])
-                self.image_path_names.append(self.dir_dict[all_image_ids[index]])
-                self.in_fold.append(all_in_fold[index])
-                self.tissue_tiles.append(all_tissue_tiles[index])
-                self.target.append(all_targets[index])
-                self.magnification.append(all_magnifications[index])
-                self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
+            if self.censor_balancing is None:
+                if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                    self.image_file_names.append(all_image_file_names[index])
+                    self.image_path_names.append(self.dir_dict[all_image_ids[index]])
+                    self.in_fold.append(all_in_fold[index])
+                    self.tissue_tiles.append(all_tissue_tiles[index])
+                    self.target.append(all_targets[index])
+                    self.magnification.append(all_magnifications[index])
+                    self.presaved_tiles.append(all_image_ids[index] == 'ABCTB_TILES')
 
-                # Preload slides - improves speed during training.
-                grid_file = []
-                image_file = []
-                try:
-                    image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
-                    if self.presaved_tiles[-1]:
-                        tiles_dir = os.path.join(self.dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
-                        self.slides.append(tiles_dir)
-                        self.grid_lists.append(0)
-                    else:
-                        #if self.train_type == 'Infer_All_Folds':
-                        if self.train_type in ['Infer_All_Folds', 'Infer']:
-                            self.slides.append(image_file)
+                    if self.target_kind == 'Survival_Time':
+                        self.censored.append(all_censored[index])
+                        self.target_binary.append(all_binary_targets[index])
+                    elif self.target_kind == 'Survival_Binary':
+                        self.censored.append(all_censored[index])
+                        self.target_cont.append(all_targets_cont[index])
+
+                    # Preload slides - improves speed during training.
+                    grid_file = []
+                    image_file = []
+                    try:
+                        image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
+                        if self.presaved_tiles[-1]:
+                            tiles_dir = os.path.join(self.dir_dict[all_image_ids[index]], 'tiles', '.'.join((os.path.basename(image_file)).split('.')[:-1]))
+                            self.slides.append(tiles_dir)
+                            self.grid_lists.append(0)
                         else:
-                            self.slides.append(openslide.open_slide(image_file))
+                            #if self.train_type == 'Infer_All_Folds':
+                            if self.train_type in ['Infer_All_Folds', 'Infer']:
+                                self.slides.append(image_file)
+                            else:
+                                self.slides.append(openslide.open_slide(image_file))
+
+                            basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
+
+                            grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids_' + str(self.desired_magnification),
+                                                     basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
+                            with open(grid_file, 'rb') as filehandle:
+                                grid_list = pickle.load(filehandle)
+                                self.grid_lists.append(grid_list)
+                    except FileNotFoundError:
+                        raise FileNotFoundError(
+                            'Couldn\'t open slide {} or its Grid file {}'.format(image_file, grid_file))
+            else:  # Dividing the data between 2 lists. one for censored and one for uncensored
+                if (self.DX and all_is_DX_cut[index]) or not self.DX:
+                    if all_censored[index] == 1:
+                        censor_status = 'Censored'
+                    elif all_censored[index] == 0:
+                        censor_status = 'UnCensored'
+                    else:
+                        Exception('Censor status not provided')
+
+                    self.image_file_names[censor_status].append(all_image_file_names[index])
+                    self.image_path_names[censor_status].append(self.dir_dict[all_image_ids[index]])
+                    self.in_fold[censor_status].append(all_in_fold[index])
+                    self.tissue_tiles[censor_status].append(all_tissue_tiles[index])
+                    self.target[censor_status].append(all_targets[index])
+                    self.magnification[censor_status].append(all_magnifications[index])
+
+                    if self.target_kind == 'Survival_Time':
+                        self.censored[censor_status].append(all_censored[index])
+                        self.target_binary[censor_status].append(all_binary_targets[index])
+                    elif self.target_kind == 'Survival_Binary':
+                        self.censored[censor_status].append(all_censored[index])
+                        self.target_cont[censor_status].append(all_targets_cont[index])
+
+                    # Preload slides - improves speed during training.
+                    grid_file = []
+                    image_file = []
+                    try:
+                        image_file = os.path.join(self.dir_dict[all_image_ids[index]], all_image_file_names[index])
+                        # if self.train_type == 'Infer_All_Folds':
+                        if self.train_type in ['Infer_All_Folds', 'Infer']:
+                            self.slides[censor_status].append(image_file)
+                        else:
+                            self.slides[censor_status].append(openslide.open_slide(image_file))
 
                         basic_file_name = '.'.join(all_image_file_names[index].split('.')[:-1])
 
-                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]], 'Grids_' + str(self.desired_magnification),
+                        grid_file = os.path.join(self.dir_dict[all_image_ids[index]],
+                                                 'Grids_' + str(self.desired_magnification),
                                                  basic_file_name + '--tlsz' + str(self.tile_size) + '.data')
                         with open(grid_file, 'rb') as filehandle:
                             grid_list = pickle.load(filehandle)
-                            self.grid_lists.append(grid_list)
-                except FileNotFoundError:
-                    raise FileNotFoundError(
-                        'Couldn\'t open slide {} or its Grid file {}'.format(image_file, grid_file))
+                            self.grid_lists[censor_status].append(grid_list)
+                    except FileNotFoundError:
+                        raise FileNotFoundError(
+                            'Couldn\'t open slide {} or its Grid file {}'.format(image_file, grid_file))
 
         # Setting the transformation:
         self.transform = define_transformations(transform_type, self.train, self.tile_size, self.color_param)
@@ -350,11 +435,12 @@ class WSI_Master_Dataset(Dataset):
                                                    random_shift=self.train)
 
         if not self.loan:
-            label = [1] if self.target[idx] == 'Positive' else [0]
-            if self.target_kind == 'Survival Time':
+            if self.target_kind == 'Survival_Time':
                 label = [self.target[idx]]
-
-        label = torch.LongTensor(label)
+                label = torch.FloatTensor(label)
+            else:
+                label = [1] if self.target[idx] == 'Positive' else [0]
+                label = torch.LongTensor(label)
 
         # X will hold the images after all the transformations
         X = torch.zeros([self.bag_size, 3, self.tile_size, self.tile_size])
@@ -383,7 +469,16 @@ class WSI_Master_Dataset(Dataset):
         if debug_patches_and_transformations and images != 0:
             show_patches_and_transformations(X, images, tiles, self.scale_factor, self.tile_size)
 
-        return X, label, time_list, self.image_file_names[idx], images
+        '''return X, label, time_list, self.image_file_names[idx], images'''
+        return {'Data': X,
+                'Target': label,
+                'Time List': time_list,
+                'File Names': self.image_file_names[idx],
+                'Images': images,
+                'Target Binary': self.target_binary[idx] if self.target_kind == 'Survival_Time' else None,
+                'Survival Time': self.target_cont[idx] if self.target_kind == 'Survival_Binary' else None,
+                'Censored': self.censored[idx] if self.target_kind == 'Survival_Time' else None
+                }
 
 
 ########################################################################################################################
@@ -453,7 +548,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  loan: bool = False,
                  er_eq_pr: bool = False,
                  slide_per_block: bool = False,
-                 balanced_dataset: bool = False
+                 balanced_dataset: bool = False,
+                 censor_balancing: float = None
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -471,7 +567,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              desired_slide_magnification=desired_slide_magnification,
                                              er_eq_pr=er_eq_pr,
                                              slide_per_block=slide_per_block,
-                                             balanced_dataset=balanced_dataset)
+                                             balanced_dataset=balanced_dataset,
+                                             censor_balancing=censor_balancing)
 
         self.loan = loan
         print(
@@ -489,10 +586,20 @@ class WSI_REGdataset(WSI_Master_Dataset):
                         'ON' if self.DX else 'OFF'))
 
     def __getitem__(self, idx):
-        X, label, time_list, image_file_names, images = super(WSI_REGdataset, self).__getitem__(idx=idx)
+        # X, target, time_list, image_file_names, images = super(WSI_REGdataset, self).__getitem__(idx=idx)
+        data_dict = super(WSI_REGdataset, self).__getitem__(idx=idx)
+        X = data_dict['Data']
         X = torch.reshape(X, (3, self.tile_size, self.tile_size))
 
-        return X, label, time_list, image_file_names, images
+        #return X, label, time_list, image_file_names, images
+        return {'Data': X,
+                'Target': data_dict['Target'],
+                'Censored': data_dict['Censored'],
+                'Target Binary': data_dict['Target Binary'],
+                'Time List': data_dict['Time List'],
+                'File Names': data_dict['File Names'],
+                'Images': data_dict['Images']
+                }
 
 
 class Infer_Dataset(WSI_Master_Dataset):
@@ -1392,9 +1499,14 @@ class Features_MILdataset(Dataset):
             for data_key in data_location.keys():
                 data_files.extend(glob(os.path.join(data_location[data_key], '*.data')))
 
+        print('Loading data from files in location: {}'.format(data_location))
+        corrected_data_file_list = []
         for data_file in data_files:
-            if 'features' not in data_file.split('_'):
-                data_files.remove(data_file)
+            if 'features' in data_file.split('_'):
+                corrected_data_file_list.append(data_file)
+                #data_files.remove(data_file)
+
+        data_files = corrected_data_file_list
 
 
         '''if os.path.join(data_location, 'Model_Epoch_1000-Folds_[2, 3, 4, 5]_ER-Tiles_500.data') in data_files:
@@ -1490,7 +1602,11 @@ class Features_MILdataset(Dataset):
             except ValueError:
                 raise Exception('Debug')
 
-            num_slides, max_tile_num = features.shape[0], features.shape[2]
+            try:
+                num_slides, max_tile_num = features.shape[0], features.shape[2]
+            except UnboundLocalError:
+                print(file_idx, file, len(inference_data))
+                print(features.shape)
 
             for slide_num in range(num_slides):
                 # Skip slides that have a "bad segmentation" marker in GridData.xlsx file
@@ -2413,7 +2529,10 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
 
 class C_Index_Test_Dataset(Dataset):
     def __init__(self,
-                 train: bool = True):
+                 train: bool = True,
+                 binary_target: bool = False):
+
+        self.train_type = 'Features'
 
         if sys.platform == 'darwin':
             file_location = r'/Users/wasserman/Developer/WSI_MIL/All Data/survival_synthetic/Survival_time_synthetic.xlsx'
@@ -2425,11 +2544,22 @@ class C_Index_Test_Dataset(Dataset):
 
         legit_cases = list(range(0, int(0.8 * num_cases)) if train else range(int(0.8 * num_cases), num_cases))
 
-        all_targets = DF['survival time']
+        all_targets = DF['Observed survival time']
 
         self.data = []
         for case_index in tqdm(legit_cases):
-            case = {'Target': DF.loc[case_index, 'survival time'],
+            if binary_target:
+                if DF.loc[case_index]['Binary label'] == -1 or DF.loc[case_index, 'Censored']:
+                    continue
+                '''else:
+                    case = {'Binary Target': DF.loc[case_index]['Binary label'],
+                            'Features': np.array(DF.loc[case_index, [0, 1, 2, 3, 4, 5, 6, 7]]).astype(np.float32),
+                            'Censored': DF.loc[case_index, 'Censored'],
+                            'Target': DF.loc[case_index, 'Observed survival time']
+                            }
+            else:'''
+            case = {'Binary Target': DF.loc[case_index]['Binary label'],
+                    'Target': DF.loc[case_index, 'Observed survival time'],
                     'Features': np.array(DF.loc[case_index, [0, 1, 2, 3, 4, 5, 6, 7]]).astype(np.float32),
                     'Censored': DF.loc[case_index, 'Censored']
                     }

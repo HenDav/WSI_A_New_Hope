@@ -898,6 +898,9 @@ def get_datasets_dir_dict(Dataset: str):
         elif sys.platform == 'win32':  # Ran local
             dir_dict['ABCTB'] = ABCTB_ran_path
 
+        elif sys.platform == 'darwin':  # Omer local
+            dir_dict['ABCTB'] = r'All Data/ABCTB_TIF'
+
     elif Dataset == 'SHEBA':
         if sys.platform == 'linux':
             dir_dict['SHEBA'] = SHEBA_gipdeep_path
@@ -947,8 +950,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
     elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B']:
         raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B')
-    elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and target_kind not in ['ER', 'PR', 'Her2', 'survival', 'Survival Time']:
-        raise ValueError('target should be one of: ER, PR, Her2, survival, Survival Time')
+    elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and target_kind not in ['ER', 'PR', 'Her2', 'survival', 'Survival_Time', 'Survival_Binary']:
+        raise ValueError('target should be one of: ER, PR, Her2, survival, Survival_Time, Survival_Binary')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
     fig1, fig2, fig3, fig4, fig5 = plt.figure(), plt.figure(), plt.figure(), plt.figure(), plt.figure()
@@ -1156,7 +1159,7 @@ def extract_tile_scores_for_slide_1(all_features, models, Output_Dirs, Epochs, d
 
 def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_scores,
                                     all_slides_weights_before_softmax, all_slides_weights_after_softmax,
-                                    models, Output_Dirs, Epochs, data_path):
+                                    models, Output_Dirs, Epochs, data_path, true_test_path: str = ''):
 
     # Save slide scores to file:
     for num_model in range(len(models)):
@@ -1175,9 +1178,15 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
         if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch))):
             os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch)))
 
+        if true_test_path != '':
+            if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path)):
+                os.mkdir(os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path))
+
+
         model_bias_filename = 'epoch_' + str(epoch) + '-bias.xlsx'
         full_model_bias_filename = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores',
                                                 'Epoch_' + str(epoch),
+                                                true_test_path,
                                                 model_bias_filename)
         if not os.path.isfile(full_model_bias_filename):
             try:  # In case this part in not packed in Sequential we'll need this try statement
@@ -1199,8 +1208,8 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
             all_slides_tile_scores_REG_DF = pd.DataFrame(all_slides_tile_scores_REG[num_model]).transpose()
             all_slides_final_scores_REG_DF = pd.DataFrame(all_slides_final_scores_REG[num_model]).transpose()
 
-            tile_scores_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_scores_REG.xlsx')
-            slide_score_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'slide_scores_REG.xlsx')
+            tile_scores_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'tile_scores_REG.xlsx')
+            slide_score_file_name_REG = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'slide_scores_REG.xlsx')
 
             all_slides_tile_scores_REG_DF.to_excel(tile_scores_file_name_REG)
             all_slides_final_scores_REG_DF.to_excel(slide_score_file_name_REG)
@@ -1210,10 +1219,10 @@ def save_all_slides_and_models_data(all_slides_tile_scores, all_slides_final_sco
         all_slides_weights_before_sofrmax_DF = pd.DataFrame(all_slides_weights_before_softmax[num_model]).transpose()
         all_slides_weights_after_softmax_DF = pd.DataFrame(all_slides_weights_after_softmax[num_model]).transpose()
 
-        tile_scores_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_scores.xlsx')
-        slide_score_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'slide_scores.xlsx')
-        tile_weights_before_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights_before_softmax.xlsx')
-        tile_weights_after_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), 'tile_weights_after_softmax.xlsx')
+        tile_scores_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'tile_scores.xlsx')
+        slide_score_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'slide_scores.xlsx')
+        tile_weights_before_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'tile_weights_before_softmax.xlsx')
+        tile_weights_after_softmax_file_name = os.path.join(data_path, output_dir, 'Inference', 'Tile_Scores', 'Epoch_' + str(epoch), true_test_path, 'tile_weights_after_softmax.xlsx')
 
         all_slides_tile_scores_DF.to_excel(tile_scores_file_name)
         all_slides_final_scores_DF.to_excel(slide_score_file_name)
@@ -1525,7 +1534,7 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
     return dataset_location_list
 
 
-def get_MIL_Features_dataset_location_dict(train_DataSet: str, target: str, test_fold: int):
+def get_RegModel_Features_location_dict(train_DataSet: str, target: str, test_fold: int):
     All_Data_Dict = {'linux': {'CAT': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_355-ER-TestFold_1',
                                                          'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/train_w_features',
                                                          'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features',
@@ -1536,16 +1545,21 @@ def get_MIL_Features_dataset_location_dict(train_DataSet: str, target: str, test
                                                            'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/test_w_features',
                                                            'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
                                                            },
-                                                  'PR': {'DataSet Name': None,
-                                                         'TrainSet Location': None,
-                                                         'TestSet Location': None,
-                                                         'REG Model Location': None
+                                                  'PR': {'DataSet Name': r'FEATURES: Exp_10-PR-TestFold_1',
+                                                         'TrainSet Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_10-PR-TestFold_1/Inference/train_w_features',
+                                                         'TestSet Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_10-PR-TestFold_1/Inference/test_w_features',
+                                                         'REG Model Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_10-PR-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
                                                          }
                                                   },
                                        'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_393-ER-TestFold_2',
                                                          'TrainSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Inference/train_w_features',
                                                          'TestSet Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Inference/test_w_features',
                                                          'REG Model Location': r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_393-ER-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
+                                                         },
+                                                  'PR': {'DataSet Name': r'FEATURES: Exp_20063-PR-TestFold_2',
+                                                         'TrainSet Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_20063-PR-TestFold_2/Inference/train_w_features',
+                                                         'TestSet Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_20063-PR-TestFold_2/Inference/test_w_features',
+                                                         'REG Model Location': r'/mnt/gipnetapp_public/sgils/ran/runs/Exp_20063-PR-TestFold_2/Model_CheckPoints/model_data_Epoch_1000.pt'
                                                          }
                                                   }
                                        },
@@ -1652,9 +1666,9 @@ def get_MIL_Features_dataset_location_dict(train_DataSet: str, target: str, test
                                                           }
                                                    },
                                         'Fold 2': {'ER': {'DataSet Name': r'FEATURES: Exp_393-ER-TestFold_2',
-                                                          'TrainSet Location': None,
+                                                          'TrainSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_393-TestFold_2/Train',
                                                           'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_393-TestFold_2/Test',
-                                                          'REG Model Location': None
+                                                          'REG Model Location': r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_393-ER-TF_2/model_data_Epoch_1000.pt'
                                                           }
                                                    }
                                         },
@@ -1672,7 +1686,12 @@ def get_MIL_Features_dataset_location_dict(train_DataSet: str, target: str, test
                                                                         'TrainSet Location': None,
                                                                         'TestSet Location': None,
                                                                         'REG Model Location': None
-                                                                        }
+                                                                        },
+                                                                 'ResNet34': {'DataSet Name': r'FEATURES: Extraction via ResNet 34 pretraind model',
+                                                                              'TrainSet Location': None,
+                                                                              'TestSet Location': r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Resnet34_pretrained_features/',
+                                                                              'REG Model Location': None
+                                                                              }
                                                                  }
                                                       },
                                 'CARMEL': {'Fold 1': {'ER': {'DataSet Name': r'FEATURES: Exp_358-ER-TestFold_1',

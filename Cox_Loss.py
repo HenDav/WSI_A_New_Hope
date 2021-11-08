@@ -28,3 +28,5 @@ def Cox_loss(risk_function_results: torch.Tensor, targets: torch.Tensor, censore
         loss += risk_function_results[i] - torch.log(inner_loop_sum)
 
     return -loss
+
+#def Gil_Loss(risk_function_results: torch.Tensor, targets: torch.Tensor, censored: torch.Tensor) -> torch.float32:
