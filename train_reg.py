@@ -48,7 +48,7 @@ parser.add_argument('--er_eq_pr', action='store_true', help='while training, tak
 parser.add_argument('--focal', action='store_true', help='use focal loss with gamma=2') #RanS 18.7.21
 parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
 parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
-
+parser.add_argument('--RAM_saver', action='store_true', help='use only a quarter of the slides + reshuffle every 100 epochs') #RanS 3.11.21
 
 args = parser.parse_args()
 
@@ -166,10 +166,7 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
               .format(e,
                       train_loss,
                       previous_epoch_loss - train_loss,
-                      # train_acc,
                       roc_auc_train,
-                      # int(correct_labeling),
-                      # len(train_loader),
                       time_epoch))
         previous_epoch_loss = train_loss
 
@@ -415,7 +412,8 @@ if __name__ == '__main__':
                                          loan=args.loan,
                                          er_eq_pr=args.er_eq_pr,
                                          slide_per_block=args.slide_per_block,
-                                         balanced_dataset=args.balanced_dataset
+                                         balanced_dataset=args.balanced_dataset,
+                                         RAM_saver=args.RAM_saver
                                          )
     test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
                                         tile_size=TILE_SIZE,
@@ -429,7 +427,8 @@ if __name__ == '__main__':
                                         desired_slide_magnification=args.mag,
                                         DX=args.dx,
                                         loan=args.loan,
-                                        er_eq_pr=args.er_eq_pr
+                                        er_eq_pr=args.er_eq_pr,
+                                        RAM_saver=args.RAM_saver
                                         )
     sampler = None
     do_shuffle = True
@@ -447,11 +446,6 @@ if __name__ == '__main__':
                               num_workers=num_workers, pin_memory=True, sampler=sampler)
     test_loader  = DataLoader(test_dset, batch_size=args.batch_size*2, shuffle=False,
                               num_workers=num_workers, pin_memory=True)
-
-    # RanS 20.6.21
-    if args.loan:
-        train_labels_df = pd.DataFrame({'slide_name': train_loader.dataset.image_file_names, 'label': train_loader.dataset.target})
-        test_labels_df = pd.DataFrame({'slide_name': test_loader.dataset.image_file_names, 'label': test_loader.dataset.target})
 
     # Save transformation data to 'run_data.xlsx'
     transformation_string = ', '.join([str(train_dset.transform.transforms[i]) for i in range(len(train_dset.transform.transforms))])
@@ -518,7 +512,75 @@ if __name__ == '__main__':
     else:
         criterion = nn.CrossEntropyLoss()
 
-    train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+    #RanS 3.11.21
+    if args.RAM_saver:
+        shuffle_freq = 100 #reshuffle dataset every 200 epochs
+        #shuffle_freq = 3  # temp
+        shuffle_epoch_list = np.arange(np.ceil((from_epoch+EPS) / shuffle_freq) * shuffle_freq, epoch, shuffle_freq).astype(int)
+        shuffle_epoch_list = np.append(shuffle_epoch_list, epoch)
+
+        epoch = shuffle_epoch_list[0]
+        train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+
+        for from_epoch, epoch in zip(shuffle_epoch_list[:-1], shuffle_epoch_list[1:]):
+            print('Reshuffling dataset:')
+            #shuffle train and test set to get new slides
+            # Get data:
+            train_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                                 tile_size=TILE_SIZE,
+                                                 target_kind=args.target,
+                                                 test_fold=args.test_fold,
+                                                 train=True,
+                                                 print_timing=args.time,
+                                                 transform_type=args.transform_type,
+                                                 n_tiles=args.n_patches_train,
+                                                 color_param=args.c_param,
+                                                 get_images=args.images,
+                                                 desired_slide_magnification=args.mag,
+                                                 DX=args.dx,
+                                                 loan=args.loan,
+                                                 er_eq_pr=args.er_eq_pr,
+                                                 slide_per_block=args.slide_per_block,
+                                                 balanced_dataset=args.balanced_dataset,
+                                                 RAM_saver=args.RAM_saver
+                                                 )
+            test_dset = datasets.WSI_REGdataset(DataSet=args.dataset,
+                                                tile_size=TILE_SIZE,
+                                                target_kind=args.target,
+                                                test_fold=args.test_fold,
+                                                train=False,
+                                                print_timing=False,
+                                                transform_type='none',
+                                                n_tiles=args.n_patches_test,
+                                                get_images=args.images,
+                                                desired_slide_magnification=args.mag,
+                                                DX=args.dx,
+                                                loan=args.loan,
+                                                er_eq_pr=args.er_eq_pr,
+                                                RAM_saver=args.RAM_saver
+                                                )
+            sampler = None
+            do_shuffle = True
+            if args.balanced_sampling:
+                labels = pd.DataFrame(train_dset.target * train_dset.factor)
+                n_pos = np.sum(labels == 'Positive').item()
+                n_neg = np.sum(labels == 'Negative').item()
+                weights = pd.DataFrame(np.zeros(len(train_dset)))
+                weights[np.array(labels == 'Positive')] = 1 / n_pos
+                weights[np.array(labels == 'Negative')] = 1 / n_neg
+                do_shuffle = False  # the sampler shuffles
+                sampler = torch.utils.data.sampler.WeightedRandomSampler(weights=weights.squeeze(),
+                                                                         num_samples=len(train_dset))
+
+            train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=do_shuffle,
+                                      num_workers=num_workers, pin_memory=True, sampler=sampler)
+            test_loader = DataLoader(test_dset, batch_size=args.batch_size * 2, shuffle=False,
+                                     num_workers=num_workers, pin_memory=True)
+
+            print('resuming training with new dataset')
+            train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
+    else:
+        train(model, train_loader, test_loader, DEVICE=DEVICE, optimizer=optimizer, print_timing=args.time)
 
     #finished training, send email if possible
     if os.path.isfile('mail_cfg.txt'):

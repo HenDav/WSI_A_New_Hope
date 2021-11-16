@@ -49,18 +49,18 @@ print('Loading pre-saved models:')
 models = []
 dx = False
 
-#RanS 30.9.21 - if more than one epoch, save features from epoch 1000
-#returns an error if 1000 is not on the epoch list
-if args.save_features and len(args.from_epoch) > 1:
-    if sys.platform == 'win32':
-        feature_epoch_ind = (args.from_epoch).index(16)
-    else:
-        if args.model_path == '':
+#decide which epochs to save features from - if model_path is used, take it.
+# #else, if there only one epoch, take it. otherwise take epoch 1000
+if args.save_features:
+    if args.model_path != '':
+        feature_epoch_ind = len(args.from_epoch)
+    elif len(args.from_epoch) > 1:
+        if sys.platform == 'win32':
+            feature_epoch_ind = (args.from_epoch).index(16)
+        else:
             feature_epoch_ind = (args.from_epoch).index(1000)
-        else: #take model path, the last model on the list
-            feature_epoch_ind = len(args.from_epoch)-1
-elif args.save_features and len(args.from_epoch) == 1:
-    feature_epoch_ind = 0
+    elif len(args.from_epoch) == 1:
+        feature_epoch_ind = 0
 
 for counter in range(len(args.from_epoch)):
     epoch = args.from_epoch[counter]
@@ -117,7 +117,7 @@ tiles_per_iter = 20
 if sys.platform == 'linux':
     TILE_SIZE = 256
     tiles_per_iter = 150
-    if platform.node() == 'gipdeep4' or platform.node() == 'gipdeep6': #RanS 8.8.21
+    if platform.node() in ['gipdeep4', 'gipdeep5', 'gipdeep6']:
         tiles_per_iter = 100
 elif sys.platform == 'win32':
     TILE_SIZE = 256
@@ -180,6 +180,7 @@ all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDE
 patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
 #patch_locs_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2)) #RanS 17.10.21
 patch_locs_all = np.empty((NUM_SLIDES, args.num_tiles, 2)) #RanS 17.10.21
+#patch_locs_all = np.empty((7665, args.num_tiles, 2)) #temp RanS 10.11.21
 if args.save_features:
     #features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
     features_all = np.empty((NUM_SLIDES_SAVE, 1, args.num_tiles, 512)) #RanS 30.9.21
@@ -197,7 +198,7 @@ correct_neg = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
 if args.resume:
     # load the inference state
     resume_file_name = os.path.join(data_path, output_dir, 'Inference',
-                                    'Exp_' + str(args.from_epoch[args.experiment])
+                                    'Exp_' + str(args.experiment[0])
                                     + '-Folds_' + str(args.folds) + '_' + str(
                                         args.target) + '-Tiles_' + str(
                                         args.num_tiles) + '_resume_slide_num_' + str(slide_num) + '.data')
@@ -205,6 +206,8 @@ if args.resume:
         resume_data = pickle.load(filehandle)
     all_labels, all_targets, all_scores, total_pos, correct_pos, total_neg, \
     correct_neg, patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES, patch_locs_all = resume_data
+    #correct_neg, patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES = resume_data  # temp RanS 10.11.21
+
 else:
     resume_file_name = 0
 
@@ -270,8 +273,9 @@ with torch.no_grad():
             scores_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 1].cpu().detach().numpy()
             #patch_locs_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21, cancelled
 
-            if args.save_features and index == feature_epoch_ind:
-                feature_arr[0][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = features.cpu().detach().numpy()
+            if args.save_features:
+                if index == feature_epoch_ind:
+                    feature_arr[0][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = features.cpu().detach().numpy()
 
         slide_batch_num += 1
 
@@ -319,7 +323,8 @@ with torch.no_grad():
                                                      args.num_tiles) + '_resume_slide_num_' + str(slide_num) + '.data')
                 resume_data = [all_labels, all_targets, all_scores,
                                   total_pos, correct_pos, total_neg, correct_neg,
-                                  patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES]
+                                  patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES, patch_locs_all]
+
                 with open(resume_file_name, 'wb') as filehandle:
                     pickle.dump(resume_data, filehandle)
                 #delete previous resume file
@@ -392,6 +397,10 @@ for model_num in range(NUM_MODELS):
                   int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
                   len(all_labels[:, model_num])))
 print('Done !')
+
+#delete last resume file
+if os.path.isfile(resume_file_name):
+    os.remove(resume_file_name)
 
 # finished training, send email if possible
 if os.path.isfile('mail_cfg.txt'):

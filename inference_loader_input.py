@@ -2,15 +2,15 @@ import os
 import re, glob
 inference_files = {}
 
-exp = 20010
+exp = 20058
 fold = 1
-target = 'PR'
+target = 'ER'
 dataset = 'CAT'
-subdir = 'CARMEL11'
+subdir = ''
 #subdir = 'bacc'
 #subdir = 'CARMEL'
 #subdir = 'test_inference_aug21_TCGA_corrections'
-is_other = False
+is_other = True
 
 patientless_list = ['CARMEL', 'CAT', 'TCGA_LUNG', 'HEROHE']
 if dataset in patientless_list or subdir in patientless_list:
@@ -19,7 +19,7 @@ else:
     patient_level = True
 save_csv = True
 
-#patient_level = False #temp
+patient_level = False #temp
 
 if is_other:
     inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4', dataset + '_runs', 'other', 'exp' + str(exp), 'Inference')
@@ -41,11 +41,14 @@ val_list = [''.join(('Model_Epoch_', str(epoch), '-Folds_[', str(fold), ']_', ta
 #key_list = [''.join(('exp', str(exp), '_fold', str(fold), '_epoch', str(epoch), '_test_500_herohe')) for epoch in epochs]
 
 #manual
-temp = True
+temp = False
 if temp:
-    val_list = ['Model_Epoch_resnet34(pretrained=True)-Folds_[1, 2, 3, 4, 5]_ER-Tiles_30.data']
+    #val_list = ['Model_Epoch_resnet34(pretrained=True)-Folds_[1, 2, 3, 4, 5]_ER-Tiles_30.data']
+    #val_list = ['Model_Epoch_16-Folds_[1, 2, 3, 4, 5]_ER-Tiles_30.data']
+    val_list = ['Model_Epoch_resnet34(pretrained=True)-Folds_[1]_ER-Tiles_500.data']
     key_list = ['temp']
-    inference_dir = r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
+    #inference_dir = r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
+    inference_dir = r'C:\Pathnet_results\MIL_general_try4\CAT_runs\ER\exp355\Inference\w_locs_fixed'
 
 
 inference_files = dict(zip(key_list, val_list))

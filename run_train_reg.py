@@ -14,15 +14,16 @@ if infer:
                     '-ex', '321',
                     #'--from_epoch', '0', '16',
                     '--from_epoch', '16',
-                    #'--patch_dir', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference'
-                    #'--save_features'
-                    '--model_path', 'torchvision.models.resnet34(pretrained=True)'
+                    #'--patch_dir', r'C:\Users\User\Dropbox\Technion work 2020\Code\WSI_MIL\WSI_MIL\runs\Exp_321-ER-TestFold_2\Inference',
+                    '--save_features',
+                    #'--model_path', 'torchvision.models.resnet34(pretrained=True)',
+                    '--resume', '1'
                     ])
 else:
     #subprocess.run(['python', 'train_reg.py',
     subprocess.run(['python', 'train_reg.py',
                     '--test_fold', '3',
-                    '--epochs', '2',
+                    '--epochs', '1000',
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'ABCTB',
@@ -35,16 +36,16 @@ else:
                     #'--transform_type', 'bnfrs',
                     #'--transform_type', 'hedcfrs',
                     '--batch_size', '2',
-                    '--n_patches_test', '10',
-                    '--n_patches_train', '100',
+                    '--n_patches_test', '1',
+                    '--n_patches_train', '10',
                     '--model', 'PreActResNets.PreActResNet50_Ron()',
                     #'--model', 'nets.resnet50_with_3FC()',
                     '--bootstrap',
                     #'--transform_type', 'aug_receptornet',
                     #'--transform_type', 'rvf',
                     '--transform_type', 'pcbnfrsc',
-                    '--mag', '160',
-                    '--eval_rate', '10',
+                    #'--mag', '160',
+                    '--eval_rate', '20',
                     #'-d',
                     #'-im'
                     #'--loan'
@@ -52,6 +53,7 @@ else:
                     #'-time',
                     #'-baldat'
                     #'--slide_per_block'
+                    '--RAM_saver'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

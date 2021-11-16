@@ -19,18 +19,24 @@ parser = argparse.ArgumentParser(description='WSI_REG Slide inference')
 parser.add_argument('-dn', type=str, default=r'/home/rschley/code/WSI_MIL/general_try4/Inference/Full_Slide_Inference/TCGA_LUNG/exp375_epoch1000', help='Heatmap directory name')
 parser.add_argument('-ds', '--dataset', type=str, default='TCGA_LUNG', help='DataSet to use')
 parser.add_argument('--binary', action='store_true', help='show binary map')
+parser.add_argument('--calib', action='store_true', help='show calibrated map')
 parser.add_argument('--superimpose', action='store_true', help='superimpose the heatmap on top of the slide')
 args = parser.parse_args()
 
 if sys.platform == 'win32':
+    #override args, manually define everything
     dn = r'C:\ran_data\TCGA_lung\heatmaps\test'
     file_list = [r'C:\ran_data\TCGA_lung\heatmaps\300821\is_cancer_BatchOfSlides_Exp_375_Epoch_400_Inference_Full_Slide_TCGA-05-5420-11A-01-TS1.062c76b9-163d-4a4a-963d-ca2d56bddaa7.svs_ScoreHeatMap.xlsx']
     slides_dir = r'C:\ran_data\TCGA_lung\TCGA_LUNG'
+    calib = True
+    binary = False
 else:
     dn = args.dn
     file_list = glob.glob(os.path.join(dn, '*ScoreHeatMap.xlsx'))
     dataset_dir_dict = get_datasets_dir_dict(Dataset=args.dataset)
     slides_dir = dataset_dir_dict[args.dataset]
+    calib = args.calib
+    binary = args.binary
 
 if not os.path.isdir(os.path.join(dn, 'out')):
     os.mkdir(os.path.join(dn, 'out'))
@@ -57,6 +63,15 @@ for file in file_list:
         heatimage[bin_heatmap==1, 1:] = 0 #red
         heatimage[bin_heatmap==0, 0] = 0 #green
         heatimage[bin_heatmap==0, 2] = 0 #green
+    elif calib:
+        # calibrated heratmap, RanS 9.1.21
+        heatmap_vec = np.reshape(heatmap, (heatmap.size))
+        ind_sorted = np.argsort(heatmap_vec)
+        heatmap_vec[ind_sorted] = np.linspace(0, 1, heatmap.size)
+        heatmap_calib = np.reshape(heatmap_vec, heatmap.shape)
+        heatmap_calib[np.isnan(heatmap)] = np.nan
+        heatmap_calib = (heatmap_calib - np.nanmin(heatmap_calib)) / (np.nanmax(heatmap_calib) - np.nanmin(heatmap_calib))
+        heatimage = heatmap_calib
     else:
         heatimage = heatmap
 

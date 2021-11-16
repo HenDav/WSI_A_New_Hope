@@ -635,6 +635,7 @@ class MyGaussianNoiseTransform:
         x = Image.fromarray(noise_img)
         return x
 
+
 class MyMeanPixelRegularization:
     """replace patch with single pixel value"""
 
@@ -647,39 +648,35 @@ class MyMeanPixelRegularization:
         return x
 
 
-class HEDColorJitter:
-    """Jitter colors in HED color space rather than RGB color space."""
-    def __init__(self, sigma):
-        self.sigma = sigma
-    def __call__(self, x):
-        x_arr = np.array(x)
-        x2 = HED_color_jitter(x_arr, self.sigma)
-        x2 = Image.fromarray(x2)
-        return x2
-
-
 def define_transformations(transform_type, train, tile_size, color_param=0.1):
 
     MEAN = {'TCGA': [58.2069073 / 255, 96.22645279 / 255, 70.26442606 / 255],
             'HEROHE': [224.46091564 / 255, 190.67338568 / 255, 218.47883547 / 255],
-            'Ron': [0.8998, 0.8253, 0.9357]
+            'Ron': [0.8998, 0.8253, 0.9357],
+            'Imagenet': [0.485, 0.456, 0.406]
             }
 
     STD = {'TCGA': [40.40400300279664 / 255, 58.90625962739444 / 255, 45.09334057330417 / 255],
            'HEROHE': [np.sqrt(1110.25292532) / 255, np.sqrt(2950.9804851) / 255, np.sqrt(1027.10911208) / 255],
-           'Ron': [0.1125, 0.1751, 0.0787]
+           'Ron': [0.1125, 0.1751, 0.0787],
+           'Imagenet': [0.229, 0.224, 0.225]
            }
+
+    if False: #TODO RanS, implement imagenet normalization where needed
+        norm_type = 'Imagenet'
+    else:
+        norm_type = 'Ron'
 
     # Setting the transformation:
     if transform_type == 'aug_receptornet':
         final_transform = transforms.Compose([transforms.Normalize(
-                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))])
+                                                  mean=(MEAN[norm_type][0], MEAN[norm_type][1], MEAN[norm_type][2]),
+                                                  std=(STD[norm_type][0], STD[norm_type][1], STD[norm_type][2]))])
     else:
         final_transform = transforms.Compose([transforms.ToTensor(),
                                               transforms.Normalize(
-                                                  mean=(MEAN['Ron'][0], MEAN['Ron'][1], MEAN['Ron'][2]),
-                                                  std=(STD['Ron'][0], STD['Ron'][1], STD['Ron'][2]))
+                                                  mean=(MEAN[norm_type][0], MEAN[norm_type][1], MEAN[norm_type][2]),
+                                                  std=(STD[norm_type][0], STD[norm_type][1], STD[norm_type][2]))
                                               ])
     scale_factor = 0.2
     # if self.transform and self.train:
@@ -909,6 +906,8 @@ def get_datasets_dir_dict(Dataset: str):
         if sys.platform == 'linux':  # GIPdeep Run from local files
             #dir_dict['ABCTB'] = ABCTB_gipdeep_path
             dir_dict['ABCTB'] = ABCTB_TIF_gipdeep_path
+            #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/mrxs_50test_temp/ABCTB' #temp RanS 9.11.21
+            #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/tif_49_slides' #temp RanS 9.11.21
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['ABCTB'] = ABCTB_ran_path
@@ -954,7 +953,7 @@ def assert_dataset_target(DataSet, target_kind):
     #elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
     elif (DataSet in ['TCGA', 'CAT', 'IC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
-    elif (DataSet == 'CARMEL') and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67']:
+    elif (DataSet == 'CARMEL') and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67', 'ER100']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
     elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
         raise ValueError('target should be: RedSquares')

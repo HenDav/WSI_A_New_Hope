@@ -10,7 +10,7 @@ import time
 from torch.utils.data import Dataset
 from typing import List
 from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks, map_original_grid_list_to_equiv_grid_list
-from utils import HEDColorJitter, define_transformations, assert_dataset_target
+from utils import define_transformations, assert_dataset_target
 from utils import dataset_properties_to_location, get_label
 from utils import show_patches_and_transformations, get_datasets_dir_dict, balance_dataset
 import openslide
@@ -43,7 +43,8 @@ class WSI_Master_Dataset(Dataset):
                  loan: bool = False,
                  er_eq_pr: bool = False,
                  slide_per_block: bool = False,
-                 balanced_dataset: bool = False
+                 balanced_dataset: bool = False,
+                 RAM_saver: bool = False
                  ):
 
         # Check if the target receptor is available for the requested train DataSet:
@@ -91,7 +92,7 @@ class WSI_Master_Dataset(Dataset):
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['Origin'] == 'lung']
             self.meta_data_DF.reset_index(inplace=True) #RanS 18.4.21
 
-        if balanced_dataset and self.target_kind == 'ER':
+        if balanced_dataset and self.target_kind in ['ER', 'ER100']:
             self.meta_data_DF = balance_dataset(self.meta_data_DF)
             #take only selected patients
             self.meta_data_DF = self.meta_data_DF[self.meta_data_DF['use_in_balanced_data_ER'] == 1]
@@ -139,8 +140,8 @@ class WSI_Master_Dataset(Dataset):
         # Let's compute which slides are these:
         valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
-        #inference on unknown labels
-        if len(valid_slide_indices) == 0:
+        #inference on unknown labels in case of (blind) test inference or Batched_Full_Slide_Inference_Dataset
+        if len(valid_slide_indices) == 0 or self.train_type == 'Infer_All_Folds':
             valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Missing Data']) == True)[0]
 
         # Also remove slides without grid data:
@@ -176,6 +177,13 @@ class WSI_Master_Dataset(Dataset):
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
         valid_slide_indices = np.array(
             list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr - excess_block_slides))
+
+
+        if RAM_saver:
+            #randomly select 1/4 of the slides
+            shuffle_factor = 4
+            #shuffle_factor = 1 #temp
+            valid_slide_indices = np.random.choice(valid_slide_indices, round(len(valid_slide_indices) / shuffle_factor), replace=False)
 
         # The train set should be a combination of all sets except the test set and validation set:
         if self.DataSet == 'CAT' or self.DataSet == 'ABCTB_TCGA':
@@ -454,7 +462,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                  loan: bool = False,
                  er_eq_pr: bool = False,
                  slide_per_block: bool = False,
-                 balanced_dataset: bool = False
+                 balanced_dataset: bool = False,
+                 RAM_saver: bool = False
                  ):
         super(WSI_REGdataset, self).__init__(DataSet=DataSet,
                                              tile_size=tile_size,
@@ -472,7 +481,8 @@ class WSI_REGdataset(WSI_Master_Dataset):
                                              desired_slide_magnification=desired_slide_magnification,
                                              er_eq_pr=er_eq_pr,
                                              slide_per_block=slide_per_block,
-                                             balanced_dataset=balanced_dataset)
+                                             balanced_dataset=balanced_dataset,
+                                             RAM_saver=RAM_saver)
 
         self.loan = loan
         print(
@@ -540,6 +550,9 @@ class Infer_Dataset(WSI_Master_Dataset):
         self.tissue_tiles = self.tissue_tiles[resume_slide:] #RanS 7.10.21
         self.image_file_names = self.image_file_names[resume_slide:] #RanS 7.10.21
         self.image_path_names = self.image_path_names[resume_slide:] #RanS 7.10.21
+        self.slides = self.slides[resume_slide:] #RanS 15.11.21
+        self.presaved_tiles = self.presaved_tiles[resume_slide:] #RanS 15.11.21
+        self.target = self.target[resume_slide:] #RanS 15.11.21
 
         if self.patch_dir != '':
             # RanS 24.10.21
@@ -1068,7 +1081,7 @@ class Infer_Dataset_Background(WSI_Master_Dataset):
                                           adjusted_tile_sz=self.adjusted_tile_size,
                                           output_tile_sz=self.tile_size,
                                           best_slide_level=self.best_slide_level,
-                                          random_shift=True)
+                                          random_shift=False)
 
         if self.tiles_to_go <= self.tiles_per_iter:
             self.tiles_to_go = None

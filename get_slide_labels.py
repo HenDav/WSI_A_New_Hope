@@ -23,8 +23,11 @@ ignore_list_blur = list(ignore_list_DF_blur['Slides to discard'])
 labels_data_file = os.path.join(in_dir, 'Carmel_annotations_25-10-2021.xlsx')
 label_data_DF = pd.read_excel(labels_data_file)
 #data_field = ['ER status', 'PR status', 'Her2 status', 'TissueType', 'PatientIndex']
-data_field = ['ER status', 'PR status', 'Her2 status', 'TissueType', 'PatientIndex', 'Ki67 status', 'ER score',
-              'PR score', 'Her2 score', 'Ki67 score', 'Age', 'Grade']
+#data_field = ['ER status', 'PR status', 'Her2 status', 'TissueType', 'PatientIndex', 'Ki67 status', 'ER score',
+#              'PR score', 'Her2 score', 'Ki67 score', 'Age', 'Grade']
+#binary_data_fields = ['ER status', 'PR status', 'Her2 status', 'Ki67 status']
+data_field = ['ER100 status'] #RanS 14.11.21
+binary_data_fields = ['ER100 status']
 
 for batch in batches:
     print('batch ', str(batch))
@@ -78,7 +81,7 @@ for batch in batches:
         meta_data_DF[field] = meta_data_DF[field].replace(np.nan, 'Missing Data', regex=True)
         meta_data_DF[field] = meta_data_DF[field].replace('Missing', 'Missing Data', regex=True)
 
-    for field in ['ER status', 'PR status', 'Her2 status', 'Ki67 status']:
+    for field in binary_data_fields:
         meta_data_DF[field] = meta_data_DF[field].replace(1, 'Positive', regex=True)
         meta_data_DF[field] = meta_data_DF[field].replace(0, 'Negative', regex=True)
 
