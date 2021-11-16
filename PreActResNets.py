@@ -260,6 +260,11 @@ class PreActResNet_Ron(nn.Module):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
+
+    def change_num_classes(self, num_classes):
+        self.linear = nn.Linear(self.linear.in_features, num_classes)
+
+
     def forward(self, x):
         if len(x.shape) == 5:
             num_of_bags, tiles_amount, _, tiles_size, _ = x.shape

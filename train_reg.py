@@ -19,6 +19,7 @@ import smtplib, ssl
 import psutil
 import nets, PreActResNets, resnet_v2
 from datetime import datetime
+from Cox_Loss import Cox_loss
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -26,9 +27,9 @@ parser.add_argument('-e', '--epochs', default=1001, type=int, help='Epochs to ru
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides')
-parser.add_argument('-ds', '--dataset', type=str, default='TCGA', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='ABCTB', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
-parser.add_argument('-tar', '--target', default='ER', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
+parser.add_argument('-tar', '--target', default='Survival_Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time')
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
@@ -83,11 +84,14 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
     for e in range(from_epoch, epoch):
         time_epoch_start = time.time()
+        if args.target == 'Survival_Time':
+            all_targets, all_outputs, all_censored, all_cont_targets = [], [], [], []
 
         total, correct_pos, correct_neg = 0, 0, 0
         total_pos_train, total_neg_train = 0, 0
         true_targets_train, scores_train = np.zeros(0), np.zeros(0)
         correct_labeling, train_loss = 0, 0
+
 
         slide_names = []
         print('Epoch {}:'.format(e))
@@ -97,34 +101,59 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         print('RAM usage:', np.round(process.memory_info().rss/1e9), 'GB, time: ', datetime.now())
 
         model.train()
-        for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):
+        model.to(DEVICE)
+        #for batch_idx, (data, target, time_list, f_names, _) in enumerate(tqdm(dloader_train)):
+        for batch_idx, minibatch in enumerate(tqdm(dloader_train)):  # Omer 7 Nov 2021
+            data = minibatch['Data']
+            target = minibatch['Target']
+            time_list = minibatch['Time List']
+            f_names = minibatch['File Names']
+
+            if args.target == 'Survival_Time':
+                censored = minibatch['Censored']
+                target_binary = minibatch['Target Binary']
+            elif args.target == 'Survival_Binary':
+                censored = minibatch['Censored']
+                target_cont = minibatch['Survival Time']
+
             train_start = time.time()
             data, target = data.to(DEVICE), target.to(DEVICE).squeeze(1)
-            model.to(DEVICE)
+
             optimizer.zero_grad()
             outputs, _ = model(data)
 
-            #cancelled RanS 11.8.21, this is buggy
-            '''if batch_idx == 0:
-                all_writer.add_graph(model, data)
-                print('added model to writer')'''
+            if args.target == 'Survival_Time':
+                loss = criterion(outputs, target, censored)
+                outputs = torch.reshape(outputs, [outputs.size(0)])
+                all_outputs.extend(outputs.detach().cpu().numpy())
 
-            loss = criterion(outputs, target)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-            outputs = torch.nn.functional.softmax(outputs, dim=1)
-            _, predicted = outputs.max(1)
+            else:
+                loss = criterion(outputs, target)
+                outputs = torch.nn.functional.softmax(outputs, dim=1)
+                _, predicted = outputs.max(1)
+                all_outputs.extend(- outputs[:, 1].detach().cpu().numpy())
+
+                scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
+                true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
+
+                total += target.size(0)
+                total_pos_train += target.eq(1).sum().item()
+                total_neg_train += target.eq(0).sum().item()
+                correct_labeling += predicted.eq(target).sum().item()
+                correct_pos += predicted[target.eq(1)].eq(1).sum().item()
+                correct_neg += predicted[target.eq(0)].eq(0).sum().item()
+
+            print('Censor', censored)
+            print(loss)
+            if loss != 0:
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+
+
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
-            scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
-            true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
             slide_names.extend(slide_names_batch)
-            total += target.size(0)
-            total_pos_train += target.eq(1).sum().item()
-            total_neg_train += target.eq(0).sum().item()
-            correct_labeling += predicted.eq(target).sum().item()
-            correct_pos += predicted[target.eq(1)].eq(1).sum().item()
-            correct_neg += predicted[target.eq(0)].eq(0).sum().item()
+
             #all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
             # RanS 28.1.21
             if DEVICE.type == 'cuda' and print_timing:
@@ -150,6 +179,8 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         time_epoch = (time.time() - time_epoch_start) / 60
         if print_timing:
             time_writer.add_scalar('Time/Full Epoch [min]', time_epoch, e)
+
+
         train_acc = 100 * correct_labeling / total
         #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
         balanced_acc_train = 100. * ((correct_pos + EPS) / (total_pos_train + EPS) + (correct_neg + EPS) / (total_neg_train + EPS)) / 2
@@ -345,6 +376,7 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
 
 if __name__ == '__main__':
     # Device definition:
+
     DEVICE = utils.device_gpu_cpu()
 
     # Tile size definition:
@@ -453,6 +485,9 @@ if __name__ == '__main__':
 
     # Load model
     model = eval(args.model)
+    if args.target == 'Survival_Time':
+        model.change_num_classes(num_classes=1)  # This will convert the liner (classifier) layer into the beta layer
+        model.model_name += '_Continous_Time'
 
     # Save model data and data-set size to run_data.xlsx file (Only if this is a new run).
     if args.experiment == 0:
@@ -509,6 +544,8 @@ if __name__ == '__main__':
     if args.focal:
         criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
         criterion.to(DEVICE) #RanS 20.7.21
+    elif args.target == 'Survival_Time':
+        criterion = Cox_loss
     else:
         criterion = nn.CrossEntropyLoss()
 

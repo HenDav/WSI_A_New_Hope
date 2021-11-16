@@ -12,7 +12,7 @@ import matplotlib
 import pandas as pd
 from pathlib import Path
 import sys
-
+from datetime import date
 
 def get_AvgValues_from_Diff_Heatmaps(small_heatmaps):
     if len(small_heatmaps) != 1025:
@@ -303,6 +303,9 @@ if sys.platform == 'darwin':
     Model_CAT_ER_Fold_1 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
     Model_CARMEL_ER_Fold_5 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_338-TF_5/model_data_Epoch_1000.pt'
     Model_CARMEL_ER_Fold_1_Magnification_40 = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
+
+    MIL_models = {'Model_CAT_ER_Fold_1': r'/Users/wasserman/Developer/WSI_MIL/runs/Exp_10416-ER_Features-TestFold_1/Model_CheckPoints/model_data_Epoch_500.pt',
+                  'Model_CARMEL_40_ER_Fold_1': r'/Users/wasserman/Developer/WSI_MIL/runs/Exp_10440-ER_Features-TestFold_1/Model_CheckPoints/model_data_Epoch_500.pt'}
 elif sys.platform == 'linux':
     Model_ABCTB_TCGA_ER_Fold_1 = os.path.join(utils.run_data(experiment=293)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
     Model_CAT_ER_Fold_1 = os.path.join(utils.run_data(experiment=355)[0], 'Model_CheckPoints', 'model_data_Epoch_1000.pt')
@@ -312,8 +315,8 @@ elif sys.platform == 'linux':
 Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.svs': Model_ABCTB_TCGA_ER_Fold_1,
                   'TCGA-AR-A1AI-01Z-00-DX1.5EF2A589-4284-45CF-BF0C-169E3A85530C.svs': Model_ABCTB_TCGA_ER_Fold_1,
                   #'18-2728_1_1_a.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
-                  '18-2728_1_1_e.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
-                  '19-5229_2_1_e.mrxs': Model_CARMEL_ER_Fold_1_Magnification_40, # Model_CAT_ER_Fold_1,
+                  '18-2728_1_1_e.mrxs': Model_CAT_ER_Fold_1,
+                  '19-5229_2_1_e.mrxs': Model_CAT_ER_Fold_1,
                   '18-3507_1_1_k.mrxs': Model_CARMEL_ER_Fold_5,
                   '18-7361_1_7_b.mrxs': Model_CARMEL_ER_Fold_5,
                   '19-6074_1_1_e.mrxs': Model_CARMEL_ER_Fold_5,
@@ -329,7 +332,7 @@ Slide_to_Model = {'TCGA-A8-A099-01Z-00-DX1.B19C28B5-FEBC-49B4-A60E-E6B85BB00DD7.
                                                  num_background_tiles=0)
 '''
 inf_dset = datasets.Batched_Full_Slide_Inference_Dataset(tiles_per_iter=1,
-                                                         desired_slide_magnification=40)
+                                                         desired_slide_magnification=40)  # FIXME: change to 10 if working with magnification 10
 
 #inf_loader = DataLoader(inf_dset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -354,7 +357,8 @@ tile_scores_256 = []
 slide = slide_name_CARMEL_model_381[0]
 tile_num = 0
 
-location = (slide_locations[slide][tile_num]['TOP'] + 2048*2, slide_locations[slide][tile_num]['LEFT'] + 2048*2)
+# location = (slide_locations[slide][tile_num]['TOP'], slide_locations[slide][tile_num]['LEFT'])  # FIXME: use this if working with magnification 10
+location = (slide_locations[slide][tile_num]['TOP'] + 1*4096, slide_locations[slide][tile_num]['LEFT'] + 1*4096)
 
 # Load Model:
 '''
@@ -363,7 +367,7 @@ if inf_dset.DataSet == 'TCGA':
 elif inf_dset.DataSet == 'CARMEL':
     basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
 '''
-basic_model_location = Slide_to_Model[slide]
+basic_model_location = Model_CARMEL_ER_Fold_1_Magnification_40  #Slide_to_Model[slide]
 model = PreActResNets.PreActResNet50_Ron()
 model_data_loaded = torch.load(basic_model_location, map_location='cpu')
 model.load_state_dict(model_data_loaded['model_state_dict'])
@@ -432,7 +436,7 @@ with torch.no_grad():
         small_heatmap = model_output['Small Heat Map']
         large_image_for_MIL_weights_all.append(model_output['Large Image for MIL Weights Without Averaging Sliding Window'])
 
-        if (small_heatmap.mean().item() - (scores[0][1] - scores[0][0]).item()) / small_heatmap.mean().item() >= 1e-5:
+        if (small_heatmap.mean().item() - (scores[0][1] - scores[0][0]).item()) / small_heatmap.mean().item() >= 5e-5:
             raise Exception('Heatmap mean is not equal to score difference')
 
         scores = torch.nn.functional.softmax(scores, dim=1)
@@ -471,16 +475,15 @@ with torch.no_grad():
         if batch_idx == 0:
             break
 
-extract_MIL_weights = False
+extract_MIL_weights = True
 if extract_MIL_weights:
     # Computing tile weight using MIL:
+    MIL_model_name = MIL_models['Model_CARMEL_40_ER_Fold_1']  # MIL_models['Model_CAT_ER_Fold_1']
     mil_model = eval('nets_mil.MIL_Feature_Attention_MultiBag()')
     '''mil_model_data_loaded = torch.load(os.path.join('/Users/wasserman/Developer/WSI_MIL/runs/Exp_347-ER-TestFold_1/Model_CheckPoints/',
                                                 'model_data_Epoch_' + str(500) + '.pt'), map_location='cpu')'''
 
-    mil_model_data_loaded = torch.load(
-        os.path.join('/Users/wasserman/Developer/WSI_MIL/runs/Exp_10390-ER_Features-TestFold_1/Model_CheckPoints/',
-                     'model_data_Epoch_' + str(500) + '.pt'), map_location='cpu')
+    mil_model_data_loaded = torch.load(os.path.join(MIL_model_name), map_location='cpu')
 
 
     mil_model.load_state_dict(mil_model_data_loaded['model_state_dict'])
@@ -546,10 +549,14 @@ plt.show()
 '''
 
 if True:
+    today = date.today().strftime("%b-%d-%Y")
+    path_to_save = '/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + today + '/'
+    if not os.path.isdir(path_to_save):
+        os.mkdir(path_to_save)
     # Saving tile image:
-    matplotlib.image.imsave('/Users/wasserman/Developer/WSI_MIL/Heatmaps/' + slide.split('.')[0] + '_tile_' + str(tile_num) + '_part_3.png', np.transpose(original_tile_data[0].squeeze(0).numpy(), (1, 2, 0)))
-    pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '_part_3.xlsx')
-    #pd.DataFrame(mil_weights_image_all[0]).to_excel('/Users/wasserman/Developer/WSI_MIL/Heatmaps/MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
+    matplotlib.image.imsave(path_to_save + slide.split('.')[0] + '_tile_' + str(tile_num) + '.png', np.transpose(original_tile_data[0].squeeze(0).numpy(), (1, 2, 0)))
+    pd.DataFrame(small_heat_maps_all[0].squeeze().numpy()).to_excel(path_to_save + 'heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
+    pd.DataFrame(mil_weights_image_all[0]).to_excel(path_to_save + 'MIL_heatmap_' + slide.split('.')[0] + '_tile_' + str(tile_num) + '.xlsx')
     # Saving both small Heatmaps to excel files:
     '''
     if data.shape[3] == 1024:

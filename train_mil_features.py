@@ -24,9 +24,9 @@ parser = argparse.ArgumentParser(description='WSI_MIL Training of PathNet Projec
 #parser.add_argument('-diffslides', dest='different_slides', action='store_true', help='Use more than one slide in each bag')
 #parser.add_argument('--mag', type=int, default=10, help='desired magnification of patches')
 #parser.add_argument('--c_param', default=0.1, type=float, help='color jitter parameter')
-parser.add_argument('-ds', '--dataset', type=str, default='CARMEL', help='DataSet to use')
+parser.add_argument('-ds', '--dataset', type=str, default='CAT', help='DataSet to use')
 parser.add_argument('-tar', '--target', type=str, default='ER', help='Target to train for')
-parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
+parser.add_argument('-tf', '--test_fold', default=2, type=int, help='fold to be as TEST FOLD')
 parser.add_argument('-e', '--epochs', default=2, type=int, help='Epochs to run')
 parser.add_argument('-ex', '--experiment', type=int, default=0, help='Continue train of this experiment')
 parser.add_argument('-fe', '--from_epoch', type=int, default=0, help='Continue train from epoch')
@@ -112,29 +112,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             data = minibatch['features']
 
             train_start = time.time()
-            '''
-            if args.images:
-                step = batch_idx + e * 1000
-                image_writer.add_images('Train Images/Before Transforms', basic_tiles.squeeze().detach().cpu().numpy(),
-                                    global_step=step, dataformats='NCHW')
-            '''
-
-            '''
-            # The following section is responsible for saving the random slides for it's iteration - For debbugging purposes 
-            slide_dict = {'Epoch': e,
-                          'Main Slide index': idxx.cpu().detach().numpy()[0],
-                          'random Slides index': slides_idx_other}
-            slide_random_list.append(slide_dict)
-            '''
-            '''
-            if e == 0:
-                data_dict = { 'File Name':  image_file,
-                              'Target': target.cpu().detach().numpy()
-                              }
-                data_list.append(data_dict)
-            '''
-            '''this_num_bags, _, _, _, _ = Data.shape
-            data = torch.reshape(Data, (this_num_bags * TILES_PER_BAG, 3, TILE_SIZE, TILE_SIZE))'''
 
             data, target = data.to(DEVICE), target.to(DEVICE)
             optimizer.zero_grad()
@@ -159,11 +136,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             DividedSlides_Flag = True if len(data.shape) == 3 else False
 
-            #target_diag = torch.diag(target)
-            '''neg_log_likelihood = -1. * (target * torch.log(scores) + (1. - target) * torch.log(1. - scores))  # negative log bernoulli'''
-            '''neg_log_likelihood = -1. * (
-                    torch.log(scores) * target_diag + torch.log(1. - scores) * torch.diag(1. - target))'''
-
             loss = criterion(outputs, target)
             train_loss += loss.item()
 
@@ -173,10 +145,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
             loss.backward()
             optimizer.step()
 
-            #scores_train = np.concatenate((scores_train, scores.cpu().detach().numpy().reshape(-1)))
-
-            #print(outputs[:, 1].cpu().detach().numpy().shape, outputs[:, 1].cpu().detach().numpy().min(), outputs[:, 1].cpu().detach().numpy().max())
-            #print(outputs[:, 1].cpu().detach().numpy())
             scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
 
             true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
@@ -188,28 +156,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
             correct_pos_train += predicted[target.eq(1)].eq(1).sum().item()
             correct_neg_train += predicted[target.eq(0)].eq(0).sum().item()
-
-            '''
-            targets_train[batch_idx * num_bags : (batch_idx + 1) * this_num_bags] = target.cpu().detach().numpy().reshape(2)
-            total_pos_train += target.eq(1).numpy().sum()
-            total_neg_train += target.eq(0).numpy().sum()
-
-            true_labels = target.eq(label)
-            for label_idx, correctness in enumerate(true_labels):
-                if correctness == True:
-                    if label[label_idx] == 1:
-                        true_pos_train += 1
-                    elif label[label_idx] == 0:
-                        true_neg_train += 1
-
-            scores_train[batch_idx * num_bags : (batch_idx + 1) * num_bags] = prob.cpu().detach().numpy().reshape(2)
-            '''
-            '''
-            prob = torch.clamp(prob, min=1e-5, max=1. - 1e-5)
-            neg_log_likelihood = -1. * (target * torch.log(prob) + (1. - target) * torch.log(1. - prob))  # negative log bernoulli
-            loss = neg_log_likelihood
-            train_loss += loss.item()
-            '''
 
             # Calculate training accuracy
             all_writer.add_scalar('Loss', loss.item(), batch_idx + e * len(dloader_train))
@@ -398,7 +344,7 @@ if __name__ == '__main__':
         args.per_patient_training = True
         args.data_limit = 500
     '''
-
+    '''
     if sys.platform == 'darwin':
         if args.dataset == 'TCGA_ABCTB':
             if args.target == 'ER':
@@ -435,6 +381,13 @@ if __name__ == '__main__':
                     test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_355-TestFold_1/Test'
                     basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
 
+                elif args.target == 'Her2':
+                    if args.test_fold == 1:
+                        Dataset_name = r'FEATURES: Exp_392-Her2-TestFold_1'
+                        train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Train'
+                        test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/HER2/Ran_Exp_392-TestFold_1/Test'
+                        basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CAT_355_TF_1/model_data_Epoch_1000.pt'
+
         elif args.dataset == 'CARMEL':
             if args.target == 'ER':
                 if args.test_fold == 1:
@@ -442,6 +395,15 @@ if __name__ == '__main__':
                     train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Train'
                     test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_358-TestFold_1/Test'
                     basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_358-TF_1/model_data_Epoch_1000.pt'
+
+        elif args.dataset == 'CARMEL_40':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_381-ER-TestFold_1'
+                    train_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Train'
+                    test_data_dir = r'/Users/wasserman/Developer/WSI_MIL/All Data/Features/ER/Ran_Exp_381-TestFold_1/Test'
+                    basic_model_location = r'/Users/wasserman/Developer/WSI_MIL/Data from gipdeep/runs/Ran_models/ER/CARMEL_381-TF_1/model_data_Epoch_1200.pt'
+
 
     elif sys.platform == 'linux':
         if args.dataset == 'TCGA_ABCTB':
@@ -480,6 +442,13 @@ if __name__ == '__main__':
                     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Inference/test_w_features'
                     basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_355-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
+                elif args.target == 'Her2':
+                    if args.test_fold == 1:
+                        Dataset_name = r'FEATURES: Exp_392-Her2-TestFold_1'
+                        train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/train_w_features'
+                        test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Inference/test_w_features'
+                        basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_392-Her2-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
+
         elif args.dataset == 'CARMEL':
             if args.target == 'ER':
                 if args.test_fold == 1:
@@ -488,25 +457,34 @@ if __name__ == '__main__':
                     test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Inference/test_w_features'
                     basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_358-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1000.pt'
 
+        elif args.dataset == 'CARMEL_40':
+            if args.target == 'ER':
+                if args.test_fold == 1:
+                    Dataset_name = r'FEATURES: Exp_381-ER-TestFold_1'
+                    train_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/train_w_features'
+                    test_data_dir = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Inference/test_w_features'
+                    basic_model_location = r'/home/rschley/code/WSI_MIL/general_try4/runs/Exp_381-ER-TestFold_1/Model_CheckPoints/model_data_Epoch_1200.pt'
+    '''
+    data_location = utils.get_RegModel_Features_location_dict(train_DataSet=args.dataset, target=args.target, test_fold=args.test_fold)
 
     # Saving/Loading run meta data to/from file:
     if args.experiment is 0:
         run_data_results = utils.run_data(test_fold=args.test_fold,
-                                                     transform_type=None,
-                                                     tile_size=0,
-                                                     tiles_per_bag=args.tiles_per_bag,
-                                                     num_bags=args.num_bags,
-                                                     DX=None,
-                                                     DataSet_name=Dataset_name,
-                                                     is_per_patient=args.per_patient_training,
-                                                     is_last_layer_freeze=args.last_layer_freeze,
-                                                     is_repeating_data=args.repeating_data,
-                                                     Receptor=args.target + '_Features',
-                                                     MultiSlide=True,
-                                                     DataSet_Slide_magnification=0,
-                                                     data_limit=args.data_limit,
-                                                     carmel_only=args.carmel_only,
-                                                     Remark=' '.join(args.remark))
+                                          transform_type=None,
+                                          tile_size=0,
+                                          tiles_per_bag=args.tiles_per_bag,
+                                          num_bags=args.num_bags,
+                                          DX=None,
+                                          DataSet_name=data_location['DataSet Name'],
+                                          is_per_patient=args.per_patient_training,
+                                          is_last_layer_freeze=args.last_layer_freeze,
+                                          is_repeating_data=args.repeating_data,
+                                          Receptor=args.target + '_Features',
+                                          MultiSlide=True,
+                                          DataSet_Slide_magnification=0,
+                                          data_limit=args.data_limit,
+                                          carmel_only=args.carmel_only,
+                                          Remark=' '.join(args.remark))
 
         args.output_dir, experiment = run_data_results['Location'], run_data_results['Experiment']
     else:
@@ -521,7 +499,7 @@ if __name__ == '__main__':
 
     # Get data:
     train_dset = datasets.Features_MILdataset(dataset=args.dataset,
-                                              data_location=train_data_dir,
+                                              data_location=data_location['TrainSet Location'],
                                               is_per_patient=args.per_patient_training,
                                               is_repeating_tiles=args.repeating_data,
                                               bag_size=args.tiles_per_bag,
@@ -532,7 +510,7 @@ if __name__ == '__main__':
                                               carmel_only=args.carmel_only)
 
     test_dset = datasets.Features_MILdataset(dataset=args.dataset,
-                                             data_location=test_data_dir,
+                                             data_location=data_location['TestSet Location'],
                                              is_per_patient=args.per_patient_training,
                                              bag_size=args.tiles_per_bag,
                                              target=args.target,
@@ -559,8 +537,8 @@ if __name__ == '__main__':
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, args.from_epoch))
 
     elif args.last_layer_freeze:  # This part will load the last linear layer from the REG model into the last layer (classifier part) of the attention module
-        print('Copying and freezeing last layer from model \"{}\"'.format(basic_model_location))
-        basic_model_data = torch.load(basic_model_location, map_location='cpu')['model_state_dict']
+        print('Copying and freezeing last layer from model \"{}\"'.format(data_location['REG Model Location']))
+        basic_model_data = torch.load(data_location['REG Model Location'], map_location='cpu')['model_state_dict']
         basic_model = PreActResNet50_Ron()
         basic_model.load_state_dict(basic_model_data)
 
