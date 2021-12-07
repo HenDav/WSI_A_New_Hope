@@ -806,7 +806,7 @@ def get_datasets_dir_dict(Dataset: str):
     TCGA_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/TCGA'
     ABCTB_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/ABCTB/ABCTB'
     HEROHE_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/HEROHE'
-    SHEBA_gipdeep_path = r'/mnt/gipnetapp_public/sgils/Breast/Sheba/SHEBA'
+    SHEBA_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Sheba/SHEBA'
     ABCTB_TIF_gipdeep_path = r'/mnt/gipmed_new/Data/ABCTB_TIF'
     CARMEL_gipdeep_path = r'/mnt/gipmed_new/Data/Breast/Carmel'
     TCGA_LUNG_gipdeep_path = r'/mnt/gipmed_new/Data/Lung/TCGA_Lung/TCGA_LUNG'
@@ -913,6 +913,8 @@ def get_datasets_dir_dict(Dataset: str):
             dir_dict['ABCTB'] = ABCTB_TIF_gipdeep_path
             #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/mrxs_50test_temp/ABCTB' #temp RanS 9.11.21
             #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/tif_49_slides' #temp RanS 9.11.21
+            #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/mrxs_50test_temp/duplicated'  # temp RanS 29.11.21
+            #dir_dict['ABCTB'] = r'/mnt/gipmed_new/Data/Breast/ABCTB/tif_49_slides_duplicated' #temp RanS 9.11.21
 
         elif sys.platform == 'win32':  # Ran local
             dir_dict['ABCTB'] = ABCTB_ran_path
@@ -926,7 +928,7 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'PORTO_HE':
         if sys.platform == 'linux':
-            dir_dict['PORTO_HE'] = r'/mnt/gipnetapp_public/sgils/LUNG/PORTO_HE'
+            dir_dict['PORTO_HE'] = r'/mnt/gipmed_new/Data/Lung/PORTO_HE'
         elif sys.platform == 'win32':  # Ran local
             dir_dict['PORTO_HE'] = r'C:\ran_data\Lung_examples\LUNG'
         elif sys.platform == 'darwin':  # Omer local
@@ -934,7 +936,7 @@ def get_datasets_dir_dict(Dataset: str):
 
     elif Dataset == 'PORTO_PDL1':
         if sys.platform == 'linux':
-            dir_dict['PORTO_PDL1'] = r'/mnt/gipnetapp_public/sgils/LUNG/PORTO_PDL1'
+            dir_dict['PORTO_PDL1'] = r'/mnt/gipmed_new/Data/Lung/sgils/LUNG/PORTO_PDL1'
         elif sys.platform == 'win32':  # Ran local
             #dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\PORTO_PDL1'
             dir_dict['PORTO_PDL1'] = r'C:\ran_data\IHC_examples\temp_8_slides\PORTO_PDL1'
@@ -948,18 +950,26 @@ def get_datasets_dir_dict(Dataset: str):
             dir_dict['Ipatimup'] = Ipatimup_gipdeep_path
             dir_dict['Covilha'] = Covilha_gipdeep_path
 
+    elif Dataset == 'HIC':
+        if sys.platform == 'linux':  # GIPdeep
+            dir_dict['Ipatimup'] = Ipatimup_gipdeep_path
+            dir_dict['Covilha'] = Covilha_gipdeep_path
+            dir_dict['HEROHE'] = HEROHE_gipdeep_path
+
     return dir_dict
 
 
 def assert_dataset_target(DataSet, target_kind):
-    if DataSet == 'PORTO_HE' and target_kind not in ['PDL1', 'EGFR']:
+    if DataSet == 'PORTO_HE' and target_kind not in ['PDL1', 'EGFR', 'is_full_cancer']:
         raise ValueError('For PORTO_HE DataSet, target should be one of: PDL1, EGFR')
     elif DataSet == 'PORTO_PDL1' and target_kind != 'PDL1':
         raise ValueError('For PORTO_PDL1 DataSet, target should be PDL1')
     elif DataSet == 'HEROHE' and target_kind != 'Her2':
         raise ValueError('for HEROHE DataSet, target should be Her2')
     #elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
-    elif (DataSet in ['TCGA', 'CAT', 'IC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+    elif (DataSet in ['TCGA', 'CAT']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+        raise ValueError('target should be one of: ER, PR, Her2, OR')
+    elif (DataSet in ['IC','HIC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
     elif (DataSet == 'CARMEL') and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67', 'ER100']:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
@@ -969,8 +979,8 @@ def assert_dataset_target(DataSet, target_kind):
         raise ValueError('for SHEBA DataSet, target should be Onco')
     elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD', 'is_full_cancer']:
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
-    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B']:
-        raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B')
+    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B', 'MRD']:
+        raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B, MRD')
     elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and target_kind not in ['ER', 'PR', 'Her2', 'survival', 'Survival_Time', 'Survival_Binary']:
         raise ValueError('target should be one of: ER, PR, Her2, survival, Survival_Time, Survival_Binary')
 

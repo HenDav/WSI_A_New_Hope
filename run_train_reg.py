@@ -1,6 +1,6 @@
 import subprocess
 
-infer = True
+infer = False
 
 if infer:
     subprocess.run(['python', 'inference_Multi_REG.py',
@@ -27,8 +27,8 @@ else:
                     #'--dataset', 'PORTO_PDL1',
                     #'--dataset', 'Breast',
                     #'--dataset', 'ABCTB',
-                    #'--dataset', 'ABCTB_TCGA',
-                    '--dataset', 'TCGA',
+                    '--dataset', 'ABCTB_TCGA',
+                    #'--dataset', 'TCGA',
                     #'--target', 'ER',
                     '--target', 'ER',
                     #'--target', 'Her2',
@@ -38,14 +38,17 @@ else:
                     '--batch_size', '2',
                     '--n_patches_test', '1',
                     '--n_patches_train', '10',
-                    '--model', 'PreActResNets.PreActResNet50_Ron()',
+                    #'--model', 'PreActResNets.PreActResNet50_Ron()',
+                    #'--model', 'PreActResNets.PreActResNet50_Ron(train_classifier_only=True)',
                     #'--model', 'nets.resnet50_with_3FC()',
+                    '--model', 'nets.MyResNet34(train_classifier_only=True)',
                     '--bootstrap',
                     #'--transform_type', 'aug_receptornet',
                     #'--transform_type', 'rvf',
                     '--transform_type', 'pcbnfrsc',
                     #'--mag', '160',
                     '--eval_rate', '20',
+                    #'-tl', 'ex321,epoch16',
                     #'-d',
                     #'-im'
                     #'--loan'
@@ -53,7 +56,7 @@ else:
                     #'-time',
                     #'-baldat'
                     #'--slide_per_block'
-                    '--RAM_saver'
+                    #'--RAM_saver'
                 ])
 
 #train_reg.py --test_fold 1 --epochs 2 --dataset LUNG --target PDL1 --batch_size 5 --n_patches_test 10 --n_patches_train 10 --model resnet50_3FC --transform_type aug_receptornet

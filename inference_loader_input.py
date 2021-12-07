@@ -2,17 +2,14 @@ import os
 import re, glob
 inference_files = {}
 
-exp = 20058
-fold = 1
-target = 'ER'
-dataset = 'CAT'
+exp = 20086
+fold = 2
+target = 'survival'
+dataset = 'ABCTB'
 subdir = ''
-#subdir = 'bacc'
-#subdir = 'CARMEL'
-#subdir = 'test_inference_aug21_TCGA_corrections'
-is_other = True
+is_other = False
 
-patientless_list = ['CARMEL', 'CAT', 'TCGA_LUNG', 'HEROHE']
+patientless_list = ['TCGA_LUNG', 'HEROHE']
 if dataset in patientless_list or subdir in patientless_list:
     patient_level = False
 else:
@@ -25,7 +22,6 @@ if is_other:
     inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4', dataset + '_runs', 'other', 'exp' + str(exp), 'Inference')
 else:
     inference_dir = os.path.join(r'C:\Pathnet_results\MIL_general_try4', dataset + '_runs', target, 'exp' + str(exp), 'Inference')
-
 
 inference_dir = os.path.join(inference_dir, subdir)
 #auto find epochs

@@ -20,6 +20,7 @@ import psutil
 import nets, PreActResNets, resnet_v2
 from datetime import datetime
 from Cox_Loss import Cox_loss
+import re
 
 parser = argparse.ArgumentParser(description='WSI_REG Training of PathNet Project')
 parser.add_argument('-tf', '--test_fold', default=1, type=int, help='fold to be as TEST FOLD')
@@ -50,6 +51,7 @@ parser.add_argument('--focal', action='store_true', help='use focal loss with ga
 parser.add_argument('--slide_per_block', action='store_true', help='for carmel, take only one slide per block') #RanS 17.8.21
 parser.add_argument('-baldat', '--balanced_dataset', dest='balanced_dataset', action='store_true', help='take same # of positive and negative patients from each dataset')  # RanS 5.9.21
 parser.add_argument('--RAM_saver', action='store_true', help='use only a quarter of the slides + reshuffle every 100 epochs') #RanS 3.11.21
+parser.add_argument('-tl', '--transfer_learning', default='', type=str, help='use model trained on another experiment') #RanS 17.11.21
 
 args = parser.parse_args()
 
@@ -126,12 +128,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 loss = criterion(outputs, target, censored)
                 outputs = torch.reshape(outputs, [outputs.size(0)])
                 all_outputs.extend(outputs.detach().cpu().numpy())
-
             else:
                 loss = criterion(outputs, target)
                 outputs = torch.nn.functional.softmax(outputs, dim=1)
                 _, predicted = outputs.max(1)
-                all_outputs.extend(- outputs[:, 1].detach().cpu().numpy())
 
                 scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
                 true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
@@ -143,13 +143,10 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 correct_pos += predicted[target.eq(1)].eq(1).sum().item()
                 correct_neg += predicted[target.eq(0)].eq(0).sum().item()
 
-            print('Censor', censored)
-            print(loss)
             if loss != 0:
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
-
 
             slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
             slide_names.extend(slide_names_batch)
@@ -217,7 +214,6 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Last_Epoch.pt'))
 
         if e % args.eval_rate == 0:
-            #if (e % 20 == 0) or args.model == 'resnet50_3FC': #RanS 15.12.20, pretrained networks converge fast
             # perform slide inference
             patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
             slide_mean_score_df = patch_df.groupby('slide').mean()
@@ -265,7 +261,12 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
     model.eval()
 
     with torch.no_grad():
-        for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
+        #for idx, (data, targets, time_list, f_names, _) in enumerate(data_loader):
+        for batch_idx, minibatch in enumerate(data_loader):
+            data = minibatch['Data']
+            targets = minibatch['Target']
+            f_names = minibatch['File Names']
+
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE).squeeze(1)
             model.to(DEVICE)
 
@@ -519,6 +520,25 @@ if __name__ == '__main__':
 
         print()
         print('Resuming training of Experiment {} from Epoch {}'.format(args.experiment, from_epoch))
+
+    elif args.transfer_learning != '':
+        #use model trained on another experiment
+        #transfer_learning should be of the form 'ex=390,epoch=1000'
+        ex_str, epoch_str = args.transfer_learning.split(',')
+        ex_model = int(re.sub("[^0-9]", "", ex_str))
+        epoch_model = int(re.sub("[^0-9]", "", epoch_str))
+
+        run_data_model = utils.run_data(experiment=ex_model)
+        model_dir = run_data_model['Location']
+        model_data_loaded = torch.load(os.path.join(model_dir,
+                                                    'Model_CheckPoints',
+                                                    'model_data_Epoch_' + str(epoch_model) + '.pt'),
+                                       map_location='cpu')
+        try:
+            model.load_state_dict(model_data_loaded['model_state_dict'])
+        except:
+            raise IOError('Cannot load the saved transfer_learning model, check if it fits the current model')
+
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 

@@ -27,6 +27,7 @@ parser.add_argument('--save_features', action='store_true', help='save features'
 parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut slides') #RanS 3.8.21, override run_data
 parser.add_argument('--resume', type=int, default=0, help='resume a failed feature extraction') #RanS 5.10.21
 parser.add_argument('--patch_dir', type=str, default='', help='patch locations directory, for use with predecided patches') #RanS 24.10.21
+parser.add_argument('-sd', '--subdir', type=str, default='', help='output sub-dir') #RanS 6.12.21
 args = parser.parse_args()
 
 args.folds = list(map(int, args.folds[0])) #RanS 14.6.21
@@ -197,7 +198,7 @@ correct_neg = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
 
 if args.resume:
     # load the inference state
-    resume_file_name = os.path.join(data_path, output_dir, 'Inference',
+    resume_file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir,
                                     'Exp_' + str(args.experiment[0])
                                     + '-Folds_' + str(args.folds) + '_' + str(
                                         args.target) + '-Tiles_' + str(
@@ -213,6 +214,9 @@ else:
 
 if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference')):
     os.mkdir(os.path.join(data_path, output_dir, 'Inference'))
+
+if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', args.subdir)):
+    os.mkdir(os.path.join(data_path, output_dir, 'Inference', args.subdir))
 
 print('slide_num0 = ', str(slide_num)) #temp
 with torch.no_grad():
@@ -316,7 +320,7 @@ with torch.no_grad():
             if slide_num % NUM_SLIDES_SAVE == 0:
                 #save the inference state
                 prev_resume_file_name = resume_file_name
-                resume_file_name = os.path.join(data_path, output_dir, 'Inference',
+                resume_file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir,
                                                  'Exp_' + str(args.experiment[0])
                                                  + '-Folds_' + str(args.folds) + '_' + str(
                                                      args.target) + '-Tiles_' + str(
@@ -334,7 +338,7 @@ with torch.no_grad():
                 #save features
                 if args.save_features:
                     #for model_num in range(NUM_MODELS):
-                    feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+                    feature_file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir,
                                                      'Model_Epoch_' + str(args.from_epoch[feature_epoch_ind])
                                                      + '-Folds_' + str(args.folds) + '_' + str(
                                                          args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_' + str(slide_num) + '.data')
@@ -355,7 +359,7 @@ with torch.no_grad():
 #save features for last slides
 if args.save_features and slide_num % NUM_SLIDES_SAVE != 0:
     #for model_num in range(NUM_MODELS):
-    feature_file_name = os.path.join(data_path, output_dir, 'Inference',
+    feature_file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir,
                                      'Model_Epoch_' + str(args.from_epoch[feature_epoch_ind])
                                      + '-Folds_' + str(args.folds) + '_' + str(
                                          args.target) + '-Tiles_' + str(args.num_tiles) + '_features_slides_last.data')
@@ -379,7 +383,7 @@ for model_num in range(NUM_MODELS):
     fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
 
     # Save roc_curve to file:
-    file_name = os.path.join(data_path, output_dir, 'Inference', 'Model_Epoch_' + str(args.from_epoch[model_num])
+    file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir, 'Model_Epoch_' + str(args.from_epoch[model_num])
                              + '-Folds_' + str(args.folds) + '_' + str(args.target) + '-Tiles_' + str(args.num_tiles) + '.data')
     inference_data = [fpr, tpr, all_labels[:, model_num], all_targets, all_scores[:, model_num],
                       total_pos, correct_pos[model_num], total_neg, correct_neg[model_num], NUM_SLIDES,

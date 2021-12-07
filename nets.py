@@ -2,177 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import resnet, resnet50
+from torchvision.models import resnet, resnet50, resnet34
 from torchvision.models.resnet import ResNet
 import os
 from torchvision.models.utils import load_state_dict_from_url
 
 THIS_FILE = os.path.basename(os.path.realpath(__file__)).split('.')[0] + '.'
-
-'''
-class Flatten(nn.Module):
-    """
-    This class flattens an array to a vector
-    """
-    def forward(self, x):
-        N, C, H, W = x.size()  # read in N, C, H, W
-        return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
-class ResNet50_GatedAttention(nn.Module):
-    def __init__(self):
-        super(ResNet50_GatedAttention, self).__init__()
-        self.M = 500
-        self.L = 128
-        self.K = 1    # in the paper referred a 1.
-
-        self.infer = False
-        self.part_1 = False
-        self.part_2 = False
-
-        self._feature_extractor_ResNet50_part_1 = models.resnet50()
-
-        self._feature_extractor_fc = nn.Sequential(
-            #nn.Dropout(p=0.5),
-            nn.Linear(in_features=1000, out_features=self.M)
-        )
-        
-        self.feature_extractor = nn.Sequential(
-            self._feature_extractor_ResNet50_part_1,
-            self._feature_extractor_fc
-        )
-
-        self.attention_V = nn.Sequential(
-            nn.Linear(self.M, self.L),
-            nn.Tanh()
-        )
-
-        self.attention_U = nn.Sequential(
-            nn.Linear(self.M, self.L),
-            nn.Sigmoid()
-        )
-
-        self.attention_weights = nn.Linear(self.L, self.K)
-
-        self.classifier = nn.Sequential(
-            nn.Linear(self.M * self.K, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x, H = None, A = None):
-        if not self.infer:
-            x = x.squeeze(0)
-            # In case we are training the model we'll use bags that contains only part of the tiles.
-            H = self.feature_extractor(x)
-
-            """
-            H = H.view(-1, 50 * 4 * 4) 
-            H = self.feature_extractor_part2(H)  # NxL
-            """
-
-            A_V = self.attention_V(H)  # NxL
-            A_U = self.attention_U(H)  # NxL
-            A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
-            A = torch.transpose(A, 1, 0)  # KxN
-            A = F.softmax(A, dim=1)  # softmax over N
-
-            M = torch.mm(A, H)  # KxM
-
-            # Because this is a binary classifier, the output of it is one single number which can be interpreted as the
-            # probability that the input belong to class 1/TRUE (and not 0/FALSE)
-            Y_prob = self.classifier(M)
-
-            # The following line just turns probability to class.
-            Y_class = torch.ge(Y_prob, 0.5).float()
-
-            return Y_prob, Y_class, A
-
-        # In case we want an inference of a whole slide we need ALL the tiles from that slide:
-        else:
-            if not self.part_1 ^ self.part_2:
-                raise Exception('Inference Mode should include feature extraction (part 1) OR classification (part 2)')
-            if self.part_1:
-                x = x.squeeze(0)
-                H = self.feature_extractor(x)
-                A_V = self.attention_V(H)  # NxL
-                A_U = self.attention_U(H)  # NxL
-                A = self.attention_weights(A_V * A_U)  # element wise multiplication # NxK
-                A = torch.transpose(A, 1, 0)  # KxN
-                return H, A
-
-            elif self.part_2:
-                A = F.softmax(A, dim=1)  # softmax over N
-
-                M = torch.mm(A, H)  # KxM
-
-                Y_prob = self.classifier(M)
-
-                Y_class = torch.ge(Y_prob, 0.5).float()
-                return Y_prob, Y_class, A
-
-
-    """
-    # AUXILIARY METHODS
-    def calculate_classification_accuracy(self, X, Y):
-        Y = Y.float()
-        _, Y_hat, _ = self.forward(X)
-        error = 1. - Y_hat.eq(Y).cpu().float().mean().item()
-
-        return error, Y_hat
-
-    def calculate_objective(self, X, Y):
-        Y = Y.float()
-        Y_prob, _, A = self.forward(X)
-        Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-        neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
-
-        return neg_log_likelihood, A
-    """
-'''
-"""
-class ResNet50_2(nn.Module):
-    def __init__(self):
-        super(ResNet50_2, self).__init__()
-
-        self.num_classes = 2
-        self.part_1 = models.resnet50(pretrained=True)
-        self.dropout_1 = nn.Dropout(p=0.5)
-        self.dropout_2 = nn.Dropout(p=0.5)
-        self.linear_1 = nn.Linear(in_features=1000, out_features=700)
-        self.linear_2 = nn.Linear(in_features=700, out_features=self.num_classes)
-
-
-        self.net = nn.Sequential( self.part_1,
-                                  self.linear_1,
-                                  self.dropout_1,
-                                  self.linear_2,
-                                  self.dropout_2
-                                  )
-
-    def forward(self, x):
-        x = x.squeeze(0)
-        out = self.net(x)
-        '''
-        x = self.part_1(x)
-        out = self.dropout_2(self.linear_2(self.dropout_1(self.linear_1(x))))
-        '''
-        return out
-
-class ResNext_50(nn.Module):
-    def __init__(self):
-        super(ResNext_50, self).__init__()
-
-        self.num_classes = 2
-        self.part_1 = models.resnext50_32x4d(pretrained=False)
-        self.dropout_1 = nn.Dropout(p=0.5)
-
-        self.net = nn.Sequential( models.resnext50_32x4d(pretrained=False),
-                                  nn.Dropout(p=0.5),
-                                  nn.Linear(in_features=1000, out_features=self.num_classes))
-
-    def forward(self, x):
-        x = x.squeeze(0)
-        out = self.net(x)
-        return out
-"""
 
 
 class MyGroupNorm(nn.Module):
@@ -212,6 +47,49 @@ class ResNet34(nn.Module):
         x = self.basic_resnet(x)
         #x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
         return x
+
+
+#RanS 17.11.21, resnet34 pretrained on Imagenet, with binary classifier
+class MyResNet34(nn.Module):
+    def __init__(self, train_classifier_only=False):
+        super().__init__()
+        self.model = resnet34(pretrained=True)
+        #model.fc.in_features = 2
+        N_features = self.model.fc.in_features
+        self.model.fc = nn.Identity()
+        self.model.my_fc = nn.Linear(N_features, 2)
+        self.model_name = THIS_FILE + 'MyResNet34()'
+        print('Using model {}'.format(self.model_name))
+
+        if train_classifier_only:
+            self.model_name = THIS_FILE + 'MyResNet34(train_classifier_only=True)'
+            for param in self.model.parameters():
+                param.requires_grad = False
+            for param in self.model.my_fc.parameters():
+                param.requires_grad = True
+
+    def forward(self, x):
+        x = x.squeeze()
+        features = self.model(x)
+        out = self.model.my_fc(features)
+        # x = torch.nn.functional.softmax(x, dim=1) #cancelled RanS 11.4.21
+        return out, features
+
+'''def MyResNet34(train_classifier_only=False):
+    model = resnet34(pretrained=True)
+    #model.fc.in_features = 2
+    model.fc = nn.Linear(model.fc.in_features, 2)
+    model.model_name = THIS_FILE + 'MyResNet34()'
+    print(model.model_name)
+
+    if train_classifier_only:
+        model.model_name = THIS_FILE + 'MyResNet34(train_classifier_only=True)'
+        for param in model.parameters():
+            param.requires_grad = False
+        for param in model.fc.parameters():
+            param.requires_grad = True
+
+    return model'''
 
 
 class ResNet50(nn.Module):

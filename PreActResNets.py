@@ -350,10 +350,19 @@ class PreActResNet_Ron(nn.Module):
             return out, features #RanS 1.7.21
 
 
-def PreActResNet50_Ron():
+#def PreActResNet50_Ron():
+def PreActResNet50_Ron(train_classifier_only=False):
     model = PreActResNet_Ron(PreActBottleneck_Ron, [3, 4, 6, 3])
     model.model_name = THIS_FILE + 'PreActResNet50_Ron()'
     print(model.model_name)
+
+    if train_classifier_only:
+        model.model_name = THIS_FILE + 'PreActResNet50_Ron(train_classifier_only=True)'
+        for param in model.parameters():
+            param.requires_grad = False
+        for param in model.linear.parameters():
+            param.requires_grad = True
+
     return model
 
 def MIL_PreActResNet50_Ron():
@@ -361,4 +370,5 @@ def MIL_PreActResNet50_Ron():
     model.model_name = THIS_FILE + 'PreActResNet50_Ron()'
     print(model.model_name)
     return model
+
 

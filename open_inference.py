@@ -47,6 +47,7 @@ if len(inference_files) == 0:
 
 for ind, key in enumerate(inference_files.keys()):
     with open(os.path.join(inference_dir, inference_files[key]), 'rb') as filehandle:
+        print(key)
         inference_data = pickle.load(filehandle)
 
     if key[-8:] == 'test_500':
@@ -106,11 +107,18 @@ for ind, key in enumerate(inference_files.keys()):
             if dataset == 'LEUKEMIA':
                 slides_data_file = r'C:\ran_data\BoneMarrow\slides_data_LEUKEMIA.xlsx'
                 slides_data = pd.read_excel(slides_data_file)
-            for name in all_slide_names:
-                if os.path.splitext(name)[-1] == '.svs': #TCGA files
+            elif (dataset == 'CAT') or (dataset == 'CARMEL'):
+                slides_data_file = r'C:\ran_data\Carmel_Slides_examples\add_ki67_labels\ER100_labels\slides_data_CARMEL_labeled_merged.xlsx'
+                slides_data = pd.read_excel(slides_data_file)
+
+            #for name in all_slide_names:
+            for name, slide_dataset in zip(all_slide_names, all_slide_datasets):
+                if slide_dataset == 'TCGA': #TCGA files
                     patient_all.append(name[8:12])
-                elif os.path.splitext(name)[-1] == '.ndpi' or os.path.splitext(name)[-1] == '.tif': #ABCTB files
+                elif slide_dataset == 'ABCTB': #ABCTB files
                     patient_all.append(name[:9])
+                elif slide_dataset[:-1] == 'CARMEL':  # CARMEL files
+                    patient_all.append(slides_data[slides_data['file'] == name]['patient barcode'].item())
                 elif dataset == 'LEUKEMIA':
                     patient_all.append(slides_data[slides_data['file'] == name]['PatientID'].item())
 
