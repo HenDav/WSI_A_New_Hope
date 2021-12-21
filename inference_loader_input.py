@@ -2,11 +2,11 @@ import os
 import re, glob
 inference_files = {}
 
-exp = 20086
-fold = 2
-target = 'survival'
-dataset = 'ABCTB'
-subdir = ''
+exp = 392
+fold = '1'
+target = 'Her2'
+dataset = 'CAT'
+subdir = 'HIC_fold1'
 is_other = False
 
 patientless_list = ['TCGA_LUNG', 'HEROHE']

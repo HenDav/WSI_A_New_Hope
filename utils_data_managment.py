@@ -856,8 +856,9 @@ def _make_segmentation_for_image(file, DataSet, rewrite, out_path_dataset, mag_d
         if os.path.splitext(file)[-1] != '.jpg':
             try:
                 if DataSet == 'SHEBA':
-                    objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
-                if DataSet == 'ABCTB_TIF':
+                    #objective_pwr = 40 #temp RanS 25.3.21, no magnification data is provided
+                    objective_pwr = 10  # temp RanS 13.12.21, no magnification data is provided
+                elif DataSet == 'ABCTB_TIF':
                     objective_pwr = 10  # RanS 13.7.21, no mag data in slide file
                 else:
                     objective_pwr = int(float(slide.properties[mag_dict[data_format]]))

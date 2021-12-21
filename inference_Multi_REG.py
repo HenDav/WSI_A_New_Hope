@@ -59,7 +59,10 @@ if args.save_features:
         if sys.platform == 'win32':
             feature_epoch_ind = (args.from_epoch).index(16)
         else:
-            feature_epoch_ind = (args.from_epoch).index(1000)
+            try:
+                feature_epoch_ind = (args.from_epoch).index(1000)
+            except ValueError:
+                feature_epoch_ind = (args.from_epoch).index(2000) #If 1000 is not on the list, take epoch 2000
     elif len(args.from_epoch) == 1:
         feature_epoch_ind = 0
 
@@ -99,6 +102,12 @@ for counter in range(len(args.from_epoch)):
         if counter > 1 and args.target != target:
             raise Exception("Target Receptor is changed between models - DataSet cannot support this action")
 
+    if len(args.target.split('+')) > 1:
+        multi_target = True
+        target0, target1 = args.target.split('+')
+        model_name = model_name[:-2] + '(num_classes=4)' #manually add num_classes since the arguments are not saved in run_data
+    else:
+        multi_target = False
 
     # loading basic model type
     model = eval(model_name)
@@ -109,7 +118,7 @@ for counter in range(len(args.from_epoch)):
     model.eval()
     models.append(model)
 
-#RanS 3.8.21, override run_data dx if args.dx is true
+# override run_data dx if args.dx is true
 if args.dx:
     dx = args.dx
 
@@ -176,15 +185,24 @@ NUM_SLIDES = len(inf_dset.image_file_names) #RanS 24.5.21, valid_slide_indices a
 NUM_SLIDES_SAVE = 50
 print('NUM_SLIDES: ', str(NUM_SLIDES))
 
-all_targets = []
-all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
-patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
-#patch_locs_all = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2)) #RanS 17.10.21
-patch_locs_all = np.empty((NUM_SLIDES, args.num_tiles, 2)) #RanS 17.10.21
-#patch_locs_all = np.empty((7665, args.num_tiles, 2)) #temp RanS 10.11.21
+if multi_target:
+    all_targets = np.zeros((2, 0))
+    total_pos, total_neg = np.zeros(2), np.zeros(2)
+    patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles, 2))
+    all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS, 2)), np.zeros((NUM_SLIDES, NUM_MODELS, 2))
+    correct_pos = np.zeros((NUM_MODELS, 2))
+    correct_neg = np.zeros((NUM_MODELS, 2))
+else:
+    all_targets = []
+    total_pos, total_neg = 0, 0
+    patch_scores = np.empty((NUM_SLIDES, NUM_MODELS, args.num_tiles))
+    all_scores, all_labels = np.zeros((NUM_SLIDES, NUM_MODELS)), np.zeros((NUM_SLIDES, NUM_MODELS))
+    correct_pos = np.zeros(NUM_MODELS)
+    correct_neg = np.zeros(NUM_MODELS)
+
+patch_locs_all = np.empty((NUM_SLIDES, args.num_tiles, 2))
 if args.save_features:
-    #features_all = np.empty((NUM_SLIDES_SAVE, NUM_MODELS, args.num_tiles, 512))
-    features_all = np.empty((NUM_SLIDES_SAVE, 1, args.num_tiles, 512)) #RanS 30.9.21
+    features_all = np.empty((NUM_SLIDES_SAVE, 1, args.num_tiles, 512))
     features_all[:] = np.nan
 all_slide_names = np.zeros(NUM_SLIDES, dtype=object)
 all_slide_datasets = np.zeros(NUM_SLIDES, dtype=object)
@@ -192,9 +210,9 @@ patch_scores[:] = np.nan
 patch_locs_all[:] = np.nan
 
 # The following 2 lines initialize variables to compute AUC for train dataset.
-total_pos, total_neg = 0, 0
-correct_pos = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
-correct_neg = [0 for ii in range(NUM_MODELS)] # RanS 12.7.21
+#correct_pos = [0 for ii in range(NUM_MODELS)]
+#correct_neg = [0 for ii in range(NUM_MODELS)]
+
 
 if args.resume:
     # load the inference state
@@ -207,8 +225,6 @@ if args.resume:
         resume_data = pickle.load(filehandle)
     all_labels, all_targets, all_scores, total_pos, correct_pos, total_neg, \
     correct_neg, patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES, patch_locs_all = resume_data
-    #correct_neg, patch_scores, all_slide_names, all_slide_datasets, NUM_SLIDES = resume_data  # temp RanS 10.11.21
-
 else:
     resume_file_name = 0
 
@@ -221,10 +237,6 @@ if not os.path.isdir(os.path.join(data_path, output_dir, 'Inference', args.subdi
 print('slide_num0 = ', str(slide_num)) #temp
 with torch.no_grad():
     for batch_idx, MiniBatch_Dict in enumerate(tqdm(inf_loader)):
-        #print('slide num = ', str(inf_loader.dataset.slide_num), 'batch_num = ', str(batch_idx)) #temp
-        #if args.resume and (inf_loader.dataset.slide_num < slide_num):
-        #    print('skip') #temp
-        #    continue
 
         # Unpacking the data:
         data = MiniBatch_Dict['Data']
@@ -234,23 +246,17 @@ with torch.no_grad():
         slide_file = MiniBatch_Dict['Slide Filename']
         slide_dataset = MiniBatch_Dict['Slide DataSet']
         patch_locs = MiniBatch_Dict['Patch Loc']
-        #patch_loc_inds = MiniBatch_Dict['Patch loc index']
-        #slide_size_ind = MiniBatch_Dict['Slide Index Size']
-        #slide_size = MiniBatch_Dict['Slide Size']
 
         if new_slide:
-            #n_tiles = inf_loader.dataset.num_tiles[slide_num]  # RanS 1.7.21
-            n_tiles = inf_loader.dataset.num_tiles[slide_num - args.resume]  # RanS 6.10.21
-            #scores_0, scores_1 = [np.zeros(0)] * NUM_MODELS, [np.zeros(0)] * NUM_MODELS
-            #scores_0, scores_1 = [np.zeros(n_tiles)] * NUM_MODELS, [np.zeros(n_tiles)] * NUM_MODELS #RanS 1.7.21
-            scores_0 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)] # RanS 12.7.21
-            scores_1 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]  # RanS 12.7.21
-            patch_locs_1_slide = np.zeros((n_tiles, 2))  # RanS 10.8.21
-            #patch_locs_inds_1 = [np.zeros((n_tiles, 2)) for ii in range(NUM_MODELS)]  # RanS 10.8.21
+            n_tiles = inf_loader.dataset.num_tiles[slide_num - args.resume]
+            scores_0 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]
+            scores_1 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]
+            if multi_target:
+                scores_2 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]
+                scores_3 = [np.zeros(n_tiles) for ii in range(NUM_MODELS)]
+            patch_locs_1_slide = np.zeros((n_tiles, 2))
             if args.save_features:
-                #feature_arr = [np.zeros((n_tiles, 512))] * NUM_MODELS #RanS 1.7.21
-                #feature_arr = [np.zeros((n_tiles, 512)) for ii in range(NUM_MODELS)]  # RanS 1.7.21
-                feature_arr = [np.zeros((n_tiles, 512))]  # RanS 30.9.21
+                feature_arr = [np.zeros((n_tiles, 512))]
             target_current = target
             slide_batch_num = 0
             new_slide = False
@@ -258,8 +264,7 @@ with torch.no_grad():
         data = data.squeeze(0)
         data, target = data.to(DEVICE), target.to(DEVICE)
 
-        #patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21
-        patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = np.array(patch_locs)  # RanS 19.10.21
+        patch_locs_1_slide[slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data),:] = np.array(patch_locs)
 
         for index, model in enumerate(models):
             model.to(DEVICE)
@@ -271,11 +276,17 @@ with torch.no_grad():
                 features = model(data)
                 scores = torch.zeros((len(data), 2))
 
-            scores = torch.nn.functional.softmax(scores, dim=1) #RanS 11.3.21
+            if multi_target:
+                scores = torch.cat((torch.nn.functional.softmax(scores[:, :2], dim=1),
+                                     torch.nn.functional.softmax(scores[:, 2:], dim=1)), dim=1)
+            else:
+                scores = torch.nn.functional.softmax(scores, dim=1)
 
             scores_0[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 0].cpu().detach().numpy()
             scores_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 1].cpu().detach().numpy()
-            #patch_locs_1[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data), :] = patch_locs  # RanS 10.8.21, cancelled
+            if multi_target:
+                scores_2[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 2].cpu().detach().numpy()
+                scores_3[index][slide_batch_num * tiles_per_iter: slide_batch_num * tiles_per_iter + len(data)] = scores[:, 3].cpu().detach().numpy()
 
             if args.save_features:
                 if index == feature_epoch_ind:
@@ -286,37 +297,50 @@ with torch.no_grad():
         if last_batch:
             new_slide = True
 
-            all_targets.append(target.cpu().numpy()[0][0])
-            if target == 1:
-                total_pos += 1
+            if multi_target:
+                target_squeezed = torch.transpose(torch.squeeze(target, 2), 0, 1)
+                all_targets = np.hstack((all_targets, target_squeezed.cpu().numpy()))
+                total_pos += np.array((torch.squeeze(target[:, 0]).eq(1).sum().item(), torch.squeeze(target[:, 1]).eq(1).sum().item()))
+                total_neg += np.array((torch.squeeze(target[:, 0]).eq(0).sum().item(), torch.squeeze(target[:, 1]).eq(0).sum().item()))
             else:
-                total_neg += 1
+                all_targets.append(target.cpu().numpy()[0][0])
+                if target == 1:
+                    total_pos += 1
+                else:
+                    total_neg += 1
 
             if args.save_features:
                 features_all[slide_num % NUM_SLIDES_SAVE, 0, :len(feature_arr[0])] = feature_arr[0]
 
-            patch_locs_all[slide_num, :len(patch_locs_1_slide), :] = patch_locs_1_slide #RanS 17.10.21
+            patch_locs_all[slide_num, :len(patch_locs_1_slide), :] = patch_locs_1_slide
 
             for model_num in range(NUM_MODELS):
-                current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num]))
+                if multi_target:
+                    current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num], scores_2[model_num], scores_3[model_num]))
+                    predicted = np.vstack((current_slide_tile_scores[:2, :].mean(1).argmax(), current_slide_tile_scores[2:, :].mean(1).argmax()))
+                    patch_scores[slide_num, model_num, :len(scores_1[model_num]), 0] = scores_1[model_num]
+                    patch_scores[slide_num, model_num, :len(scores_3[model_num]), 1] = scores_3[model_num]
+                    all_scores[slide_num, model_num, 0] = scores_1[model_num].mean()
+                    all_scores[slide_num, model_num, 1] = scores_3[model_num].mean()
+                    correct_pos[model_num] += np.squeeze((predicted == 1) & (target_squeezed.eq(1).numpy()))
+                    correct_neg[model_num] += np.squeeze((predicted == 0) & (target_squeezed.eq(0).numpy()))
+                else:
+                    current_slide_tile_scores = np.vstack((scores_0[model_num], scores_1[model_num]))
+                    predicted = current_slide_tile_scores.mean(1).argmax()
+                    patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
+                    all_scores[slide_num, model_num] = scores_1[model_num].mean()
+                    if target == 1 and predicted == 1:
+                        correct_pos[model_num] += 1
+                    elif target == 0 and predicted == 0:
+                        correct_neg[model_num] += 1
 
-                predicted = current_slide_tile_scores.mean(1).argmax()
-                patch_scores[slide_num, model_num, :len(scores_1[model_num])] = scores_1[model_num]
-
-                #patch_locs_all[slide_num, model_num, :len(patch_locs_1[model_num]), :] = patch_locs_1[model_num] #cancelled
-                all_scores[slide_num, model_num] = scores_1[model_num].mean()
-                all_labels[slide_num, model_num] = predicted
+                all_labels[slide_num, model_num] = np.squeeze(predicted)
                 all_slide_names[slide_num] = slide_file[0]
                 all_slide_datasets[slide_num] = slide_dataset[0]
 
-                if target == 1 and predicted == 1:
-                    correct_pos[model_num] += 1
-                elif target == 0 and predicted == 0:
-                    correct_neg[model_num] += 1
-
             slide_num += 1
 
-            # RanS 6.7.21, save features every NUM_SLIDES_SAVE slides
+            # save features every NUM_SLIDES_SAVE slides
             if slide_num % NUM_SLIDES_SAVE == 0:
                 #save the inference state
                 prev_resume_file_name = resume_file_name
@@ -337,7 +361,6 @@ with torch.no_grad():
 
                 #save features
                 if args.save_features:
-                    #for model_num in range(NUM_MODELS):
                     feature_file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir,
                                                      'Model_Epoch_' + str(args.from_epoch[feature_epoch_ind])
                                                      + '-Folds_' + str(args.folds) + '_' + str(
@@ -380,7 +403,16 @@ for model_num in range(NUM_MODELS):
     if different_experiments:
         output_dir = Output_Dirs[model_num]
 
-    fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
+    #RanS 20.12.21, remove targets = -1 from auc calculation
+    scores_arr = all_scores[:, model_num]
+    targets_arr = np.array(all_targets)
+    scores_arr = scores_arr[targets_arr >= 0]
+    targets_arr = targets_arr[targets_arr >= 0]
+    fpr, tpr, _ = roc_curve(targets_arr, scores_arr)
+    '''try:
+        fpr, tpr, _ = roc_curve(all_targets, all_scores[:, model_num])
+    except ValueError:
+        fpr, tpr = 0, 0'''
 
     # Save roc_curve to file:
     file_name = os.path.join(data_path, output_dir, 'Inference', args.subdir, 'Model_Epoch_' + str(args.from_epoch[model_num])
@@ -395,11 +427,12 @@ for model_num in range(NUM_MODELS):
         pickle.dump(inference_data, filehandle)
 
     experiment = args.experiment[model_num] if different_experiments else args.experiment[0]
-    print('For model from Experiment {} and Epoch {}: {} / {} correct classifications'
-          .format(experiment,
-                  args.from_epoch[model_num],
-                  int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
-                  len(all_labels[:, model_num])))
+    if not multi_target:
+        print('For model from Experiment {} and Epoch {}: {} / {} correct classifications'
+              .format(experiment,
+                      args.from_epoch[model_num],
+                      int(len(all_labels[:, model_num]) - np.abs(np.array(all_targets) - np.array(all_labels[:, model_num])).sum()),
+                      len(all_labels[:, model_num])))
 print('Done !')
 
 #delete last resume file

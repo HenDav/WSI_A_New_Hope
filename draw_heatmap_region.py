@@ -51,7 +51,7 @@ for file in file_list:
     slide_name = get_slide_name(file)
     slide_file = os.path.join(slides_dir, slide_name)
 
-    if not os.path.isdir(os.path.join(dn, 'out', slide_name)):
+    if args.superimpose and not os.path.isdir(os.path.join(dn, 'out', slide_name)):
         os.mkdir(os.path.join(dn, 'out', slide_name))
 
     heatmap_DF = pd.read_excel(file)
@@ -60,20 +60,10 @@ for file in file_list:
     heatmap[heatmap == -1] = np.nan
 
     if args.binary:
-        # binary_heatmap
-        #bin_heatmap = heatmap.copy()
-        #bin_heatmap[bin_heatmap > 0.8] = 1
-        #bin_heatmap[bin_heatmap < 0.2] = 0
-        #bin_heatmap[(bin_heatmap > 0.2) & (bin_heatmap < 0.8)] = np.nan
         heatimage = heatmap
         heatimage[heatmap >= args.vmin] = 1
         heatimage[heatmap < args.vmin] = 0
-        #heatimage = np.ones((bin_heatmap.shape[0], bin_heatmap.shape[1], 3))
-        #heatimage[bin_heatmap == 1, 1:] = 0  # red
-        #heatimage[bin_heatmap == 0, 0] = 0  # green
-        #heatimage[bin_heatmap == 0, 2] = 0  # green
     elif calib:
-        # calibrated heratmap, RanS 9.1.21
         heatmap_vec = np.reshape(heatmap, (heatmap.size))
         ind_sorted = np.argsort(heatmap_vec)
         heatmap_vec[ind_sorted] = np.linspace(0, 1, heatmap.size)
@@ -108,7 +98,9 @@ for file in file_list:
     my_cmap = 'jet'
 
     # take a 10000 pixel high thumb
-    height_thumb = 10000
+    mag_thumb = 5
+    height_thumb = np.min((int(height / mag_thumb), 10000))
+    #height_thumb = 10000
     width_thumb = int(width / height * height_thumb)
     thumb = slide.get_thumbnail((width_thumb, height_thumb))
     heatmap_thumb = cv2.resize(heatimage, dsize=(width_thumb, height_thumb), interpolation=cv2.INTER_NEAREST)
@@ -119,7 +111,10 @@ for file in file_list:
     ax2.axis('off')
     if not args.binary:
         fig.colorbar(sp)
-    fig.savefig(os.path.join(dn, 'out', slide_name, 'thumb.jpg'), bbox_inches='tight', dpi=1000)
+    if args.superimpose:
+        fig.savefig(os.path.join(dn, 'out', slide_name, 'thumb.jpg'), bbox_inches='tight', dpi=1000)
+    else:
+        fig.savefig(os.path.join(dn, 'out', os.path.splitext(slide_name)[0] + '.jpg'), bbox_inches='tight', dpi=1000)
     plt.close(fig)
     if args.superimpose:
         for i_y in range(N_patches_y):

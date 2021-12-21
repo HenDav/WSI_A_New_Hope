@@ -351,8 +351,8 @@ class PreActResNet_Ron(nn.Module):
 
 
 #def PreActResNet50_Ron():
-def PreActResNet50_Ron(train_classifier_only=False):
-    model = PreActResNet_Ron(PreActBottleneck_Ron, [3, 4, 6, 3])
+def PreActResNet50_Ron(train_classifier_only=False, num_classes=2):
+    model = PreActResNet_Ron(PreActBottleneck_Ron, [3, 4, 6, 3], num_classes=num_classes)
     model.model_name = THIS_FILE + 'PreActResNet50_Ron()'
     print(model.model_name)
 

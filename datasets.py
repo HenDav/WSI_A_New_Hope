@@ -13,6 +13,7 @@ from utils import MyRotation, Cutout, _get_tiles, _choose_data, chunks, map_orig
 from utils import define_transformations, assert_dataset_target
 from utils import dataset_properties_to_location, get_label
 from utils import show_patches_and_transformations, get_datasets_dir_dict, balance_dataset
+from utils import get_optimal_slide_level
 import openslide
 from tqdm import tqdm
 import sys
@@ -47,6 +48,14 @@ class WSI_Master_Dataset(Dataset):
                  RAM_saver: bool = False,
                  is_Censored: bool = None
                  ):
+
+        # Support multitarget training, RanS 8.12.21
+        if len(target_kind.split('+')) > 1:
+            target_kind = target_kind.split('+')
+            N_targets = 2 #currently support only two targets!
+            self.multi_target = True
+        else:
+            self.multi_target = False
 
         # Check if the target receptor is available for the requested train DataSet:
         assert_dataset_target(DataSet, target_kind)
@@ -121,15 +130,18 @@ class WSI_Master_Dataset(Dataset):
                 all_targets = all_targets_cont
 
         else:
-            all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
+            if self.multi_target:
+                all_targets = np.zeros((len(self.meta_data_DF), len(self.target_kind)), dtype=object)
+                for ii in range(N_targets):
+                    all_targets[:, ii] = list(self.meta_data_DF[self.target_kind[ii] + ' status'])
+            else:
+                all_targets = list(self.meta_data_DF[self.target_kind + ' status'])
 
         all_patient_barcodes = list(self.meta_data_DF['patient barcode'])
 
         #RanS 17.8.21
         if slide_per_block:
             if DataSet == 'CARMEL':
-                #all_patient_barcodes1 = ['17-5_1_1_a', '17-5_1_1_b', '18-81_1_2_e', '18-81_1_2_k', '17-10008_1_1_e'] ######temp
-
                 all_blocks = []
                 for barcode in all_patient_barcodes:
                     if barcode is not np.nan:
@@ -156,12 +168,17 @@ class WSI_Master_Dataset(Dataset):
         if self.target_kind == 'Survival_Time':
             valid_slide_indices = np.where(np.invert(np.isnan(all_targets)) == True)[0]
         else:
-            valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
+            if self.multi_target:
+                valid_slide_indices = np.where(np.isin(all_targets[:, 0], ['Positive', 'Negative']) | np.isin(all_targets[:, 1], ['Positive', 'Negative']))[0]
+            else:
+                valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Positive', 'Negative']) == True)[0]
 
         #inference on unknown labels in case of (blind) test inference or Batched_Full_Slide_Inference_Dataset
-        if len(valid_slide_indices) == 0 or self.train_type == 'Infer_All_Folds':
-            #valid_slide_indices = np.where(np.isin(np.array(all_targets), ['Missing Data']) == True)[0]
-            valid_slide_indices = np.where(np.array(all_targets))[0] #RanS 17.11.21, take all slides
+        if len(valid_slide_indices) == 0 or self.train_type == 'Infer_All_Folds' or (self.target_kind == 'survival' and self.train_type == 'Infer'):
+            if self.multi_target:
+                valid_slide_indices = np.where(all_targets[:, 0])[0]
+            else:
+                valid_slide_indices = np.where(np.array(all_targets))[0]  # take all slides
 
         # Also remove slides without grid data:
         slides_without_grid = set(self.meta_data_DF.index[self.meta_data_DF['Total tiles - ' + str(
@@ -194,6 +211,7 @@ class WSI_Master_Dataset(Dataset):
             print(
                 '{} Slides were excluded from DataSet because they had less than {} available tiles or are non legitimate for training'
                 .format(len(slides_with_few_tiles), n_minimal_tiles))
+
         valid_slide_indices = np.array(
             list(set(valid_slide_indices) - slides_without_grid - slides_with_few_tiles - slides_with_0_tiles - slides_with_bad_seg - slides_with_er_not_eq_pr - excess_block_slides))
 
@@ -402,7 +420,7 @@ class WSI_Master_Dataset(Dataset):
                 label = torch.FloatTensor(label)
             else:
                 #label = [1] if self.target[idx] == 'Positive' else [0]
-                label = get_label(self.target[idx])
+                label = get_label(self.target[idx], self.multi_target)
                 label = torch.LongTensor(label)
 
         # X will hold the images after all the transformations
@@ -711,7 +729,7 @@ class Infer_Dataset(WSI_Master_Dataset):
 
             if not self.presaved_tiles[self.slide_num]: #RanS 5.5.21
                 # RanS 11.3.21
-                desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+                '''desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
                 level, best_next_level = -1, -1
                 for index, downsample in enumerate(self.current_slide.level_downsamples):
@@ -723,13 +741,16 @@ class Infer_Dataset(WSI_Master_Dataset):
                     elif downsample < desired_downsample:
                         best_next_level = index
                         level_downsample = int(desired_downsample / self.current_slide.level_downsamples[best_next_level])
-
+                        
                 self.adjusted_tile_size = self.tile_size * level_downsample
                 self.best_slide_level = level if level > best_next_level else best_next_level
-                self.level_0_tile_size = int(desired_downsample) * self.tile_size
+                self.level_0_tile_size = int(desired_downsample) * self.tile_size'''
+
+                self.best_slide_level, self.adjusted_tile_size, self.level_0_tile_size = \
+                    get_optimal_slide_level(self.current_slide, self.magnification[self.slide_num], self.desired_magnification, self.tile_size)
 
         #label = [1] if self.target[self.slide_num] == 'Positive' else [0]
-        label = get_label(self.target[self.slide_num])
+        label = get_label(self.target[self.slide_num], self.multi_target)
         label = torch.LongTensor(label)
 
 
@@ -936,7 +957,10 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                 self.current_slide = self.slides[self.slide_num]
 
             self.initial_num_patches = self.num_tiles[self.slide_num]
-            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+            if tile_size is not None:
+                self.tile_size = tile_size
+
+            '''desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
             level, best_next_level = -1, -1
             for index, downsample in enumerate(self.current_slide.level_downsamples):
@@ -950,16 +974,15 @@ class Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                     level_downsample = int(
                         desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
-            if tile_size is not None:
-                self.tile_size = tile_size
-
             self.adjusted_tile_size = self.tile_size * level_downsample
-
             self.best_slide_level = level if level > best_next_level else best_next_level
-            self.level_0_tile_size = int(desired_downsample) * self.tile_size
+            self.level_0_tile_size = int(desired_downsample) * self.tile_size'''
+
+            self.best_slide_level, self.adjusted_tile_size, self.level_0_tile_size = \
+                get_optimal_slide_level(self.current_slide, self.magnification[self.slide_num], self.desired_magnification, self.tile_size)
 
         #label = [1] if self.target[self.slide_num] == 'Positive' else [0]
-        label = get_label(self.target[self.slide_num])
+        label = get_label(self.target[self.slide_num], self.multi_target)
         label = torch.LongTensor(label)
 
         tile_locations = self.slide_grids[idx] if location is None else location
@@ -1110,9 +1133,8 @@ class Infer_Dataset_Background(WSI_Master_Dataset):
 
             self.initial_num_patches = self.num_tiles[self.slide_num]
 
-            if not self.presaved_tiles[self.slide_num]: #RanS 5.5.21
-                # RanS 11.3.21
-                desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+            if not self.presaved_tiles[self.slide_num]:
+                '''desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
                 level, best_next_level = -1, -1
                 for index, downsample in enumerate(self.current_slide.level_downsamples):
@@ -1127,10 +1149,13 @@ class Infer_Dataset_Background(WSI_Master_Dataset):
 
                 self.adjusted_tile_size = self.tile_size * level_downsample
                 self.best_slide_level = level if level > best_next_level else best_next_level
-                self.level_0_tile_size = int(desired_downsample) * self.tile_size
+                self.level_0_tile_size = int(desired_downsample) * self.tile_size'''
+
+                self.best_slide_level, self.adjusted_tile_size, self.level_0_tile_size = \
+                    get_optimal_slide_level(self.current_slide, self.magnification[self.slide_num], self.desired_magnification, self.tile_size)
 
         #label = [1] if self.target[self.slide_num] == 'Positive' else [0]
-        label = get_label(self.target[self.slide_num])
+        label = get_label(self.target[self.slide_num], self.multi_target)
         label = torch.LongTensor(label)
 
 
@@ -2276,7 +2301,7 @@ class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
         return 1
 
     def __getitem__(self, location: List = None):
-        desired_downsample = self.magnification / self.desired_magnification
+        '''desired_downsample = self.magnification / self.desired_magnification
 
         level, best_next_level = -1, -1
         for index, downsample in enumerate(self.slide.level_downsamples):
@@ -2293,7 +2318,10 @@ class One_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
         self.adjusted_tile_size = self.tile_size * level_downsample
 
         self.best_slide_level = level if level > best_next_level else best_next_level
-        self.level_0_tile_size = int(desired_downsample) * self.tile_size
+        self.level_0_tile_size = int(desired_downsample) * self.tile_size'''
+
+        self.best_slide_level, self.adjusted_tile_size, self.level_0_tile_size = \
+            get_optimal_slide_level(self.slide, self.magnification, self.desired_magnification, self.tile_size)
 
         tiles, time_list, _ = _get_tiles(slide=self.slide,
                                          locations=location,
@@ -2462,8 +2490,10 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
 
             self.initial_num_patches = self.num_tiles[self.slide_num]
 
-            # RanS 11.3.21
-            desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
+            if tile_size is not None:
+                self.tile_size = tile_size
+
+            '''desired_downsample = self.magnification[self.slide_num] / self.desired_magnification
 
             level, best_next_level = -1, -1
             for index, downsample in enumerate(self.current_slide.level_downsamples):
@@ -2477,17 +2507,15 @@ class Batched_Full_Slide_Inference_Dataset(WSI_Master_Dataset):
                     level_downsample = int(
                         desired_downsample / self.current_slide.level_downsamples[best_next_level])
 
-            if tile_size is not None:
-                self.tile_size = tile_size
-
             self.adjusted_tile_size = self.tile_size * level_downsample
 
             self.best_slide_level = level if level > best_next_level else best_next_level
-            self.level_0_tile_size = int(desired_downsample) * self.tile_size
+            self.level_0_tile_size = int(desired_downsample) * self.tile_size'''
 
-        #target = [1] if self.targets[self.slide_num] == 'Positive' else [0]
-        #target = [1] if self.all_targets[self.slide_num] == 'Positive' else [0]
-        target = get_label(self.all_targets[self.slide_num])
+            self.best_slide_level, self.adjusted_tile_size, self.level_0_tile_size = \
+                get_optimal_slide_level(self.current_slide, self.magnification[self.slide_num], self.desired_magnification, self.tile_size)
+
+        target = get_label(self.all_targets[self.slide_num], self.multi_target)
         target = torch.LongTensor(target)
 
         tile_locations = self.slide_grids[idx] if location is None else location

@@ -31,6 +31,7 @@ parser.add_argument('-d', dest='dx', action='store_true', help='Use ONLY DX cut 
 parser.add_argument('-ds', '--dataset', type=str, default='ABCTB', help='DataSet to use')
 parser.add_argument('-time', dest='time', action='store_true', help='save train timing data ?')
 parser.add_argument('-tar', '--target', default='Survival_Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1')
+#parser.add_argument('-tar', '--target', action='append', default='Survival_Time', type=str, help='label: Her2/ER/PR/EGFR/PDL1') #RanS 8.12.21
 parser.add_argument('--n_patches_test', default=1, type=int, help='# of patches at test time')
 parser.add_argument('--n_patches_train', default=10, type=int, help='# of patches at train time')
 parser.add_argument('--lr', default=1e-5, type=float, help='learning rate')
@@ -89,18 +90,24 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
         if args.target == 'Survival_Time':
             all_targets, all_outputs, all_censored, all_cont_targets = [], [], [], []
 
-        total, correct_pos, correct_neg = 0, 0, 0
-        total_pos_train, total_neg_train = 0, 0
-        true_targets_train, scores_train = np.zeros(0), np.zeros(0)
-        correct_labeling, train_loss = 0, 0
-
+        if multi_target:
+            true_targets_train, scores_train = np.zeros((2, 0)), np.zeros((2, 0))
+            correct_pos, correct_neg = np.zeros(2), np.zeros(2)
+            total_pos_train, total_neg_train = np.zeros(2), np.zeros(2)
+            correct_labeling = np.zeros(2)
+        else:
+            true_targets_train, scores_train = np.zeros(0), np.zeros(0)
+            correct_pos, correct_neg = 0, 0
+            total_pos_train, total_neg_train = 0, 0
+            correct_labeling = 0
+        train_loss, total = 0, 0
 
         slide_names = []
         print('Epoch {}:'.format(e))
 
         # RanS 11.7.21
         process = psutil.Process(os.getpid())
-        print('RAM usage:', np.round(process.memory_info().rss/1e9), 'GB, time: ', datetime.now())
+        print('RAM usage:', np.round(process.memory_info().rss/1e9), 'GB, time: ', datetime.now(), ', exp: ', str(experiment))
 
         model.train()
         model.to(DEVICE)
@@ -129,19 +136,38 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                 outputs = torch.reshape(outputs, [outputs.size(0)])
                 all_outputs.extend(outputs.detach().cpu().numpy())
             else:
-                loss = criterion(outputs, target)
-                outputs = torch.nn.functional.softmax(outputs, dim=1)
-                _, predicted = outputs.max(1)
+                if multi_target:
+                    batch_len =len(target)
+                    loss_array = torch.zeros(batch_len, 2)
 
-                scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
-                true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
-
+                    #loss_array[:, 0] = criterion(outputs[:, :2], torch.squeeze(target[:, 0]))
+                    loss_array[:, 0] = criterion(outputs[:, :2], target[:, 0].reshape(batch_len))
+                    #loss_array[:, 1] = criterion(outputs[:, 2:], torch.squeeze(target[:, 1]))
+                    loss_array[:, 1] = criterion(outputs[:, 2:], target[:, 1].reshape(batch_len))
+                    mask = loss_array != 0
+                    loss = torch.mean((loss_array * mask).sum(dim=1) / mask.sum(dim=1))
+                    outputs = torch.cat((torch.nn.functional.softmax(outputs[:, :2], dim=1), torch.nn.functional.softmax(outputs[:, 2:], dim=1)),dim=1)
+                    predicted = torch.vstack((outputs[:, :2].max(1).indices, outputs[:, 2:].max(1).indices))
+                    scores_train = np.hstack((scores_train, np.vstack((outputs[:, 1].cpu().detach().numpy(), outputs[:, 3].cpu().detach().numpy()))))
+                    target_squeezed = torch.transpose(torch.squeeze(target, 2), 0, 1)
+                    true_targets_train = np.hstack((true_targets_train, target_squeezed.cpu().detach().numpy()))
+                    total_pos_train += np.array((torch.squeeze(target[:, 0]).eq(1).sum().item(),  torch.squeeze(target[:, 1]).eq(1).sum().item()))
+                    total_neg_train += np.array((torch.squeeze(target[:, 0]).eq(0).sum().item(), torch.squeeze(target[:, 1]).eq(0).sum().item()))
+                    correct_labeling += np.array((predicted[0,:].eq(target_squeezed[0,:]).sum().item(), predicted[1,:].eq(target_squeezed[1,:]).sum().item()))
+                    correct_pos += np.array((predicted[0, target_squeezed[0,:].eq(1)].eq(1).sum().item(), predicted[1, target_squeezed[1,:].eq(1)].eq(1).sum().item()))
+                    correct_neg += np.array((predicted[0, target_squeezed[0,:].eq(0)].eq(0).sum().item(), predicted[1, target_squeezed[1,:].eq(0)].eq(0).sum().item()))
+                else:
+                    loss = criterion(outputs, target)
+                    outputs = torch.nn.functional.softmax(outputs, dim=1)
+                    _, predicted = outputs.max(1)
+                    scores_train = np.concatenate((scores_train, outputs[:, 1].cpu().detach().numpy()))
+                    true_targets_train = np.concatenate((true_targets_train, target.cpu().detach().numpy()))
+                    total_pos_train += target.eq(1).sum().item()
+                    total_neg_train += target.eq(0).sum().item()
+                    correct_labeling += predicted.eq(target).sum().item()
+                    correct_pos += predicted[target.eq(1)].eq(1).sum().item()
+                    correct_neg += predicted[target.eq(0)].eq(0).sum().item()
                 total += target.size(0)
-                total_pos_train += target.eq(1).sum().item()
-                total_neg_train += target.eq(0).sum().item()
-                correct_labeling += predicted.eq(target).sum().item()
-                correct_pos += predicted[target.eq(1)].eq(1).sum().item()
-                correct_neg += predicted[target.eq(0)].eq(0).sum().item()
 
             if loss != 0:
                 loss.backward()
@@ -179,22 +205,34 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
 
 
         train_acc = 100 * correct_labeling / total
-        #balanced_acc_train = 100 * (correct_pos / total_pos_train + correct_neg / total_neg_train) / 2
         balanced_acc_train = 100. * ((correct_pos + EPS) / (total_pos_train + EPS) + (correct_neg + EPS) / (total_neg_train + EPS)) / 2
-        roc_auc_train = np.nan
-        if not all(true_targets_train == true_targets_train[0]):  #more than one label
-            fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
-            roc_auc_train = auc(fpr_train, tpr_train)
-        all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
-        all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
+
+        if multi_target:
+            roc_auc_train = np.empty(2)
+            roc_auc_train[:] = np.nan
+            if len(np.unique(true_targets_train[0, true_targets_train[0,:] >= 0])) > 1:  # more than one label
+                fpr_train, tpr_train, _ = roc_curve(true_targets_train[0, true_targets_train[0,:] >= 0], scores_train[0, true_targets_train[0,:] >= 0])
+                roc_auc_train[0] = auc(fpr_train, tpr_train)
+            if len(np.unique(true_targets_train[1, true_targets_train[1,:] >= 0])) > 1:  # more than one label
+                fpr_train, tpr_train, _ = roc_curve(true_targets_train[1, true_targets_train[1,:] >= 0], scores_train[1, true_targets_train[1,:] >= 0])
+                roc_auc_train[1] = auc(fpr_train, tpr_train)
+            all_writer.add_scalars('Train/Balanced Accuracy', {target0: balanced_acc_train[0], target1: balanced_acc_train[1]}, e)
+            all_writer.add_scalars('Train/Roc-Auc', {target0: roc_auc_train[0], target1: roc_auc_train[1]}, e)
+            all_writer.add_scalars('Train/Accuracy', {target0: train_acc[0], target1: train_acc[1]}, e)
+        else:
+            roc_auc_train = np.nan
+            if len(np.unique(true_targets_train[true_targets_train >= 0])) > 1:  #more than one label
+                fpr_train, tpr_train, _ = roc_curve(true_targets_train, scores_train)
+                roc_auc_train = auc(fpr_train, tpr_train)
+            all_writer.add_scalar('Train/Balanced Accuracy', balanced_acc_train, e)
+            all_writer.add_scalar('Train/Roc-Auc', roc_auc_train, e)
+            all_writer.add_scalar('Train/Accuracy', train_acc, e)
         all_writer.add_scalar('Train/Loss Per Epoch', train_loss, e)
-        all_writer.add_scalar('Train/Accuracy', train_acc, e)
-        #print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train Accuracy: {:.2f}% ({} / {}), Time: {:.0f} m'
         print('Finished Epoch: {}, Loss: {:.2f}, Loss Delta: {:.3f}, Train AUC per patch: {:.2f} , Time: {:.0f} m'
               .format(e,
                       train_loss,
                       previous_epoch_loss - train_loss,
-                      roc_auc_train,
+                      roc_auc_train if roc_auc_train.size == 1 else roc_auc_train[0],
                       time_epoch))
         previous_epoch_loss = train_loss
 
@@ -214,19 +252,22 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                    os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Last_Epoch.pt'))
 
         if e % args.eval_rate == 0:
-            # perform slide inference
-            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
-            slide_mean_score_df = patch_df.groupby('slide').mean()
-            roc_auc_slide = np.nan
-            if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  #more than one label
-                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
             acc_test, bacc_test, roc_auc_test = check_accuracy(model, dloader_test, all_writer, DEVICE, e)
-            test_auc_list.append(roc_auc_test)
-            if len(test_auc_list) == 5:
-                test_auc_mean = np.mean(test_auc_list)
-                test_auc_list.pop(0)
-                utils.run_data(experiment=experiment, test_mean_auc=test_auc_mean)
+
+            # perform slide inference
+            if not multi_target:
+                patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_train, 'labels': true_targets_train})
+                slide_mean_score_df = patch_df.groupby('slide').mean()
+                roc_auc_slide = np.nan
+                if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  #more than one label
+                    roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+                all_writer.add_scalar('Train/slide AUC', roc_auc_slide, e)
+
+                test_auc_list.append(roc_auc_test)
+                if len(test_auc_list) == 5:
+                    test_auc_mean = np.mean(test_auc_list)
+                    test_auc_list.pop(0)
+                    utils.run_data(experiment=experiment, test_mean_auc=test_auc_mean)
 
             # Save model to file:
             try:
@@ -244,18 +285,23 @@ def train(model: nn.Module, dloader_train: DataLoader, dloader_test: DataLoader,
                        os.path.join(args.output_dir, 'Model_CheckPoints', 'model_data_Epoch_' + str(e) + '.pt'))
             print('saved checkpoint to', args.output_dir) #RanS 23.6.21
 
-
     all_writer.close()
     if print_timing:
         time_writer.close()
 
 
 def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE, epoch: int):
-
-    total_test, true_pos_test, true_neg_test = 0, 0, 0
-    total_pos_test, total_neg_test = 0, 0
-    true_labels_test, scores_test = np.zeros(0), np.zeros(0)
-    correct_labeling_test = 0
+    if multi_target:
+        true_pos_test, true_neg_test = np.zeros(2), np.zeros(2)
+        total_pos_test, total_neg_test = np.zeros(2), np.zeros(2)
+        true_labels_test, scores_test = np.zeros((2, 0)), np.zeros((2, 0))
+        correct_labeling_test = np.zeros(2)
+    else:
+        true_pos_test, true_neg_test = 0, 0
+        total_pos_test, total_neg_test = 0, 0
+        true_labels_test, scores_test = np.zeros(0), np.zeros(0)
+        correct_labeling_test = 0
+    total_test = 0
     slide_names = []
 
     model.eval()
@@ -266,42 +312,46 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             data = minibatch['Data']
             targets = minibatch['Target']
             f_names = minibatch['File Names']
+            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
+            slide_names.extend(slide_names_batch)
 
             data, targets = data.to(device=DEVICE), targets.to(device=DEVICE).squeeze(1)
             model.to(DEVICE)
 
             outputs, _ = model(data)
 
-            outputs = torch.nn.functional.softmax(outputs, dim=1)
-            _, predicted = outputs.max(1)
-
-            slide_names_batch = [os.path.basename(f_name) for f_name in f_names]
-            scores_test = np.concatenate((scores_test, outputs[:, 1].cpu().detach().numpy()))
-            true_labels_test = np.concatenate((true_labels_test, targets.cpu().detach().numpy()))
-            slide_names.extend(slide_names_batch)
-
+            if multi_target:
+                outputs = torch.cat((torch.nn.functional.softmax(outputs[:, :2], dim=1), torch.nn.functional.softmax(outputs[:, 2:], dim=1)), dim=1)
+                predicted = torch.vstack((outputs[:, :2].max(1).indices, outputs[:, 2:].max(1).indices))
+                scores_test = np.hstack((scores_test, np.vstack((outputs[:, 1].cpu().detach().numpy(), outputs[:, 3].cpu().detach().numpy()))))
+                target_squeezed = torch.transpose(torch.squeeze(targets, 2), 0, 1)
+                true_labels_test = np.hstack((true_labels_test, target_squeezed.cpu().detach().numpy()))
+                correct_labeling_test += np.array((predicted[0, :].eq(target_squeezed[0, :]).sum().item(), predicted[1, :].eq(target_squeezed[1, :]).sum().item()))
+                total_pos_test += np.array((torch.squeeze(targets[:, 0]).eq(1).sum().item(), torch.squeeze(targets[:, 1]).eq(1).sum().item()))
+                total_neg_test += np.array((torch.squeeze(targets[:, 0]).eq(0).sum().item(), torch.squeeze(targets[:, 1]).eq(0).sum().item()))
+                true_pos_test += np.array((predicted[0, target_squeezed[0, :].eq(1)].eq(1).sum().item(), predicted[1, target_squeezed[1, :].eq(1)].eq(1).sum().item()))
+                true_neg_test += np.array((predicted[0, target_squeezed[0, :].eq(0)].eq(0).sum().item(), predicted[1, target_squeezed[1, :].eq(0)].eq(0).sum().item()))
+            else:
+                outputs = torch.nn.functional.softmax(outputs, dim=1)
+                _, predicted = outputs.max(1)
+                scores_test = np.concatenate((scores_test, outputs[:, 1].cpu().detach().numpy()))
+                true_labels_test = np.concatenate((true_labels_test, targets.cpu().detach().numpy()))
+                correct_labeling_test += predicted.eq(targets).sum().item()
+                total_pos_test += targets.eq(1).sum().item()
+                total_neg_test += targets.eq(0).sum().item()
+                true_pos_test += predicted[targets.eq(1)].eq(1).sum().item()
+                true_neg_test += predicted[targets.eq(0)].eq(0).sum().item()
             total_test += targets.size(0)
-            correct_labeling_test += predicted.eq(targets).sum().item()
-            total_pos_test += targets.eq(1).sum().item()
-            total_neg_test += targets.eq(0).sum().item()
-            true_pos_test += predicted[targets.eq(1)].eq(1).sum().item()
-            true_neg_test += predicted[targets.eq(0)].eq(0).sum().item()
 
-        #if not args.bootstrap:
-        acc = 100 * float(correct_labeling_test) / total_test
-        bacc = 100. * ((true_pos_test + EPS) / (total_pos_test + EPS) + (true_neg_test + EPS) / (total_neg_test + EPS)) / 2
-        roc_auc = np.nan
-        if not all(true_labels_test == true_labels_test[0]): #more than one label
-            fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
-            roc_auc = auc(fpr, tpr)
-        #RanS 8.12.20, perform slide inference
-        patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
-        slide_mean_score_df = patch_df.groupby('slide').mean()
-        roc_auc_slide = np.nan
-        if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]): #more than one label
-            roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-        #else: #bootstrap
-        if args.bootstrap:
+        #perform slide inference
+        if not multi_target:
+            patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores_test, 'labels': true_labels_test})
+            slide_mean_score_df = patch_df.groupby('slide').mean()
+            roc_auc_slide = np.nan
+            if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]): #more than one label
+                roc_auc_slide = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
+
+        if args.bootstrap and not multi_target: #does not support multi target!
             # load dataset
             # configure bootstrap
             n_iterations = 100
@@ -316,11 +366,6 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             all_preds = np.array([int(score > 0.5) for score in scores_test])
 
             for ii in range(n_iterations):
-                #slide_resampled, scores_resampled, labels_resampled = resample(slide_names, scores, true_labels)
-                #fpr, tpr, _ = roc_curve(labels_resampled, scores_resampled)
-                #patch_df = pd.DataFrame({'slide': slide_resampled, 'scores': scores_resampled, 'labels': labels_resampled})
-
-                #patch_df = pd.DataFrame({'slide': slide_names, 'scores': scores, 'labels': true_labels})
                 slide_names = np.array(slide_names)
                 slide_choice = resample(np.unique(np.array(slide_names)))
                 slide_resampled = np.concatenate([slide_names[slide_names == slide] for slide in slide_choice])
@@ -344,13 +389,10 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
                 slide_mean_score_df = patch_df.groupby('slide').mean()
                 if not all(slide_mean_score_df['labels'] == slide_mean_score_df['labels'][0]):  # more than one label
                     slide_roc_auc_array[ii] = roc_auc_score(slide_mean_score_df['labels'], slide_mean_score_df['scores'])
-            #roc_auc = np.nanmean(roc_auc_array)
-            #roc_auc_slide = np.nanmean(slide_roc_auc_array)
+
             roc_auc_std = np.nanstd(roc_auc_array)
             roc_auc_slide_std = np.nanstd(slide_roc_auc_array)
-            #acc = np.nanmean(acc_array)
             acc_err = np.nanstd(acc_array)
-            #bacc = np.nanmean(bacc_array)
             bacc_err = np.nanstd(bacc_array)
 
             all_writer.add_scalar('Test_errors/Accuracy error', acc_err, epoch)
@@ -359,16 +401,40 @@ def check_accuracy(model: nn.Module, data_loader: DataLoader, all_writer, DEVICE
             if args.n_patches_test > 1:
                 all_writer.add_scalar('Test_errors/slide AUC error', roc_auc_slide_std, epoch)
 
-        all_writer.add_scalar('Test/Accuracy', acc, epoch)
-        all_writer.add_scalar('Test/Balanced Accuracy', bacc, epoch)
-        all_writer.add_scalar('Test/Roc-Auc', roc_auc, epoch)
-        if args.n_patches_test > 1:
-            all_writer.add_scalar('Test/slide AUC', roc_auc_slide, epoch)
-
-        if args.n_patches_test > 1:
-            print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
+        #acc = 100 * float(correct_labeling_test) / total_test
+        acc = 100 * correct_labeling_test / total_test
+        bacc = 100. * ((true_pos_test + EPS) / (total_pos_test + EPS) + (true_neg_test + EPS) / (total_neg_test + EPS)) / 2
+        if multi_target:
+            roc_auc = np.empty(2)
+            roc_auc[:] = np.nan
+            if len(np.unique(true_labels_test[0, true_labels_test[0, :] >= 0])) > 1:  # more than one label
+                fpr_train, tpr_train, _ = roc_curve(true_labels_test[0, true_labels_test[0, :] >= 0],
+                                                    scores_test[0, true_labels_test[0, :] >= 0])
+                roc_auc[0] = auc(fpr_train, tpr_train)
+            if len(np.unique(true_labels_test[1, true_labels_test[1, :] >= 0])) > 1:  # more than one label
+                fpr_train, tpr_train, _ = roc_curve(true_labels_test[1, true_labels_test[1, :] >= 0],
+                                                    scores_test[1, true_labels_test[1, :] >= 0])
+                roc_auc[1] = auc(fpr_train, tpr_train)
+            all_writer.add_scalars('Train/Balanced Accuracy',
+                                   {target0: bacc[0], target1: bacc[1]}, epoch)
+            all_writer.add_scalars('Train/Roc-Auc', {target0: roc_auc[0], target1: roc_auc[1]}, epoch)
+            all_writer.add_scalars('Train/Accuracy', {target0: acc[0], target1: acc[1]}, epoch)
         else:
-            print('Tile AUC of {:.2f} over Test set'.format(roc_auc))
+            roc_auc = np.nan
+            if not all(true_labels_test == true_labels_test[0]):  # more than one label
+                fpr, tpr, _ = roc_curve(true_labels_test, scores_test)
+                roc_auc = auc(fpr, tpr)
+
+            all_writer.add_scalar('Test/Accuracy', acc, epoch)
+            all_writer.add_scalar('Test/Balanced Accuracy', bacc, epoch)
+            all_writer.add_scalar('Test/Roc-Auc', roc_auc, epoch)
+            if args.n_patches_test > 1:
+                all_writer.add_scalar('Test/slide AUC', roc_auc_slide, epoch)
+
+            if args.n_patches_test > 1:
+                print('Slide AUC of {:.2f} over Test set'.format(roc_auc_slide))
+            else:
+                print('Tile AUC of {:.2f} over Test set'.format(roc_auc))
     model.train()
     return acc, bacc, roc_auc
 
@@ -561,13 +627,24 @@ if __name__ == '__main__':
                 if torch.is_tensor(v):
                     state[k] = v.to(DEVICE)
 
+    if len(args.target.split('+')) > 1:
+        multi_target = True
+        target0, target1 = args.target.split('+')
+        if model.linear.out_features != 4:
+            raise IOError('Model defined does not support multitarget training, select model with 4 output channels')
+    else:
+        multi_target = False
+
     if args.focal:
         criterion = utils.FocalLoss(gamma=2)  # RanS 18.7.21
         criterion.to(DEVICE) #RanS 20.7.21
     elif args.target == 'Survival_Time':
         criterion = Cox_loss
     else:
-        criterion = nn.CrossEntropyLoss()
+        if multi_target:
+            criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='none')
+        else:
+            criterion = nn.CrossEntropyLoss()
 
     #RanS 3.11.21
     if args.RAM_saver:

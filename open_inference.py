@@ -69,10 +69,25 @@ for ind, key in enumerate(inference_files.keys()):
         else:
             IOError('inference data is of unsupported size!')
 
+        #RanS 9.12.21, auc per dataset
+        Temp = False
+        if Temp:
+            roc_auc1 = roc_auc_score(np.array(all_targets)[all_slide_datasets=='Ipatimup'], np.array(all_scores)[all_slide_datasets=='Ipatimup'])
+            roc_auc2 = roc_auc_score(np.array(all_targets)[all_slide_datasets == 'Covilha'],np.array(all_scores)[all_slide_datasets == 'Covilha'])
+            roc_auc3 = roc_auc_score(np.array(all_targets)[all_slide_datasets == 'HEROHE'],np.array(all_scores)[all_slide_datasets == 'HEROHE'])
+
+            q = pd.read_excel(r'C:\Pathnet_results\MIL_general_try4\ABCTB_runs\survival\exp20094\Inference\train\survival_fold2, 3, 4, 5_exp20094_epoch1000_patch_scores_fixed.xlsx')
+            roc_auc2 = roc_auc_score(np.array(q[q['test fold idx breast'] == 2]['slide_label']), np.array(q[q['test fold idx breast'] == 2]['slide_score']))
+            roc_auc3 = roc_auc_score(np.array(q[q['test fold idx breast'] == 3]['slide_label']), np.array(q[q['test fold idx breast'] == 3]['slide_score']))
+            roc_auc4 = roc_auc_score(np.array(q[q['test fold idx breast'] == 4]['slide_label']), np.array(q[q['test fold idx breast'] == 4]['slide_score']))
+            roc_auc5 = roc_auc_score(np.array(q[q['test fold idx breast'] == 5]['slide_label']), np.array(q[q['test fold idx breast'] == 5]['slide_score']))
+
         if save_csv:
             patch_scores_df = pd.DataFrame(patch_scores)
             patch_scores_df.insert(0, "slide_name", all_slide_names)
+            patch_scores_df.insert(0, "dataset", all_slide_datasets)
             patch_scores_df.insert(0, "slide_label", all_targets)
+            patch_scores_df.insert(0, "slide_score", all_scores)
             patch_scores_df.to_csv(os.path.join(inference_dir, key + '_patch_scores.csv'))
 
             try:
@@ -90,7 +105,16 @@ for ind, key in enumerate(inference_files.keys()):
             except:
                 pass
 
-        roc_auc.append(auc(fpr, tpr))
+        if len(fpr) == 1:
+            # temp RanS 20.12.21
+            my_scores = np.array(all_scores)
+            my_targets = np.array(all_targets)
+            my_scores = my_scores[my_targets >= 0]
+            my_targets = my_targets[my_targets >= 0]
+            fpr, tpr, _ = roc_curve(my_targets, my_scores)
+            roc_auc.append(roc_auc_score(my_targets, my_scores))
+        else:
+            roc_auc.append(auc(fpr, tpr))
         # RanS 18.1.21
         #temp fix RanS 4.2.21
         if patch_scores.ndim == 3:
@@ -148,10 +172,10 @@ for ind, key in enumerate(inference_files.keys()):
     EPS = 1e-7
     print(key)
     print('{} / {} correct classifications'.format(int(len(all_labels) - np.abs(np.array(all_targets) - np.array(all_labels)).sum()), len(all_labels)))
-    fpr, tpr, _ = roc_curve(all_targets, all_scores)
-    roc_auc1 = roc_auc_score(all_targets, all_scores)
+    #fpr, tpr, _ = roc_curve(all_targets, all_scores)
+    #roc_auc1 = roc_auc_score(all_targets, all_scores)
     balanced_acc = 100. * ((true_pos + EPS) / (total_pos + EPS) + (true_neg + EPS) / (total_neg + EPS)) / 2
-    print('roc_auc:', roc_auc1)
+    print('roc_auc:', roc_auc[-1])
     print('balanced_acc:', balanced_acc)
     print('np.sum(all_labels):', np.sum(all_labels))
 

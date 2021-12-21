@@ -369,7 +369,6 @@ def run_data(experiment: str = None,
                 # One of Gil's experiments
                 run_file_name = r'/mnt/gipnetapp_public/sgils/ran/runs/run_data.xlsx'
                 location_prefix = '/mnt/gipnetapp_public/sgils/ran/'
-                #raise Exception('Need to get permission to Gils drive and then implement this part')
         else:
             run_file_name = 'runs/run_data.xlsx'
 
@@ -377,11 +376,23 @@ def run_data(experiment: str = None,
         run_file_name = 'runs/run_data.xlsx'
 
     if os.path.isfile(run_file_name):
-        try:
-            run_DF = pd.read_excel(run_file_name)
-        except (XLRDError, BadZipFile):
+        read_success = False
+        read_attempts = 0
+        while not read_success and read_attempts < 10:
+            try:
+                run_DF = pd.read_excel(run_file_name)
+                read_success = True
+            except (XLRDError, BadZipFile):
+                print('Couldn\'t open file {}'.format(run_file_name))
+                return
+            except ValueError:
+                print('run_data file is being used, retrying in 5 seconds')
+                read_attempts += 1
+                time.sleep(5)
+        if not read_success:
             print('Couldn\'t open file {}'.format(run_file_name))
             return
+
         try:
             run_DF.drop(labels='Unnamed: 0', axis='columns',  inplace=True)
         except KeyError:
@@ -960,28 +971,30 @@ def get_datasets_dir_dict(Dataset: str):
 
 
 def assert_dataset_target(DataSet, target_kind):
-    if DataSet == 'PORTO_HE' and target_kind not in ['PDL1', 'EGFR', 'is_full_cancer']:
+    #Support multi targets, RanS 8.12.21
+    if type(target_kind) != list:
+        target_kind = [target_kind]
+    target_kind = set(target_kind)
+
+    if DataSet == 'PORTO_HE' and not target_kind <= {'PDL1', 'EGFR', 'is_full_cancer'}:
         raise ValueError('For PORTO_HE DataSet, target should be one of: PDL1, EGFR')
-    elif DataSet == 'PORTO_PDL1' and target_kind != 'PDL1':
+    elif DataSet == 'PORTO_PDL1' and not target_kind <= {'PDL1'}:
         raise ValueError('For PORTO_PDL1 DataSet, target should be PDL1')
-    elif DataSet == 'HEROHE' and target_kind != 'Her2':
-        raise ValueError('for HEROHE DataSet, target should be Her2')
-    #elif (DataSet == 'TCGA' or DataSet == 'CARMEL' or DataSet == 'CAT') and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
-    elif (DataSet in ['TCGA', 'CAT']) and target_kind not in ['ER', 'PR', 'Her2', 'OR']:
+    elif (DataSet in ['TCGA', 'CAT', 'ABCTB_TCGA']) and not target_kind <= {'ER', 'PR', 'Her2', 'OR'}:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
-    elif (DataSet in ['IC','HIC']) and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67']:
+    elif (DataSet in ['IC', 'HIC', 'HEROHE']) and not target_kind <= {'ER', 'PR', 'Her2', 'OR', 'Ki67'}:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
-    elif (DataSet == 'CARMEL') and target_kind not in ['ER', 'PR', 'Her2', 'OR', 'Ki67', 'ER100']:
+    elif (DataSet == 'CARMEL') and not target_kind <= {'ER', 'PR', 'Her2', 'OR', 'Ki67', 'ER100'}:
         raise ValueError('target should be one of: ER, PR, Her2, OR')
-    elif (DataSet == 'RedSquares') and target_kind != 'RedSquares':
+    elif (DataSet == 'RedSquares') and not target_kind <= {'RedSquares'}:
         raise ValueError('target should be: RedSquares')
-    elif DataSet == 'SHEBA' and target_kind != 'Onco':
+    elif DataSet == 'SHEBA' and not target_kind <= {'Onco'}:
         raise ValueError('for SHEBA DataSet, target should be Onco')
-    elif DataSet == 'TCGA_LUNG' and target_kind not in ['is_cancer', 'is_LUAD', 'is_full_cancer']:
+    elif DataSet == 'TCGA_LUNG' and not target_kind <= {'is_cancer', 'is_LUAD', 'is_full_cancer'}:
         raise ValueError('for TCGA_LUNG DataSet, target should be is_cancer or is_LUAD')
-    elif DataSet == 'LEUKEMIA' and target_kind not in ['ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B', 'MRD']:
+    elif DataSet == 'LEUKEMIA' and not target_kind <= {'ALL','is_B','is_HR', 'is_over_6', 'is_over_10', 'is_over_15', 'WBC_over_20', 'WBC_over_50', 'is_HR_B', 'is_tel_aml_B', 'is_tel_aml_non_hr_B', 'MRD'}:
         raise ValueError('for LEUKEMIA DataSet, target should be ALL, is_B, is_HR, is_over_6, is_over_10, is_over_15, WBC_over_20, WBC_over_50, is_HR_B, is_tel_aml_B, is_tel_aml_non_hr_B, MRD')
-    elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and target_kind not in ['ER', 'PR', 'Her2', 'survival', 'Survival_Time', 'Survival_Binary']:
+    elif (DataSet in ['ABCTB', 'ABCTB_TIF']) and not target_kind <= {'ER', 'PR', 'Her2', 'survival', 'Survival_Time', 'Survival_Binary'}:
         raise ValueError('target should be one of: ER, PR, Her2, survival, Survival_Time, Survival_Binary')
 
 def show_patches_and_transformations(X, images, tiles, scale_factor, tile_size):
@@ -1565,13 +1578,19 @@ def dataset_properties_to_location(dataset_name_list: list, receptor: str, test_
     return dataset_location_list
 
 
-def get_label(target):
-    if target == 'Positive':
-        return [1]
-    elif target == 'Negative':
-        return [0]
-    else: #unknown
-        return [-1]
+def get_label(target, multi_target=False):
+    if multi_target:
+        label = []
+        for t in target:
+            label.append(get_label(t))
+        return label
+    else:
+        if target == 'Positive':
+            return [1]
+        elif target == 'Negative':
+            return [0]
+        else: #unknown
+            return [-1]
 
 
 def get_RegModel_Features_location_dict(train_DataSet: str, target: str, test_fold: int):
