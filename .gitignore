@@ -1,1 +1,4 @@
 .idea/
+data/
+results/
+__pycache__/

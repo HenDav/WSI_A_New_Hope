@@ -1,0 +1,41 @@
+name: wsi-mil
+channels:
+  - nvidia
+  - pytorch
+  - defaults
+  - conda-forge
+  - sebp
+  - anaconda
+dependencies:
+  - python=3.9
+  - pytorch
+  - torchaudio
+  - torchvision
+  - cudatoolkit=11.3
+  - ipython
+  - numpy
+  - scipy
+  - scikit-learn
+  - scikit-image
+  - jupyterlab
+  - matplotlib
+  - jupyter
+  - pandas
+  - cython
+  - pytest
+  - tqdm
+  - opencv
+  - freetype
+  - plotly
+  - ipykernel
+  - pip
+  - python-kaleido
+  - xlrd
+  - scikit-survival
+  - psutil
+  - tensorboard
+  - openpyxl
+  - pip:
+      - openslide-python
+      - opencv-python
+      - bresenham
