@@ -27,7 +27,7 @@ def list_subdirectories(base_dir='.'):
 
 
 def get_latest_subdirectory(base_dir='.'):
-    subdirectories = list_subdirectories(base_dir)
+    subdirectories = list_subdirectories(base_dir=base_dir)
     return os.path.normpath(max(subdirectories, key=os.path.getmtime))
 
 

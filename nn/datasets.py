@@ -5,7 +5,10 @@ import random
 import time
 import pathlib
 import math
+import io
 import queue
+from datetime import datetime
+from pathlib import Path
 from multiprocessing import Process, Queue, SimpleQueue, cpu_count
 
 # tqdm
@@ -34,16 +37,18 @@ from matplotlib import pyplot as plt
 
 # sklearn
 from skimage.draw import line
+from skimage.metrics import structural_similarity
 
 # wsi
 import utils
 
 
 class WSIOnlineDataset(Dataset):
-    def __init__(self, dataset_size, buffer_size, max_size, replace, num_workers):
+    def __init__(self, dataset_size, buffer_size, max_size, replace, num_workers, train):
         self._dataset_size = dataset_size
         self._replace = replace
         self._num_workers = num_workers
+        self._train = train
         self._buffer_size = buffer_size
         self._q = Queue(maxsize=max_size)
         self._args = [self._q]
@@ -69,21 +74,35 @@ class WSIOnlineDataset(Dataset):
 
         return tuplet
 
-    def start(self):
+    def start(self, load_buffer=False, buffer_base_dir_path='./buffers'):
         self._workers = [Process(target=self._map_func, args=self._args) for i in range(self._num_workers)]
-
         for i, worker in enumerate(self._workers):
             worker.start()
             print(f'\rWorker Started {i+1} / {self._num_workers}', end='')
 
-        print(f'\nItem {len(self._items)} / {self._buffer_size}', end='')
-        while True:
-            if self._q.empty() is False:
-                self._items.append(self._q.get())
-                print(f'\rItem {len(self._items)} / {self._buffer_size}', end='')
-                if len(self._items) == self._buffer_size:
-                    break
-        print('\n')
+        buffer_type_dir_name = 'train' if self._train is True else 'validation'
+        buffer_dir_path = os.path.normpath(os.path.join(buffer_base_dir_path, buffer_type_dir_name))
+        buffer_file_name = 'train_buffer.pt' if self._train is True else 'validation_buffer.pt'
+        if load_buffer is False:
+            print(f'\nItem {len(self._items)} / {self._buffer_size}', end='')
+            while True:
+                if self._q.empty() is False:
+                    print(f'Queue size = {self._q.qsize()}')
+                    self._items.append(self._q.get())
+                    print(f'\rItem {len(self._items)} / {self._buffer_size}', end='')
+                    if len(self._items) == self._buffer_size:
+                        buffers_dir_path = os.path.normpath(os.path.join(buffer_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
+                        buffer_file_path = os.path.join(buffers_dir_path, buffer_file_name)
+                        Path(buffers_dir_path).mkdir(parents=True, exist_ok=True)
+                        torch.save(self._items, buffer_file_path)
+                        break
+            print('\n')
+        else:
+            latest_dir_path = utils.get_latest_subdirectory(base_dir=buffer_dir_path)
+            buffer_file_path = os.path.join(latest_dir_path, buffer_file_name)
+            with open(buffer_file_path, 'rb') as f:
+                buffer = io.BytesIO(f.read())
+                self._items = torch.load(buffer)
 
     def stop(self):
         for i, worker in enumerate(self._workers):
@@ -303,7 +322,7 @@ class WSIDistanceDataset(WSIOnlineDataset):
             anchor_tile_grayscale = anchor_tile.convert('L')
             hist, _ = np.histogram(anchor_tile_grayscale, bins=tile_size)
             white_ratio = np.sum(hist[170:]) / (tile_size*tile_size)
-            if white_ratio > 0.3:
+            if white_ratio > 0.5:
                 attempts = attempts + 1
                 continue
 
@@ -378,6 +397,14 @@ class WSIDistanceDataset(WSIOnlineDataset):
                 negative_point = negative_location + negative_point_offset
                 # negative_tile = transform(WSIDistanceDataset.read_region_around_point(slide=slide, point=negative_point, tile_size=adjusted_tile_size, level=level))
                 negative_tile = WSIDistanceDataset.read_region_around_point(slide=slide, point=negative_point, tile_size=tile_size, adjusted_tile_size=adjusted_tile_size, level=level)
+
+                similarity_score = structural_similarity(im1=np.array(anchor_tile), im2=np.array(negative_tile), multichannel=True)
+                if similarity_score > 0.1:
+                    attempts = attempts + 1
+                    continue
+
+                # print(similarity_score)
+
                 negative_tiles.append(negative_tile)
                 input.append(np.array(negative_tile))
                 # input.append(transforms.ToTensor()(negative_tile))
@@ -442,7 +469,8 @@ class WSIDistanceDataset(WSIOnlineDataset):
             buffer_size=buffer_size,
             max_size=max_size,
             replace=replace,
-            num_workers=num_workers)
+            num_workers=num_workers,
+            train=train)
 
         self._counter = 0
         self._dataset_name = dataset_name
@@ -452,7 +480,6 @@ class WSIDistanceDataset(WSIOnlineDataset):
         self._test_fold = test_fold
         self._inner_radius = inner_radius
         self._outer_radius = outer_radius
-        self._train = train
         self._local_path_prefix = datasets_base_dir_path
         self._slide_descriptors = []
 

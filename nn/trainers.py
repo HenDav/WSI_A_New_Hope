@@ -220,7 +220,11 @@ class WSIDistanceModelTrainer(ModelTrainer):
     def _preprocess_batch(self, batch_data):
         input_features = batch_data['input_features']
         shape = input_features.shape
-        preprocessed_input_features = self._transform(torch.reshape(input_features, (shape[0] * shape[1], shape[2], shape[3], shape[4])).type(dtype=torch.float32).cuda() / 255)
+        # preprocessed_input_features = self._transform(torch.reshape(input_features, (shape[0] * shape[1], shape[2], shape[3], shape[4])).type(dtype=torch.float32).cuda() / 255)
+        preprocessed_input_features = torch.reshape(input_features, (shape[0] * shape[1], shape[2], shape[3], shape[4])).type(dtype=torch.float32).cuda() / 255
+        for i in range(shape[0] * shape[1]):
+            preprocessed_input_features[i, :, :, :] = self._transform(preprocessed_input_features[i, :, :, :])
+
         return preprocessed_input_features
 
     def _postprocess_batch(self, output_features, batch_data):
