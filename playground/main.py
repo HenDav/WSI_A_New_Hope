@@ -1,42 +1,30 @@
 # python peripherals
-import random
 import os
 import sys
-import math
-from pathlib import Path
 
 # numpy
-import numpy
 
 # pandas
-import pandas
 
 # ipython
 from IPython.display import display, HTML
 
 # matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import matplotlib.lines
 
 # plotly
-import plotly.express as px
 
 # pytorch
-import torch
 from torch.utils.data.sampler import SubsetRandomSampler
-from torch.utils.data.sampler import SequentialSampler
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
 # wsi-mil
 sys.path.insert(1, os.path.join(sys.path[0], './..'))
 from nn import datasets
-import utils
 from nn import trainers
 
 # openslide
-import openslide
 
 if __name__ == '__main__':
     dataset_name = 'TCGA'
@@ -50,7 +38,7 @@ if __name__ == '__main__':
     batch_size = 4
     buffers_base_dir = 'C:/GitHub/WSI_MIL/buffers'
 
-    train_dataset = datasets.WSIDistanceDataset(
+    train_dataset = datasets.WSITuplesGenerator(
         dataset_size=dataset_size,
         buffer_size=50,
         replace=True,

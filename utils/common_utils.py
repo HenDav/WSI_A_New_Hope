@@ -44,19 +44,20 @@ def get_cpu_count():
     return multiprocessing.cpu_count()
 
 
-def get_pixel_to_mm(downsample, image_file_suffix):
-    if image_file_suffix == '.svs':
-        return 0.001 / downsample
-
-    raise 'Unknown image type'
-
-
-def get_mm_to_pixel(downsample, image_file_suffix):
-    return 1 / get_pixel_to_mm(downsample=downsample, image_file_suffix=image_file_suffix)
-
-
 def calculate_box_aspect_ratio(top_left, bottom_right):
     box = (bottom_right - top_left) + 1
     return box[0] / box[1]
 
 
+def to_int(x):
+    try:
+        return int(x)
+    except ValueError:
+        return 0
+
+
+def add_to_patient_dict(patient_dict, patient_barcode, x):
+    if patient_barcode not in patient_dict:
+        patient_dict[patient_barcode] = [x]
+    else:
+        patient_dict[patient_barcode].append(x)
