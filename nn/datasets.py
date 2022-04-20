@@ -9,14 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from multiprocessing import Process, Queue, connection, current_process
 import queue
+import glob
 
-# tqdm
-import numpy.random
+# pandas
 import pandas
 
-# data processing
-import numpy as np
-import pandas as pd
+# numpy
+import numpy
 
 # pytorch
 import torch
@@ -40,72 +39,16 @@ from matplotlib import pyplot as plt
 from utils import common_utils
 from utils import slide_utils
 
-class WSIOnlineDataset(Dataset):
-    def __init__(self, dataset_size, buffer_size, max_size, replace, num_workers, train):
-        self._dataset_size = dataset_size
-        self._replace = replace
-        self._num_workers = num_workers
-        self._train = train
-        self._buffer_size = buffer_size
-        self._q = Queue(maxsize=max_size)
-        self._args = [self._q]
-        self._items = []
+
+class WSITuplesDataset(Dataset):
+    def __init__(self, dir_path):
+        self._tuple_files = [f for f in glob.glob(os.path.normpath(os.path.join(dir_path, '*.npy')))]
 
     def __len__(self):
-        return self._dataset_size
+        return len(self._tuple_files)
 
     def __getitem__(self, index):
-        # item = {}
-        mod_index = np.mod(index, self._buffer_size)
-        tuplet = self._items[mod_index]
-        # for key in tuplet.keys():
-        #     item[key] = tuplet[key]
-
-        if self._replace is True:
-            try:
-                new_tuplet = self._q.get_nowait()
-                rand_index = int(np.random.randint(self._buffer_size, size=1))
-                self._items[rand_index] = new_tuplet
-            except queue.Empty:
-                pass
-
-        return tuplet
-
-    def start(self, load_buffer=False, buffer_base_dir_path='./buffers'):
-        self._workers = [Process(target=self._map_func, args=self._args) for i in range(self._num_workers)]
-        for i, worker in enumerate(self._workers):
-            worker.start()
-            print(f'\rWorker Started {i+1} / {self._num_workers}', end='')
-
-        buffer_type_dir_name = 'train' if self._train is True else 'validation'
-        buffer_dir_path = os.path.normpath(os.path.join(buffer_base_dir_path, buffer_type_dir_name))
-        buffer_file_name = 'train_buffer.pt' if self._train is True else 'validation_buffer.pt'
-        if load_buffer is False:
-            print(f'\nItem {len(self._items)} / {self._buffer_size}', end='')
-            while True:
-                if self._q.empty() is False:
-                    print(f'Queue size = {self._q.qsize()}')
-                    self._items.append(self._q.get())
-                    print(f'\rItem {len(self._items)} / {self._buffer_size}', end='')
-                    if len(self._items) == self._buffer_size:
-                        buffers_dir_path = os.path.normpath(os.path.join(buffer_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
-                        buffer_file_path = os.path.join(buffers_dir_path, buffer_file_name)
-                        Path(buffers_dir_path).mkdir(parents=True, exist_ok=True)
-                        torch.save(self._items, buffer_file_path)
-                        break
-            print('\n')
-        else:
-            latest_dir_path = utils.get_latest_subdirectory(base_dir=buffer_dir_path)
-            buffer_file_path = os.path.join(latest_dir_path, buffer_file_name)
-            with open(buffer_file_path, 'rb') as f:
-                buffer = io.BytesIO(f.read())
-                self._items = torch.load(buffer)
-
-    def stop(self):
-        for i, worker in enumerate(self._workers):
-            worker.terminate()
-
-        self._q.close()
+        return numpy.load(self._tuple_files[index])
 
 
 class WSITuplesGenerator:
@@ -130,6 +73,8 @@ class WSITuplesGenerator:
     _max_attempts = 10
     _white_ratio_threshold = 0.5
     _histogram_min_intensity_level = 170
+    _min_component_ratio = 0.92
+    _max_aspect_ratio_diff = 0.02
 
     @staticmethod
     def get_total_tiles_column_name(tile_size, desired_magnification):
@@ -187,9 +132,9 @@ class WSITuplesGenerator:
         for _, dataset_id in enumerate(dataset_paths):
             slide_metadata_file = os.path.join(dataset_paths[dataset_id], WSITuplesGenerator.get_slides_data_file_name(dataset_id=dataset_id))
             grid_metadata_file = os.path.join(dataset_paths[dataset_id], WSITuplesGenerator.get_grids_folder_name(desired_magnification=desired_magnification), WSITuplesGenerator._grid_data_file_name)
-            slide_metadata_df = pd.read_excel(io=slide_metadata_file)
-            grid_metadata_df = pd.read_excel(io=grid_metadata_file)
-            current_metadata_df = pd.DataFrame({**slide_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict(), **grid_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict()})
+            slide_metadata_df = pandas.read_excel(io=slide_metadata_file)
+            grid_metadata_df = pandas.read_excel(io=grid_metadata_file)
+            current_metadata_df = pandas.DataFrame({**slide_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict(), **grid_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict()})
             if metadata_df is None:
                 metadata_df = current_metadata_df
             else:
@@ -198,6 +143,10 @@ class WSITuplesGenerator:
         metadata_df.reset_index(inplace=True)
         metadata_df.rename(columns={'index': WSITuplesGenerator._file_column_name}, inplace=True)
         return metadata_df
+
+    @staticmethod
+    def _enhance_datasets_metadata(enhancement_dir_path, metadata_df):
+        brca_tcga_pan_can_atlas_2018_df = pandas.read_excel(io=os.path.join(enhancement_dir_path, 'brca_tcga_pan_can_atlas_2018_clinical_data.tsv'))
 
     @staticmethod
     def _standardize_datasets_metadata(metadata_df):
@@ -221,13 +170,13 @@ class WSITuplesGenerator:
 
         indices_of_slides_with_few_tiles = set(metadata_df.index[metadata_df[legitimate_tiles_column_name] < minimal_tiles_count])
 
-        all_indices = set(np.array(range(metadata_df.shape[0])))
-        valid_slide_indices = np.array(list(all_indices - indices_of_slides_without_grid - indices_of_slides_with_few_tiles - indices_of_slides_with_0_tiles - indices_of_slides_with_bad_seg))
+        all_indices = set(numpy.array(range(metadata_df.shape[0])))
+        valid_slide_indices = numpy.array(list(all_indices - indices_of_slides_without_grid - indices_of_slides_with_few_tiles - indices_of_slides_with_0_tiles - indices_of_slides_with_bad_seg))
         return metadata_df.iloc[valid_slide_indices]
 
     @staticmethod
     def _add_folds_to_metadata(metadata_df, folds_count):
-        folds = np.random.randint(folds_count, size=metadata_df.shape[0])
+        folds = numpy.random.randint(folds_count, size=metadata_df.shape[0])
         metadata_df[WSITuplesGenerator._fold_column_name] = folds
         return metadata_df
 
@@ -240,7 +189,7 @@ class WSITuplesGenerator:
     def _validate_location(bitmap, indices):
         for i in range(3):
             for j in range(3):
-                current_indices = tuple(indices + np.array([i, j]))
+                current_indices = tuple(indices + numpy.array([i, j]))
                 if (not (0 <= current_indices[0] < bitmap.shape[0])) or (not (0 <= current_indices[1] < bitmap.shape[1])):
                     return False
 
@@ -255,11 +204,16 @@ class WSITuplesGenerator:
             tile_size,
             desired_magnification,
             minimal_tiles_count,
-            folds_count):
+            folds_count,
+            enhancement_dir_path):
 
         metadata_df = WSITuplesGenerator._load_datasets_metadata(
             dataset_paths=dataset_paths,
             desired_magnification=desired_magnification)
+
+        metadata_df = WSITuplesGenerator._enhance_datasets_metadata(
+            metadata_df=metadata_df,
+            enhancement_dir_path=enhancement_dir_path)
 
         metadata_df = WSITuplesGenerator._standardize_datasets_metadata(
             metadata_df=metadata_df)
@@ -278,15 +232,15 @@ class WSITuplesGenerator:
 
     @staticmethod
     def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
-        indices = (np.array(tile_locations) / original_tile_size).astype(int)
+        indices = (numpy.array(tile_locations) / original_tile_size).astype(int)
         dim1_size = indices[:, 0].max() + 1
         dim2_size = indices[:, 1].max() + 1
-        bitmap = np.zeros([dim1_size, dim2_size]).astype(int)
+        bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
 
         for (x, y) in indices:
             bitmap[x, y] = 1
 
-        tile_bitmap = np.uint8(Image.fromarray(bitmap))
+        tile_bitmap = numpy.uint8(Image.fromarray(bitmap))
 
         if plot_bitmap is True:
             plt.imshow(tile_bitmap, cmap='gray')
@@ -304,14 +258,14 @@ class WSITuplesGenerator:
 
         for component_id in range(1, components_count):
             current_bitmap = (components_labels == component_id)
-            component_indices = np.where(current_bitmap)
-            component_size = np.count_nonzero(current_bitmap)
-            top_left = np.array([np.min(component_indices[0]), np.min(component_indices[1])])
-            bottom_right = np.array([np.max(component_indices[0]), np.max(component_indices[1])])
-            tile_indices = np.array([component_indices[0], component_indices[1]]).transpose()
+            component_indices = numpy.where(current_bitmap)
+            component_size = numpy.count_nonzero(current_bitmap)
+            top_left = numpy.array([numpy.min(component_indices[0]), numpy.min(component_indices[1])])
+            bottom_right = numpy.array([numpy.max(component_indices[0]), numpy.max(component_indices[1])])
+            tile_indices = numpy.array([component_indices[0], component_indices[1]]).transpose()
 
             components.append({
-                'bitmap': current_bitmap.astype(int),
+                'tiles_bitmap': current_bitmap.astype(int),
                 'component_size': component_size,
                 'top_left': top_left,
                 'bottom_right': bottom_right,
@@ -326,7 +280,7 @@ class WSITuplesGenerator:
         for component in components_sorted[1:]:
             current_aspect_ratio = common_utils.calculate_box_aspect_ratio(component['top_left'], component['bottom_right'])
             current_component_size = component['component_size']
-            if np.abs(largest_component_aspect_ratio - current_aspect_ratio) < 0.02 and (current_component_size / largest_component_size) > 0.92:
+            if numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < WSITuplesGenerator._max_aspect_ratio_diff and (current_component_size / largest_component_size) > WSITuplesGenerator._min_component_ratio:
                 valid_components.append(component)
 
         return valid_components
@@ -358,6 +312,38 @@ class WSITuplesGenerator:
         for i, worker in enumerate(workers):
             worker.terminate()
 
+    @staticmethod
+    def _drain_queue(q, count):
+        items = []
+        while True:
+            try:
+                item = q.get_nowait()
+                items.append(item)
+                if len(items) == count:
+                    break
+            except queue.Empty:
+                pass
+        return items
+
+    @staticmethod
+    def _drain_queue_to_disk(q, count, dir_path, file_name_stem):
+        i = 0
+        Path(dir_path).mkdir(parents=True, exist_ok=True)
+        while True:
+            try:
+                item = q.get_nowait()
+                item_file_path = os.path.normpath(os.path.join(dir_path, f'{file_name_stem}_{i}.npy'))
+                numpy.save(item_file_path, item)
+                i = i + 1
+                if i == count:
+                    break
+            except queue.Empty:
+                pass
+
+    @staticmethod
+    def _append_tiles(tiles, example):
+        tiles.append(example['tile'])
+
     def _select_folds_from_metadata(self, folds):
         return self._metadata_df[self._metadata_df[WSITuplesGenerator._fold_column_name].isin(folds)]
 
@@ -385,7 +371,7 @@ class WSITuplesGenerator:
         component = components[component_index]
 
         tile_indices = component['tile_indices']
-        tiles_bitmap = component['bitmap']
+        tiles_bitmap = component['tiles_bitmap']
         slide = slide_data['slide']
         adjusted_tile_size = slide_data['adjusted_tile_size']
         level = slide_data['level']
@@ -395,10 +381,10 @@ class WSITuplesGenerator:
             if attempts == WSITuplesGenerator._max_attempts:
                 break
 
-            tile_index = np.random.randint(tile_indices.shape[0])
-            tile_indices = tile_indices[tile_index, :]
-            location = tile_indices * original_tile_size
-            point_offset = (original_tile_size * np.random.uniform(size=2)).astype(int)
+            index = int(numpy.random.randint(tile_indices.shape[0], size=1))
+            random_tile_indices = tile_indices[index, :]
+            location = random_tile_indices * original_tile_size
+            point_offset = (original_tile_size * numpy.random.uniform(size=2)).astype(int)
             point = point_offset + location
             bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
             if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
@@ -407,14 +393,14 @@ class WSITuplesGenerator:
 
             tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, adjusted_tile_size=adjusted_tile_size, level=level)
             tile_grayscale = tile.convert('L')
-            hist, _ = np.histogram(tile_grayscale, bins=self._tile_size)
-            white_ratio = np.sum(hist[WSITuplesGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
+            hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
+            white_ratio = numpy.sum(hist[WSITuplesGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
             if white_ratio > WSITuplesGenerator._white_ratio_threshold:
                 attempts = attempts + 1
                 continue
 
             return {
-                'tile': np.array(tile),
+                'tile': numpy.array(tile),
                 'point': point
             }
 
@@ -436,16 +422,16 @@ class WSITuplesGenerator:
         slide = slide_data['slide']
         adjusted_tile_size = slide_data['adjusted_tile_size']
         level = slide_data['level']
-        tiles_bitmap = component['bitmap']
+        tiles_bitmap = component['tiles_bitmap']
 
         attempts = 0
         while True:
             if attempts == WSITuplesGenerator._max_attempts:
                 break
 
-            positive_angle = 2 * np.pi * np.random.uniform(size=1)[0]
-            positive_dir = np.array([np.cos(positive_angle), np.sin(positive_angle)])
-            positive_radius = inner_radius_pixels * np.random.uniform(size=1)[0]
+            positive_angle = 2 * numpy.pi * numpy.random.uniform(size=1)[0]
+            positive_dir = numpy.array([numpy.cos(positive_angle), numpy.sin(positive_angle)])
+            positive_radius = inner_radius_pixels * numpy.random.uniform(size=1)[0]
             positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
             positive_bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
             if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=positive_bitmap_indices) is False:
@@ -459,7 +445,10 @@ class WSITuplesGenerator:
                 adjusted_tile_size=adjusted_tile_size,
                 level=level)
 
-            return np.array(positive_tile)
+            return {
+                'tile': numpy.array(positive_tile),
+                'point': positive_point
+            }
 
         return None
 
@@ -474,7 +463,7 @@ class WSITuplesGenerator:
                          (df[WSITuplesGenerator._er_status_column_name] != er_status) &
                          (df[WSITuplesGenerator._her2_status_column_name] != her2_status)]
 
-        index = int(np.random.randint(df.shape[0], size=1))
+        index = int(numpy.random.randint(filtered_df.shape[0], size=1))
         row_negative_patient = filtered_df.iloc[index]
         image_file_name_negative_patient = row_negative_patient[WSITuplesGenerator._file_column_name]
         slide_descriptor_negative_patient = self._image_file_name_to_slide_descriptor[image_file_name_negative_patient]
@@ -484,7 +473,7 @@ class WSITuplesGenerator:
     def _create_tile_locations(self, dataset_id, image_file_name_stem):
         grid_file_path = os.path.normpath(os.path.join(self._dataset_paths[dataset_id], f'Grids_{self._desired_magnification}', f'{image_file_name_stem}--tlsz{self._tile_size}.data'))
         with open(grid_file_path, 'rb') as file_handle:
-            locations = np.array(pickle.load(file_handle))
+            locations = numpy.array(pickle.load(file_handle))
             locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
 
         return locations
@@ -527,13 +516,19 @@ class WSITuplesGenerator:
             slide_descriptor = self._create_slide_descriptor(row=row)
             q.put(slide_descriptor)
 
-    def _tuples_creation_worker(self, df, slide_descriptors, negative_examples_count, q):
-        for slide_descriptor in slide_descriptors:
-            tiles_tuple = self._create_tuple(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
+    def _tuples_creation_worker(self, df, indices, negative_examples_count, q):
+        slide_descriptors_count = len(self._slide_descriptors)
+        for _ in indices:
+            while True:
+                slide_descriptor_index = numpy.random.randint(slide_descriptors_count)
+                slide_descriptor = self._slide_descriptors[slide_descriptor_index]
+                tiles_tuple = self._create_tuple(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
+                if tiles_tuple is not None:
+                    break
             q.put(tiles_tuple)
 
     def _create_tuple(self, df, slide_descriptor, negative_examples_count):
-        examples = []
+        tiles = []
 
         # Anchor Example
         component_index = WSITuplesGenerator._get_random_component_index(slide_descriptor=slide_descriptor)
@@ -544,7 +539,7 @@ class WSITuplesGenerator:
         if anchor_example is None:
             return None
 
-        examples.append(anchor_example)
+        WSITuplesGenerator._append_tiles(tiles=tiles, example=anchor_example)
 
         # Positive Example
         anchor_point = anchor_example['point']
@@ -556,7 +551,7 @@ class WSITuplesGenerator:
         if positive_example is None:
             return None
 
-        examples.append(positive_example)
+        WSITuplesGenerator._append_tiles(tiles=tiles, example=positive_example)
 
         # Negative Examples
         for i in range(negative_examples_count):
@@ -564,53 +559,43 @@ class WSITuplesGenerator:
             if negative_example is None:
                 return None
 
-            examples.append(negative_example)
+            WSITuplesGenerator._append_tiles(tiles=tiles, example=negative_example)
 
-        input_tuple = np.transpose(np.stack(examples), (0, 3, 1, 2))
+        tiles_tuple = numpy.transpose(numpy.stack(tiles), (0, 3, 1, 2))
 
-        return input_tuple
+        return tiles_tuple
 
     def save_metadata(self, output_file_path):
         self._metadata_df.to_excel(output_file_path)
 
     def _create_slide_descriptors(self, df, num_workers):
-        slide_descriptors = []
         q = Queue()
         rows_count = df.shape[0]
         indices = list(range(rows_count))
         indices_groups = common_utils.split(items=indices, n=num_workers)
         args = [(df, indices_group, q) for indices_group in indices_groups]
-        workers = WSITuplesGenerator._start_workers(
-            args=args,
-            f=self._slide_descriptors_creation_worker,
-            num_workers=num_workers)
-
-        while True:
-            try:
-                slide_descriptor = q.get_nowait()
-                slide_descriptors.append(slide_descriptor)
-                if len(slide_descriptors) == rows_count:
-                    break
-            except queue.Empty:
-                pass
-
+        workers = WSITuplesGenerator._start_workers(args=args, f=self._slide_descriptors_creation_worker, num_workers=num_workers)
+        slide_descriptors = WSITuplesGenerator._drain_queue(q=q, count=rows_count)
         WSITuplesGenerator._join_workers(workers=workers)
-
+        WSITuplesGenerator._stop_workers(workers=workers)
+        q.close()
         return slide_descriptors
 
-    def create_tuples(self, tuples_count, negative_examples_count, folds):
+    def create_tuples(self, tuples_count, negative_examples_count, folds, dir_path, num_workers):
+        q = Queue()
         df = self._select_folds_from_metadata(folds=folds)
-        self._slide_descriptors = self._create_slide_descriptors(df=df, num_workers=3)
+        self._slide_descriptors = self._create_slide_descriptors(df=df, num_workers=num_workers)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
-        slide_descriptors_count = len(self._slide_descriptors)
-        while True:
-            slide_descriptor_index = np.random.randint(slide_descriptors_count)
-            slide_descriptor = self._slide_descriptors[slide_descriptor_index]
-            tuple = self._create_tuple(
-                slide_descriptor=slide_descriptor,
-                negative_examples_count=negative_examples_count)
-            if tuple is None:
-                continue
+        indices = list(range(tuples_count))
+        indices_groups = common_utils.split(items=indices, n=num_workers)
+        args = [(df, indices_group, negative_examples_count, q) for indices_group in indices_groups]
+        workers = WSITuplesGenerator._start_workers(args=args, f=self._tuples_creation_worker, num_workers=num_workers)
+        # tuples = WSITuplesGenerator._drain_queue(q=q, count=tuples_count)
+        WSITuplesGenerator._drain_queue_to_disk(q=q, count=tuples_count, dir_path=dir_path, file_name_stem='tuple')
+        WSITuplesGenerator._join_workers(workers=workers)
+        WSITuplesGenerator._stop_workers(workers=workers)
+        q.close()
+        # return tuples
 
     def get_folds_count(self):
         return self._metadata_df[WSITuplesGenerator._fold_column_name].nunique() + 1
@@ -625,7 +610,8 @@ class WSITuplesGenerator:
             datasets_base_dir_path=None,
             dataset_ids=None,
             minimal_tiles_count=None,
-            folds_count=None):
+            folds_count=None,
+            enhancement_dir_path=None):
 
         self._inner_radius = inner_radius
         self._outer_radius = outer_radius
@@ -634,6 +620,7 @@ class WSITuplesGenerator:
         self._dataset_paths = WSITuplesGenerator._get_dataset_paths(
             dataset_ids=dataset_ids,
             datasets_base_dir_path=datasets_base_dir_path)
+        self._enhancement_dir_path = enhancement_dir_path
 
         if metadata_file_path is not None:
             self._metadata_df = WSITuplesGenerator._create_metadata(

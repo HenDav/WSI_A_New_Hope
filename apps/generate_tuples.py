@@ -1,6 +1,9 @@
 # python core
 import argparse
 
+# numpy
+import numpy as np
+
 # wsi
 import utils
 from nn import datasets
@@ -19,7 +22,7 @@ import torchvision
 parser = argparse.ArgumentParser(description='WSI Tuples Generator')
 parser.add_argument('--inner-radius', type=int, default=2)
 parser.add_argument('--outer-radius', type=int, default=10)
-parser.add_argument('--test-fold', type=int, default=1)
+parser.add_argument('--test-fold', type=int, default=0)
 parser.add_argument('--train', type=bool, default=True)
 parser.add_argument('--tile-size', type=int, default=256)
 parser.add_argument('--desired-magnification', type=int, default=10)
@@ -31,6 +34,8 @@ parser.add_argument('--folds-count', type=int, default=6)
 args = parser.parse_args()
 
 if __name__ == '__main__':
+    np.random.seed(30)
+
     train_tuples_generator = datasets.WSITuplesGenerator(
         inner_radius=args.inner_radius,
         outer_radius=args.outer_radius,
@@ -45,4 +50,4 @@ if __name__ == '__main__':
     folds = list(range(train_tuples_generator.get_folds_count()))
     train_folds = [fold for fold in folds if fold != args.test_fold]
     test_folds = [args.test_fold]
-    train_tuples_generator.create_tuples(negative_examples_count=2, folds=train_folds)
+    train_tuples_generator.create_tuples(tuples_count=1000, negative_examples_count=2, folds=train_folds, dir_path='C:/tests/tuples/train', num_workers=8)
