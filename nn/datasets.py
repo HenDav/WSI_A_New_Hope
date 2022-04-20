@@ -7,7 +7,8 @@ import io
 import queue
 from datetime import datetime
 from pathlib import Path
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, connection, current_process
+import queue
 
 # tqdm
 import numpy.random
@@ -231,16 +232,6 @@ class WSITuplesGenerator:
         return metadata_df
 
     @staticmethod
-    def _select_folds_from_metadata(metadata_df, folds_count, test_fold, train):
-        if train is True:
-            folds = list(range(folds_count))
-            folds.remove(test_fold)
-        else:
-            folds = [test_fold]
-
-        return metadata_df[metadata_df[WSITuplesGenerator._fold_column_name].isin(folds)]
-
-    @staticmethod
     def _calculate_bitmap_indices(point, tile_size):
         bitmap_indices = (point / tile_size).astype(int)
         return bitmap_indices
@@ -258,169 +249,13 @@ class WSITuplesGenerator:
                     return False
         return True
 
-    def _open_slide(self, image_file_path, desired_downsample):
-        slide = openslide.open_slide(image_file_path)
-        level, adjusted_tile_size = slide_utils.get_best_level_for_downsample(slide=slide, desired_downsample=desired_downsample, tile_size=self._tile_size)
-
-        return {
-            'slide': slide,
-            'level': level,
-            'adjusted_tile_size': adjusted_tile_size
-        }
-
-    def _calculate_inner_radius_pixels(self, desired_downsample, image_file_name_suffix):
-        mm_to_pixel = slide_utils.get_mm_to_pixel(downsample=desired_downsample, image_file_suffix=image_file_name_suffix)
-        inner_radius_pixels = self._inner_radius * mm_to_pixel
-        return inner_radius_pixels
-
-    def _create_random_example(self, slide_descriptor, component_index):
-        image_file_path = slide_descriptor['image_file_path']
-        desired_downsample = slide_descriptor['desired_downsample']
-        original_tile_size = slide_descriptor['original_tile_size']
-        components = slide_descriptor['components']
-        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
-        component = components[component_index]
-
-        tile_indices = component['tile_indices']
-        tiles_bitmap = component['bitmap']
-        slide = slide_data['slide']
-        adjusted_tile_size = slide_data['adjusted_tile_size']
-        level = slide_data['level']
-
-        attempts = 0
-        while True:
-            if attempts == WSITuplesGenerator._max_attempts:
-                break
-
-            tile_index = np.random.randint(tile_indices.shape[0])
-            tile_indices = tile_indices[tile_index, :]
-            location = tile_indices * original_tile_size
-            point_offset = (original_tile_size * np.random.uniform(size=2)).astype(int)
-            point = point_offset + location
-            bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
-            if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
-                attempts = attempts + 1
-                continue
-
-            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, adjusted_tile_size=adjusted_tile_size, level=level)
-            tile_grayscale = tile.convert('L')
-            hist, _ = np.histogram(tile_grayscale, bins=self._tile_size)
-            white_ratio = np.sum(hist[WSITuplesGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
-            if white_ratio > WSITuplesGenerator._white_ratio_threshold:
-                attempts = attempts + 1
-                continue
-
-            return {
-                'tile': np.array(tile),
-                'point': point
-            }
-
-        return None
-
-    def _create_anchor_example(self, slide_descriptor, component_index):
-        return self._create_random_example(
-            slide_descriptor=slide_descriptor,
-            component_index=component_index)
-
-    def _create_positive_example(self, slide_descriptor, component_index, anchor_point):
-        image_file_path = slide_descriptor['image_file_path']
-        desired_downsample = slide_descriptor['desired_downsample']
-        original_tile_size = slide_descriptor['original_tile_size']
-        image_file_name_suffix = slide_descriptor['image_file_name_suffix']
-        components = slide_descriptor['components']
-        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
-        component = components[component_index]
-
-        inner_radius_pixels = self._calculate_inner_radius_pixels(desired_downsample=desired_downsample, image_file_name_suffix=image_file_name_suffix)
-        slide = slide_data['slide']
-        adjusted_tile_size = slide_data['adjusted_tile_size']
-        level = slide_data['level']
-        tiles_bitmap = component['bitmap']
-
-        attempts = 0
-        while True:
-            if attempts == WSITuplesGenerator._max_attempts:
-                break
-
-            positive_angle = 2 * np.pi * np.random.uniform(size=1)[0]
-            positive_dir = np.array([np.cos(positive_angle), np.sin(positive_angle)])
-            positive_radius = inner_radius_pixels * np.random.uniform(size=1)[0]
-            positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
-            positive_bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
-            if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=positive_bitmap_indices) is False:
-                attempts = attempts + 1
-                continue
-
-            positive_tile = slide_utils.read_region_around_point(
-                slide=slide,
-                point=positive_point,
-                tile_size=self._tile_size,
-                adjusted_tile_size=adjusted_tile_size,
-                level=level)
-
-            return np.array(positive_tile)
-
-        return None
-
-    def _create_negative_example(self, slide_descriptor):
-        row_anchor_patient = self._metadata_df.loc[self._metadata_df[WSITuplesGenerator._file_column_name] == slide_descriptor['image_file_name']].iloc[0]
-        patient_barcode = row_anchor_patient[WSITuplesGenerator._patient_barcode_column_name]
-        er_status = row_anchor_patient[WSITuplesGenerator._er_status_column_name]
-        pr_status = row_anchor_patient[WSITuplesGenerator._pr_status_column_name]
-        her2_status = row_anchor_patient[WSITuplesGenerator._her2_status_column_name]
-        df = self._metadata_df[(self._metadata_df[WSITuplesGenerator._patient_barcode_column_name] != patient_barcode) &
-                               (self._metadata_df[WSITuplesGenerator._pr_status_column_name] != pr_status) &
-                               (self._metadata_df[WSITuplesGenerator._er_status_column_name] != er_status) &
-                               (self._metadata_df[WSITuplesGenerator._her2_status_column_name] != her2_status)]
-
-        index = int(np.random.randint(df.shape[0], size=1))
-        row_negative_patient = df.iloc[index]
-        image_file_name_negative_patient = row_negative_patient[WSITuplesGenerator._file_column_name]
-        slide_descriptor_negative_patient = self._image_file_name_to_slide_descriptor[image_file_name_negative_patient]
-        component_index = WSITuplesGenerator._get_random_component_index(slide_descriptor=slide_descriptor_negative_patient)
-        return self._create_random_example(slide_descriptor=slide_descriptor_negative_patient, component_index=component_index)
-
-
-    # @classmethod
-    # def _map_func(
-    #         cls,
-    #         q,
-    #         slide_descriptors,
-    #         tile_size,
-    #         inner_radius,
-    #         outer_radius,
-    #         transform,
-    #         patient_to_slide_descriptors,
-    #         pr_positive_patient_to_slide_descriptors,
-    #         pr_negative_patient_to_slide_descriptors,
-    #         er_positive_patient_to_slide_descriptors,
-    #         er_negative_patient_to_slide_descriptors):
-    #
-    #     slide_descriptors_count = len(slide_descriptors)
-    #     while True:
-    #         slide_descriptor_index = np.random.randint(slide_descriptors_count)
-    #         slide_descriptor = slide_descriptors[slide_descriptor_index]
-    #         patient_barcode = slide_descriptor['patient_barcode']
-    #         tuple = WSITuplesGenerator.create_tuple(slide_descriptor=slide_descriptor,
-    #                                                 tile_size=tile_size,
-    #                                                 inner_radius=inner_radius,
-    #                                                 outer_radius=outer_radius,
-    #                                                 negative_examples_count=2,
-    #                                                 transform=transform)
-    #         if tuple is None:
-    #             continue
-    #
-    #         q.put(tuple)
-
     @staticmethod
     def _create_metadata(
             dataset_paths,
             tile_size,
             desired_magnification,
             minimal_tiles_count,
-            folds_count,
-            test_fold,
-            train):
+            folds_count):
 
         metadata_df = WSITuplesGenerator._load_datasets_metadata(
             dataset_paths=dataset_paths,
@@ -438,12 +273,6 @@ class WSITuplesGenerator:
         metadata_df = WSITuplesGenerator._add_folds_to_metadata(
             metadata_df=metadata_df,
             folds_count=folds_count)
-
-        metadata_df = WSITuplesGenerator._select_folds_from_metadata(
-            metadata_df=metadata_df,
-            folds_count=folds_count,
-            test_fold=test_fold,
-            train=train)
 
         return metadata_df
 
@@ -508,6 +337,150 @@ class WSITuplesGenerator:
         component_index = int(numpy.random.randint(len(components), size=1))
         return component_index
 
+    @staticmethod
+    def _start_workers(args, f, num_workers):
+        workers = [Process(target=f, args=args[i]) for i in range(num_workers)]
+        print('')
+        for i, worker in enumerate(workers):
+            worker.start()
+            print(f'\rWorker Started {i + 1} / {num_workers}', end='', flush=True)
+        print('')
+
+        return workers
+
+    @staticmethod
+    def _join_workers(workers):
+        for i, worker in enumerate(workers):
+            worker.join()
+
+    @staticmethod
+    def _stop_workers(workers):
+        for i, worker in enumerate(workers):
+            worker.terminate()
+
+    def _select_folds_from_metadata(self, folds):
+        return self._metadata_df[self._metadata_df[WSITuplesGenerator._fold_column_name].isin(folds)]
+
+    def _open_slide(self, image_file_path, desired_downsample):
+        slide = openslide.open_slide(image_file_path)
+        level, adjusted_tile_size = slide_utils.get_best_level_for_downsample(slide=slide, desired_downsample=desired_downsample, tile_size=self._tile_size)
+
+        return {
+            'slide': slide,
+            'level': level,
+            'adjusted_tile_size': adjusted_tile_size
+        }
+
+    def _calculate_inner_radius_pixels(self, desired_downsample, image_file_name_suffix):
+        mm_to_pixel = slide_utils.get_mm_to_pixel(downsample=desired_downsample, image_file_suffix=image_file_name_suffix)
+        inner_radius_pixels = self._inner_radius * mm_to_pixel
+        return inner_radius_pixels
+
+    def _create_random_example(self, slide_descriptor, component_index):
+        image_file_path = slide_descriptor['image_file_path']
+        desired_downsample = slide_descriptor['desired_downsample']
+        original_tile_size = slide_descriptor['original_tile_size']
+        components = slide_descriptor['components']
+        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+        component = components[component_index]
+
+        tile_indices = component['tile_indices']
+        tiles_bitmap = component['bitmap']
+        slide = slide_data['slide']
+        adjusted_tile_size = slide_data['adjusted_tile_size']
+        level = slide_data['level']
+
+        attempts = 0
+        while True:
+            if attempts == WSITuplesGenerator._max_attempts:
+                break
+
+            tile_index = np.random.randint(tile_indices.shape[0])
+            tile_indices = tile_indices[tile_index, :]
+            location = tile_indices * original_tile_size
+            point_offset = (original_tile_size * np.random.uniform(size=2)).astype(int)
+            point = point_offset + location
+            bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
+            if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
+                attempts = attempts + 1
+                continue
+
+            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, adjusted_tile_size=adjusted_tile_size, level=level)
+            tile_grayscale = tile.convert('L')
+            hist, _ = np.histogram(tile_grayscale, bins=self._tile_size)
+            white_ratio = np.sum(hist[WSITuplesGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
+            if white_ratio > WSITuplesGenerator._white_ratio_threshold:
+                attempts = attempts + 1
+                continue
+
+            return {
+                'tile': np.array(tile),
+                'point': point
+            }
+
+        return None
+
+    def _create_anchor_example(self, slide_descriptor, component_index):
+        return self._create_random_example(slide_descriptor=slide_descriptor, component_index=component_index)
+
+    def _create_positive_example(self, slide_descriptor, component_index, anchor_point):
+        image_file_path = slide_descriptor['image_file_path']
+        desired_downsample = slide_descriptor['desired_downsample']
+        original_tile_size = slide_descriptor['original_tile_size']
+        image_file_name_suffix = slide_descriptor['image_file_name_suffix']
+        components = slide_descriptor['components']
+        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+        component = components[component_index]
+
+        inner_radius_pixels = self._calculate_inner_radius_pixels(desired_downsample=desired_downsample, image_file_name_suffix=image_file_name_suffix)
+        slide = slide_data['slide']
+        adjusted_tile_size = slide_data['adjusted_tile_size']
+        level = slide_data['level']
+        tiles_bitmap = component['bitmap']
+
+        attempts = 0
+        while True:
+            if attempts == WSITuplesGenerator._max_attempts:
+                break
+
+            positive_angle = 2 * np.pi * np.random.uniform(size=1)[0]
+            positive_dir = np.array([np.cos(positive_angle), np.sin(positive_angle)])
+            positive_radius = inner_radius_pixels * np.random.uniform(size=1)[0]
+            positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
+            positive_bitmap_indices = WSITuplesGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
+            if WSITuplesGenerator._validate_location(bitmap=tiles_bitmap, indices=positive_bitmap_indices) is False:
+                attempts = attempts + 1
+                continue
+
+            positive_tile = slide_utils.read_region_around_point(
+                slide=slide,
+                point=positive_point,
+                tile_size=self._tile_size,
+                adjusted_tile_size=adjusted_tile_size,
+                level=level)
+
+            return np.array(positive_tile)
+
+        return None
+
+    def _create_negative_example(self, df, slide_descriptor):
+        row_anchor_patient = self._metadata_df.loc[self._metadata_df[WSITuplesGenerator._file_column_name] == slide_descriptor['image_file_name']].iloc[0]
+        patient_barcode = row_anchor_patient[WSITuplesGenerator._patient_barcode_column_name]
+        er_status = row_anchor_patient[WSITuplesGenerator._er_status_column_name]
+        pr_status = row_anchor_patient[WSITuplesGenerator._pr_status_column_name]
+        her2_status = row_anchor_patient[WSITuplesGenerator._her2_status_column_name]
+        filtered_df = df[(df[WSITuplesGenerator._patient_barcode_column_name] != patient_barcode) &
+                         (df[WSITuplesGenerator._pr_status_column_name] != pr_status) &
+                         (df[WSITuplesGenerator._er_status_column_name] != er_status) &
+                         (df[WSITuplesGenerator._her2_status_column_name] != her2_status)]
+
+        index = int(np.random.randint(df.shape[0], size=1))
+        row_negative_patient = filtered_df.iloc[index]
+        image_file_name_negative_patient = row_negative_patient[WSITuplesGenerator._file_column_name]
+        slide_descriptor_negative_patient = self._image_file_name_to_slide_descriptor[image_file_name_negative_patient]
+        component_index = WSITuplesGenerator._get_random_component_index(slide_descriptor=slide_descriptor_negative_patient)
+        return self._create_random_example(slide_descriptor=slide_descriptor_negative_patient, component_index=component_index)
+
     def _create_tile_locations(self, dataset_id, image_file_name_stem):
         grid_file_path = os.path.normpath(os.path.join(self._dataset_paths[dataset_id], f'Grids_{self._desired_magnification}', f'{image_file_name_stem}--tlsz{self._tile_size}.data'))
         with open(grid_file_path, 'rb') as file_handle:
@@ -548,14 +521,18 @@ class WSITuplesGenerator:
 
         return slide_descriptor
 
-    def _create_slide_descriptors(self):
-        slide_descriptors = []
-        for (index, row) in self._metadata_df.iterrows():
+    def _slide_descriptors_creation_worker(self, df, indices, q):
+        df = df.iloc[indices]
+        for (index, row) in df.iterrows():
             slide_descriptor = self._create_slide_descriptor(row=row)
-            slide_descriptors.append(slide_descriptor)
-        return slide_descriptors
+            q.put(slide_descriptor)
 
-    def _create_tuple(self, slide_descriptor, negative_examples_count):
+    def _tuples_creation_worker(self, df, slide_descriptors, negative_examples_count, q):
+        for slide_descriptor in slide_descriptors:
+            tiles_tuple = self._create_tuple(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
+            q.put(tiles_tuple)
+
+    def _create_tuple(self, df, slide_descriptor, negative_examples_count):
         examples = []
 
         # Anchor Example
@@ -583,7 +560,7 @@ class WSITuplesGenerator:
 
         # Negative Examples
         for i in range(negative_examples_count):
-            negative_example = self._create_negative_example(slide_descriptor=slide_descriptor)
+            negative_example = self._create_negative_example(df=df, slide_descriptor=slide_descriptor)
             if negative_example is None:
                 return None
 
@@ -596,53 +573,34 @@ class WSITuplesGenerator:
     def save_metadata(self, output_file_path):
         self._metadata_df.to_excel(output_file_path)
 
-    def create_tuples(self, negative_examples_count):
+    def _create_slide_descriptors(self, df, num_workers):
+        slide_descriptors = []
+        q = Queue()
+        rows_count = df.shape[0]
+        indices = list(range(rows_count))
+        indices_groups = common_utils.split(items=indices, n=num_workers)
+        args = [(df, indices_group, q) for indices_group in indices_groups]
+        workers = WSITuplesGenerator._start_workers(
+            args=args,
+            f=self._slide_descriptors_creation_worker,
+            num_workers=num_workers)
 
-        def start(self, load_buffer=False, buffer_base_dir_path='./buffers'):
-            self._workers = [Process(target=self._map_func, args=self._args) for i in range(self._num_workers)]
-            for i, worker in enumerate(self._workers):
-                worker.start()
-                print(f'\rWorker Started {i + 1} / {self._num_workers}', end='')
+        while True:
+            try:
+                slide_descriptor = q.get_nowait()
+                slide_descriptors.append(slide_descriptor)
+                if len(slide_descriptors) == rows_count:
+                    break
+            except queue.Empty:
+                pass
 
-            buffer_type_dir_name = 'train' if self._train is True else 'validation'
-            buffer_dir_path = os.path.normpath(os.path.join(buffer_base_dir_path, buffer_type_dir_name))
-            buffer_file_name = 'train_buffer.pt' if self._train is True else 'validation_buffer.pt'
-            if load_buffer is False:
-                print(f'\nItem {len(self._items)} / {self._buffer_size}', end='')
-                while True:
-                    if self._q.empty() is False:
-                        print(f'Queue size = {self._q.qsize()}')
-                        self._items.append(self._q.get())
-                        print(f'\rItem {len(self._items)} / {self._buffer_size}', end='')
-                        if len(self._items) == self._buffer_size:
-                            buffers_dir_path = os.path.normpath(os.path.join(buffer_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
-                            buffer_file_path = os.path.join(buffers_dir_path, buffer_file_name)
-                            Path(buffers_dir_path).mkdir(parents=True, exist_ok=True)
-                            torch.save(self._items, buffer_file_path)
-                            break
-                print('\n')
-            else:
-                latest_dir_path = utils.get_latest_subdirectory(base_dir=buffer_dir_path)
-                buffer_file_path = os.path.join(latest_dir_path, buffer_file_name)
-                with open(buffer_file_path, 'rb') as f:
-                    buffer = io.BytesIO(f.read())
-                    self._items = torch.load(buffer)
+        WSITuplesGenerator._join_workers(workers=workers)
 
-        def stop(self):
-            for i, worker in enumerate(self._workers):
-                worker.terminate()
+        return slide_descriptors
 
-            self._q.close()
-
-
-
-
-
-
-
-
-
-        self._slide_descriptors = self._create_slide_descriptors()
+    def create_tuples(self, tuples_count, negative_examples_count, folds):
+        df = self._select_folds_from_metadata(folds=folds)
+        self._slide_descriptors = self._create_slide_descriptors(df=df, num_workers=3)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
         slide_descriptors_count = len(self._slide_descriptors)
         while True:
@@ -654,12 +612,13 @@ class WSITuplesGenerator:
             if tuple is None:
                 continue
 
+    def get_folds_count(self):
+        return self._metadata_df[WSITuplesGenerator._fold_column_name].nunique() + 1
+
     def __init__(
             self,
             inner_radius,
             outer_radius,
-            test_fold,
-            train,
             tile_size,
             desired_magnification,
             metadata_file_path=None,
@@ -682,11 +641,9 @@ class WSITuplesGenerator:
                 tile_size=self._tile_size,
                 desired_magnification=self._desired_magnification,
                 minimal_tiles_count=minimal_tiles_count,
-                folds_count=folds_count,
-                test_fold=test_fold,
-                train=train)
+                folds_count=folds_count)
         else:
             self._metadata_df = pandas.read_excel(metadata_file_path)
 
-        self._slide_descriptors = None
-        self._image_file_name_to_slide_descriptor = None
+        self._slide_descriptors = []
+        self._image_file_name_to_slide_descriptor = {}

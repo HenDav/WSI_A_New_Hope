@@ -34,8 +34,6 @@ if __name__ == '__main__':
     train_tuples_generator = datasets.WSITuplesGenerator(
         inner_radius=args.inner_radius,
         outer_radius=args.outer_radius,
-        test_fold=args.test_fold,
-        train=args.train,
         tile_size=args.tile_size,
         desired_magnification=args.desired_magnification,
         metadata_file_path=args.metadata_file_path,
@@ -44,4 +42,7 @@ if __name__ == '__main__':
         minimal_tiles_count=args.minimal_tiles_count,
         folds_count=args.folds_count)
 
-    train_tuples_generator.create_tuples(negative_examples_count=2)
+    folds = list(range(train_tuples_generator.get_folds_count()))
+    train_folds = [fold for fold in folds if fold != args.test_fold]
+    test_folds = [args.test_fold]
+    train_tuples_generator.create_tuples(negative_examples_count=2, folds=train_folds)

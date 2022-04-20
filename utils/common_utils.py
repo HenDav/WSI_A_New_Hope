@@ -11,9 +11,22 @@ import multiprocessing
 Image.MAX_IMAGE_PIXELS = None
 
 
-def chunks(list: List, length: int):
-    new_list = [ list[i * length:(i + 1) * length] for i in range((len(list) + length - 1) // length )]
-    return new_list
+def split(items, n):
+    k, m = divmod(len(items), n)
+    split_items = list(items[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
+    return split_items
+
+
+def chunks(items, length):
+    chucked_items = []
+    for i in range(0, len(items), length):
+        chucked_items.append(items[i:i + length])
+    return chucked_items
+
+
+def even_chunks(items, length):
+    chucked_items = [items[i * length:(i + 1) * length] for i in range((len(items) + length - 1) // length)]
+    return chucked_items
 
 
 def list_subdirectories(base_dir='.'):
