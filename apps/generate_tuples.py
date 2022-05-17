@@ -1,8 +1,11 @@
 # python core
 import argparse
+import os
 
 # numpy
 import numpy as np
+
+print(os.getcwd())
 
 # wsi
 import utils
