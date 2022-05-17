@@ -1,11 +1,11 @@
 name: wsi-mil
 channels:
+  - conda-forge
   - nvidia
   - pytorch
-  - defaults
-  - conda-forge
   - sebp
   - anaconda
+  - defaults
 dependencies:
   - python=3.9
   - pytorch
