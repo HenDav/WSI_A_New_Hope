@@ -35,7 +35,8 @@ dependencies:
   - psutil
   - tensorboard
   - openpyxl
+  - opencv
   - pip:
       - openslide-python
-      - opencv-python
+#      - opencv-python
       - bresenham
