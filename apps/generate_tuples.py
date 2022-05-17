@@ -5,8 +5,6 @@ import os
 # numpy
 import numpy as np
 
-print(os.getcwd())
-
 # wsi
 import utils
 from nn import datasets
