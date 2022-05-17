@@ -23,22 +23,10 @@ def get_best_level_for_downsample(slide, desired_downsample, tile_size):
             level = i
             level_downsample = int(desired_downsample / slide.level_downsamples[level])
 
+    # A tile of size (tile_size, tile_size) in an image downsampled by 'level_downsample', will cover the same image portion of a tile of size (adjusted_tile_size, adjusted_tile_size) in the original image
     adjusted_tile_size = tile_size * level_downsample
 
     return level, adjusted_tile_size
-
-
-def get_data(locations,
-             slide,
-             magnification,
-             desired_magnification):
-    desired_downsample = magnification / desired_magnification
-    level = slide.get_best_level_for_downsample(downsample=desired_downsample)
-    location_index = np.random.randint(len(locations))
-    location = locations[0]
-    tile_size = 1024
-    tile = slide.read_region((location[1], location[0]), level, (tile_size, tile_size)).convert('RGB')
-    return tile
 
 
 def get_pixel_to_mm(downsample, image_file_suffix):

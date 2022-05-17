@@ -10,6 +10,7 @@ from pathlib import Path
 from multiprocessing import Process, Queue, connection, current_process
 import queue
 import glob
+import re
 
 # pandas
 import pandas
@@ -54,14 +55,19 @@ class WSITuplesDataset(Dataset):
 class WSITuplesGenerator:
     _file_column_name = 'file'
     _patient_barcode_column_name = 'patient barcode'
+    _slide_barcode_column_name = 'slide barcode'
     _dataset_id_column_name = 'id'
-    _mpp_column_name = 'mpp'
+    _scan_date_column_name = 'Scan Date'
+    _mpp_column_name = 'MPP'
     _width_column_name = 'Width'
     _height_column_name = 'Height'
     _magnification_column_name = 'Manipulated Objective Power'
     _er_status_column_name = 'ER status'
     _pr_status_column_name = 'PR status'
     _her2_status_column_name = 'Her2 status'
+    _tumor_type_column_name = 'tumor type'
+    _slide_barcode_prefix_column_name = 'slide barcode prefix'
+    _grade_column_name = 'grade'
     _invalid_fold_column_names = ['test fold idx breast', 'test fold idx', 'test fold idx breast - original for carmel']
     _fold_column_name = 'fold'
     _bad_segmentation_column_name = 'bad segmentation'
@@ -75,6 +81,16 @@ class WSITuplesGenerator:
     _histogram_min_intensity_level = 170
     _min_component_ratio = 0.92
     _max_aspect_ratio_diff = 0.02
+
+    _slide_barcode_column_name_carmel = 'TissueID'
+    _patient_barcode_column_name_carmel = 'PatientIndex'
+    _block_id_column_name_carmel = 'BlockID'
+
+    _patient_barcode_column_name_tcga = 'Sample CLID'
+    _slide_barcode_prefix_column_name_tcga = 'Sample CLID'
+
+    _patient_barcode_column_name_abctb = 'Identifier'
+    _file_column_name_abctb = 'Image File'
 
     @staticmethod
     def get_total_tiles_column_name(tile_size, desired_magnification):
@@ -114,7 +130,7 @@ class WSITuplesGenerator:
         }
 
         for i in range(1, 12):
-            path_suffixes[f'Carmel{i}'] = f'Breast/Batch_{i}/CARMEL{i}'
+            path_suffixes[f'CARMEL{i}'] = f'Breast/Carmel/Batch_{i}/CARMEL{i}'
 
         for k in path_suffixes.keys():
             if k in dataset_ids:
@@ -127,33 +143,391 @@ class WSITuplesGenerator:
         return dir_dict
 
     @staticmethod
-    def _load_datasets_metadata(dataset_paths, desired_magnification):
-        metadata_df = None
+    def _load_metadata(dataset_paths, desired_magnification):
+        df = None
         for _, dataset_id in enumerate(dataset_paths):
             slide_metadata_file = os.path.join(dataset_paths[dataset_id], WSITuplesGenerator.get_slides_data_file_name(dataset_id=dataset_id))
             grid_metadata_file = os.path.join(dataset_paths[dataset_id], WSITuplesGenerator.get_grids_folder_name(desired_magnification=desired_magnification), WSITuplesGenerator._grid_data_file_name)
-            slide_metadata_df = pandas.read_excel(io=slide_metadata_file)
-            grid_metadata_df = pandas.read_excel(io=grid_metadata_file)
-            current_metadata_df = pandas.DataFrame({**slide_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict(), **grid_metadata_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict()})
-            if metadata_df is None:
-                metadata_df = current_metadata_df
+            slide_df = pandas.read_excel(io=slide_metadata_file)
+            grid_df = pandas.read_excel(io=grid_metadata_file)
+            current_df = pandas.DataFrame({**slide_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict(), **grid_df.set_index(keys=WSITuplesGenerator._file_column_name).to_dict()})
+
+            # current_df = WSITuplesGenerator._standardize_metadata(metadata_df=current_df)
+
+            if df is None:
+                df = current_df
             else:
-                metadata_df.append(metadata_df)
+                df = df.append(current_df)
 
-        metadata_df.reset_index(inplace=True)
-        metadata_df.rename(columns={'index': WSITuplesGenerator._file_column_name}, inplace=True)
-        return metadata_df
-
-    @staticmethod
-    def _enhance_datasets_metadata(enhancement_dir_path, metadata_df):
-        brca_tcga_pan_can_atlas_2018_df = pandas.read_excel(io=os.path.join(enhancement_dir_path, 'brca_tcga_pan_can_atlas_2018_clinical_data.tsv'))
+        df.reset_index(inplace=True)
+        df.rename(columns={'index': WSITuplesGenerator._file_column_name}, inplace=True)
+        return df
 
     @staticmethod
-    def _standardize_datasets_metadata(metadata_df):
-        metadata_df = metadata_df.drop(WSITuplesGenerator._invalid_fold_column_names, axis=1)
-        metadata_df = metadata_df.replace(WSITuplesGenerator._invalid_values, WSITuplesGenerator._invalid_value)
-        metadata_df = metadata_df.dropna()
-        return metadata_df
+    def _calculate_grade_tcga(row):
+        try:
+            column_names = ['Epithelial tubule formation', 'Nuclear pleomorphism', 'Mitosis']
+            grade_score = 0
+            for column_name in column_names:
+                column_score = re.findall(r'\d+', str(row[column_name]))
+                if len(column_score) == 0:
+                    return 'NA'
+                grade_score = grade_score + int(column_score[0])
+
+            if 3 <= grade_score <= 5:
+                return 1
+            elif 6 <= grade_score <= 7:
+                return 2
+            else:
+                return 3
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_tumor_type_tcga(row):
+        try:
+            column_name = '2016 Histology Annotations'
+            tumor_type = row[column_name]
+
+            if tumor_type == 'Invasive ductal carcinoma':
+                return 'IDC'
+            elif tumor_type == 'Invasive lobular carcinoma':
+                return 'ILC'
+            else:
+                return 'OTHER'
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_slide_barcode_prefix_tcga(row):
+        try:
+            return row[WSITuplesGenerator._patient_barcode_column_name_tcga]
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_grade_abctb(row):
+        try:
+            column_name = 'Histopathological Grade'
+            column_score = re.findall(r'\d+', str(row[column_name]))
+            if len(column_score) == 0:
+                return 'NA'
+
+            return int(column_score[0])
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_tumor_type_abctb(row):
+        try:
+            column_name = 'Primary Histologic Diagnosis'
+            tumor_type = row[column_name]
+
+            if tumor_type == 'IDC':
+                return 'IDC'
+            elif tumor_type == 'ILC':
+                return 'ILC'
+            else:
+                return 'OTHER'
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_slide_barcode_prefix_abctb(row):
+        try:
+            return row[WSITuplesGenerator._file_column_name_abctb]
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_grade_carmel(row):
+        try:
+            column_name = 'Grade'
+            column_score = re.findall(r'\d+(?:\.\d+)?', str(row[column_name]))
+            if len(column_score) == 0:
+                return 'NA'
+
+            return int(float(column_score[0]))
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_tumor_type_carmel(row):
+        try:
+            column_name = 'TumorType'
+            tumor_type = row[column_name]
+
+            if tumor_type == 'IDC':
+                return 'IDC'
+            elif tumor_type == 'ILC':
+                return 'ILC'
+            else:
+                return 'OTHER'
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_slide_barcode_prefix_carmel(row):
+        try:
+            slide_barcode = row[WSITuplesGenerator._slide_barcode_column_name_carmel]
+            block_id = row[WSITuplesGenerator._block_id_column_name_carmel]
+            if math.isnan(block_id):
+                block_id = 1
+
+            slide_barcode = f"{slide_barcode.replace('/', '_')}_{int(block_id)}"
+            return slide_barcode
+        except Exception:
+            return 'NA'
+
+    @staticmethod
+    def _calculate_slide_barcode_prefix(row):
+        try:
+            dataset_id = row[WSITuplesGenerator._dataset_id_column_name]
+            if dataset_id == 'TCGA':
+                return row[WSITuplesGenerator._patient_barcode_column_name]
+            elif dataset_id == 'ABCTB':
+                return row[WSITuplesGenerator._file_column_name]
+            elif dataset_id.startswith('CARMEL'):
+                return row[WSITuplesGenerator._slide_barcode_column_name][:-2]
+        except Exception:
+            return 'NA'
+
+    # @staticmethod
+    # def _tcga_calculate_tumor_type(row):
+    #     try:
+    #         column_name = '2016 Histology Annotations'
+    #         tumor_type = row[column_name]
+    #
+    #         if tumor_type == 'Invasive ductal carcinoma':
+    #             return 'IDC'
+    #         elif tumor_type == 'Invasive lobular carcinoma':
+    #             return 'ILC'
+    #         elif tumor_type == 'Cribriform carcinoma':
+    #             return 'ICC'
+    #         elif tumor_type == 'Invasive carcinoma with medullary features':
+    #             return 'MBC'
+    #         elif tumor_type == 'Invasive micropapillary carcinoma':
+    #             return 'IMC'
+    #         elif tumor_type == 'Metaplastic carcinoma':
+    #             return 'MPC'
+    #         elif tumor_type == 'Mixed':
+    #             return 'MX'
+    #         elif tumor_type == 'Mucinous carcinoma':
+    #             return 'MC'
+    #         elif tumor_type == 'Papillary neoplasm':
+    #             return 'PN'
+    #         else:
+    #             return 'OTHER'
+    #     except Exception:
+    #         return 'NA'
+
+    @staticmethod
+    def _extract_annotations(df, patient_barcode_column_name, calculate_slide_barcode_prefix, calculate_tumor_type, calculate_grade):
+        df[WSITuplesGenerator._slide_barcode_prefix_column_name] = df.apply(lambda row: calculate_slide_barcode_prefix(row), axis=1)
+        df[WSITuplesGenerator._tumor_type_column_name] = df.apply(lambda row: calculate_tumor_type(row), axis=1)
+        df[WSITuplesGenerator._grade_column_name] = df.apply(lambda row: calculate_grade(row), axis=1)
+
+        annotations = df[[
+            patient_barcode_column_name,
+            WSITuplesGenerator._slide_barcode_prefix_column_name,
+            WSITuplesGenerator._grade_column_name,
+            WSITuplesGenerator._tumor_type_column_name]]
+        annotations = annotations.rename(columns={patient_barcode_column_name: WSITuplesGenerator._patient_barcode_column_name})
+
+        # print('')
+        # print('TCGA Enhanced Data:')
+        # print('-------------------')
+        # print(tcga_data['grade'].value_counts() / tcga_data.shape[0])
+        # print('')
+        # print(tcga_data['tumor type'].value_counts() / tcga_data.shape[0])
+
+        return annotations
+
+    # @staticmethod
+    # def _enhance_metadata_tcga(cell_genomics_tcga_file1_df, cell_genomics_tcga_file2_df):
+    #     cell_genomics_tcga_file2_df[WSITuplesGenerator._slide_barcode_prefix_column_name] = cell_genomics_tcga_file2_df.apply(lambda row: WSITuplesGenerator._calculate_slide_barcode_prefix_tcga(row), axis=1)
+    #     cell_genomics_tcga_file2_df[WSITuplesGenerator._tumor_type_column_name] = cell_genomics_tcga_file2_df.apply(lambda row: WSITuplesGenerator._calculate_tumor_type_tcga(row), axis=1)
+    #     cell_genomics_tcga_file2_df[WSITuplesGenerator._grade_column_name] = cell_genomics_tcga_file2_df.apply(lambda row: WSITuplesGenerator._calculate_grade_tcga(row), axis=1)
+    #
+    #     tcga_data = cell_genomics_tcga_file2_df[[
+    #         WSITuplesGenerator._patient_barcode_column_name_tcga,
+    #         WSITuplesGenerator._slide_barcode_prefix_column_name,
+    #         WSITuplesGenerator._grade_column_name,
+    #         WSITuplesGenerator._tumor_type_column_name]]
+    #     tcga_data = tcga_data.rename(columns={WSITuplesGenerator._patient_barcode_column_name_tcga: WSITuplesGenerator._patient_barcode_column_name})
+    #
+    #     print('')
+    #     print('TCGA Enhanced Data:')
+    #     print('-------------------')
+    #     print(tcga_data['grade'].value_counts() / tcga_data.shape[0])
+    #     print('')
+    #     print(tcga_data['tumor type'].value_counts() / tcga_data.shape[0])
+    #
+    #     return tcga_data
+    #
+    # @staticmethod
+    # def _enhance_metadata_carmel(carmel_annotations_26_10_2021_df, carmel_annotations_Batch11_26_10_21_df):
+    #     carmel_annotations_26_10_2021_df[WSITuplesGenerator._slide_barcode_prefix_column_name] = carmel_annotations_26_10_2021_df.apply(lambda row: WSITuplesGenerator._calculate_slide_barcode_prefix_carmel(row), axis=1)
+    #     carmel_annotations_26_10_2021_df[WSITuplesGenerator._tumor_type_column_name] = carmel_annotations_26_10_2021_df.apply(lambda row: WSITuplesGenerator._calculate_tumor_type_carmel(row), axis=1)
+    #     carmel_annotations_26_10_2021_df[WSITuplesGenerator._grade_column_name] = carmel_annotations_26_10_2021_df.apply(lambda row: WSITuplesGenerator._calculate_grade_carmel(row), axis=1)
+    #
+    #     carmel_annotations_Batch11_26_10_21_df[WSITuplesGenerator._slide_barcode_prefix_column_name] = carmel_annotations_Batch11_26_10_21_df.apply(lambda row: WSITuplesGenerator._calculate_slide_barcode_prefix_carmel(row), axis=1)
+    #     carmel_annotations_Batch11_26_10_21_df[WSITuplesGenerator._tumor_type_column_name] = carmel_annotations_Batch11_26_10_21_df.apply(lambda row: WSITuplesGenerator._calculate_tumor_type_carmel(row), axis=1)
+    #     carmel_annotations_Batch11_26_10_21_df[WSITuplesGenerator._grade_column_name] = carmel_annotations_Batch11_26_10_21_df.apply(lambda row: WSITuplesGenerator._calculate_grade_carmel(row), axis=1)
+    #
+    #     carmel_annotations = pandas.concat([carmel_annotations_26_10_2021_df, carmel_annotations_Batch11_26_10_21_df])
+    #
+    #     carmel_data = carmel_annotations[[
+    #         WSITuplesGenerator._patient_barcode_column_name_carmel,
+    #         WSITuplesGenerator._slide_barcode_prefix_column_name,
+    #         WSITuplesGenerator._grade_column_name,
+    #         WSITuplesGenerator._tumor_type_column_name]]
+    #
+    #     carmel_data = carmel_data.rename(columns={
+    #         WSITuplesGenerator._patient_barcode_column_name_carmel: WSITuplesGenerator._patient_barcode_column_name,
+    #     })
+    #
+    #     print('')
+    #     print('TCGA Enhanced Data:')
+    #     print('-------------------')
+    #     print(carmel_data['grade'].value_counts() / carmel_data.shape[0])
+    #     print('')
+    #     print(carmel_data['tumor type'].value_counts() / carmel_data.shape[0])
+    #
+    #     return carmel_data
+    #
+    # @staticmethod
+    # def _enhance_metadata_abctb(abctb_path_data_df):
+    #     abctb_path_data_df[WSITuplesGenerator._slide_barcode_prefix_column_name] = abctb_path_data_df.apply(lambda row: WSITuplesGenerator._calculate_slide_barcode_prefix_abctb(row), axis=1)
+    #     abctb_path_data_df[WSITuplesGenerator._tumor_type_column_name] = abctb_path_data_df.apply(lambda row: WSITuplesGenerator._calculate_tumor_type_abctb(row), axis=1)
+    #     abctb_path_data_df[WSITuplesGenerator._grade_column_name] = abctb_path_data_df.apply(lambda row: WSITuplesGenerator._calculate_grade_abctb(row), axis=1)
+    #
+    #     abctb_data = abctb_path_data_df[[
+    #         WSITuplesGenerator._patient_barcode_column_name_abctb,
+    #         WSITuplesGenerator._slide_barcode_prefix_column_name,
+    #         WSITuplesGenerator._grade_column_name,
+    #         WSITuplesGenerator._tumor_type_column_name]]
+    #
+    #     abctb_data = abctb_data.rename(columns={WSITuplesGenerator._patient_barcode_column_name_abctb: WSITuplesGenerator._patient_barcode_column_name})
+    #
+    #     print('')
+    #     print('TCGA Enhanced Data:')
+    #     print('-------------------')
+    #     print(abctb_data['grade'].value_counts() / abctb_data.shape[0])
+    #     print('')
+    #     print(abctb_data['tumor type'].value_counts() / abctb_data.shape[0])
+    #
+    #     return abctb_data
+
+    @staticmethod
+    def _enhance_metadata_df(df):
+        df[WSITuplesGenerator._slide_barcode_prefix_column_name] = df.apply(lambda row: WSITuplesGenerator._calculate_slide_barcode_prefix(row), axis=1)
+        return df
+
+    @staticmethod
+    def _enhance_metadata(df, metadata_enhancement_dir_path):
+        df = WSITuplesGenerator._enhance_metadata_df(df=df)
+
+        brca_tcga_pan_can_atlas_2018_clinical_data_df = pandas.read_csv(
+            filepath_or_buffer=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', 'brca_tcga_pan_can_atlas_2018_clinical_data.tsv')),
+            sep='\t')
+
+        brca_tcga_pub_clinical_data_df = pandas.read_csv(
+            filepath_or_buffer=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', 'brca_tcga_pub_clinical_data.tsv')),
+            sep='\t')
+
+        brca_tcga_clinical_data_df = pandas.read_csv(
+            filepath_or_buffer=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', 'brca_tcga_clinical_data.tsv')),
+            sep='\t')
+
+        brca_tcga_pub2015_clinical_data_df = pandas.read_csv(
+            filepath_or_buffer=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', 'brca_tcga_pub2015_clinical_data.tsv')),
+            sep='\t')
+
+        cell_genomics_tcga_file1_df = pandas.read_excel(
+            io=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', '1-s2.0-S2666979X21000835-mmc2.xlsx')))
+
+        cell_genomics_tcga_file2_df = pandas.read_excel(
+            io=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'TCGA', '1-s2.0-S2666979X21000835-mmc3.xlsx')))
+
+        carmel_annotations_Batch11_26_10_21_df = pandas.read_excel(
+            io=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'Carmel', 'Carmel_annotations_Batch11_26-10-21.xlsx')))
+
+        carmel_annotations_26_10_2021_df = pandas.read_excel(
+            io=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'Carmel', 'Carmel_annotations_26-10-2021.xlsx')))
+
+        abctb_path_data_df = pandas.read_excel(
+            io=os.path.normpath(os.path.join(metadata_enhancement_dir_path, 'ABCTB', 'ABCTB_Path_Data.xlsx')))
+
+        annotations_tcga = WSITuplesGenerator._extract_annotations(
+            df=cell_genomics_tcga_file2_df,
+            patient_barcode_column_name=WSITuplesGenerator._patient_barcode_column_name_tcga,
+            calculate_slide_barcode_prefix=WSITuplesGenerator._calculate_slide_barcode_prefix_tcga,
+            calculate_tumor_type=WSITuplesGenerator._calculate_tumor_type_tcga,
+            calculate_grade=WSITuplesGenerator._calculate_grade_tcga)
+
+        annotations_abctb = WSITuplesGenerator._extract_annotations(
+            df=abctb_path_data_df,
+            patient_barcode_column_name=WSITuplesGenerator._patient_barcode_column_name_abctb,
+            calculate_slide_barcode_prefix=WSITuplesGenerator._calculate_slide_barcode_prefix_abctb,
+            calculate_tumor_type=WSITuplesGenerator._calculate_tumor_type_abctb,
+            calculate_grade=WSITuplesGenerator._calculate_grade_abctb)
+
+        annotations1_carmel = WSITuplesGenerator._extract_annotations(
+            df=carmel_annotations_Batch11_26_10_21_df,
+            patient_barcode_column_name=WSITuplesGenerator._patient_barcode_column_name_carmel,
+            calculate_slide_barcode_prefix=WSITuplesGenerator._calculate_slide_barcode_prefix_carmel,
+            calculate_tumor_type=WSITuplesGenerator._calculate_tumor_type_carmel,
+            calculate_grade=WSITuplesGenerator._calculate_grade_carmel)
+
+        annotations2_carmel = WSITuplesGenerator._extract_annotations(
+            df=carmel_annotations_26_10_2021_df,
+            patient_barcode_column_name=WSITuplesGenerator._patient_barcode_column_name_carmel,
+            calculate_slide_barcode_prefix=WSITuplesGenerator._calculate_slide_barcode_prefix_carmel,
+            calculate_tumor_type=WSITuplesGenerator._calculate_tumor_type_carmel,
+            calculate_grade=WSITuplesGenerator._calculate_grade_carmel)
+
+        # enhanced_metadata_tcga = WSITuplesGenerator._enhance_metadata_tcga(
+        #     cell_genomics_tcga_file1_df=cell_genomics_tcga_file1_df,
+        #     cell_genomics_tcga_file2_df=cell_genomics_tcga_file2_df)
+        #
+        # enhanced_metadata_abctb = WSITuplesGenerator._enhance_metadata_abctb(
+        #     abctb_path_data_df=abctb_path_data_df)
+        #
+        # enhanced_metadata_carmel = WSITuplesGenerator._enhance_metadata_carmel(
+        #     carmel_annotations_26_10_2021_df=carmel_annotations_26_10_2021_df,
+        #     carmel_annotations_Batch11_26_10_21_df=carmel_annotations_Batch11_26_10_21_df)
+
+        enhanced_metadata = pandas.concat([annotations_tcga, annotations_abctb, annotations1_carmel, annotations2_carmel])
+        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITuplesGenerator._patient_barcode_column_name, WSITuplesGenerator._slide_barcode_prefix_column_name])
+        return df
+
+    @staticmethod
+    def _select_metadata(df, tile_size, desired_magnification):
+        df = df[[
+            WSITuplesGenerator._file_column_name,
+            WSITuplesGenerator._patient_barcode_column_name,
+            WSITuplesGenerator._dataset_id_column_name,
+            WSITuplesGenerator._mpp_column_name,
+            WSITuplesGenerator._scan_date_column_name,
+            WSITuplesGenerator.get_total_tiles_column_name(tile_size=tile_size, desired_magnification=desired_magnification),
+            WSITuplesGenerator.get_legitimate_tiles_column_name(tile_size=tile_size, desired_magnification=desired_magnification),
+            WSITuplesGenerator._width_column_name,
+            WSITuplesGenerator._height_column_name,
+            WSITuplesGenerator._magnification_column_name,
+            WSITuplesGenerator._er_status_column_name,
+            WSITuplesGenerator._pr_status_column_name,
+            WSITuplesGenerator._her2_status_column_name,
+            WSITuplesGenerator._grade_column_name,
+            WSITuplesGenerator._tumor_type_column_name,
+        ]]
+        return df
+
+    @staticmethod
+    def _standardize_metadata(df):
+        df = df.replace(WSITuplesGenerator._invalid_values, WSITuplesGenerator._invalid_value)
+        df = df.dropna()
+        return df
 
     @staticmethod
     def _validate_metadata(metadata_df, tile_size, desired_magnification, minimal_tiles_count):
@@ -197,38 +571,6 @@ class WSITuplesGenerator:
                 if bit == 0:
                     return False
         return True
-
-    @staticmethod
-    def _create_metadata(
-            dataset_paths,
-            tile_size,
-            desired_magnification,
-            minimal_tiles_count,
-            folds_count,
-            enhancement_dir_path):
-
-        metadata_df = WSITuplesGenerator._load_datasets_metadata(
-            dataset_paths=dataset_paths,
-            desired_magnification=desired_magnification)
-
-        metadata_df = WSITuplesGenerator._enhance_datasets_metadata(
-            metadata_df=metadata_df,
-            enhancement_dir_path=enhancement_dir_path)
-
-        metadata_df = WSITuplesGenerator._standardize_datasets_metadata(
-            metadata_df=metadata_df)
-
-        metadata_df = WSITuplesGenerator._validate_metadata(
-            metadata_df=metadata_df,
-            tile_size=tile_size,
-            desired_magnification=desired_magnification,
-            minimal_tiles_count=minimal_tiles_count)
-
-        metadata_df = WSITuplesGenerator._add_folds_to_metadata(
-            metadata_df=metadata_df,
-            folds_count=folds_count)
-
-        return metadata_df
 
     @staticmethod
     def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
@@ -319,10 +661,13 @@ class WSITuplesGenerator:
             try:
                 item = q.get_nowait()
                 items.append(item)
-                if len(items) == count:
+                items_count = len(items)
+                print(f'\rQueue item #{items_count} added', end='')
+                if items_count == count:
                     break
             except queue.Empty:
                 pass
+        print('')
         return items
 
     @staticmethod
@@ -334,15 +679,46 @@ class WSITuplesGenerator:
                 item = q.get_nowait()
                 item_file_path = os.path.normpath(os.path.join(dir_path, f'{file_name_stem}_{i}.npy'))
                 numpy.save(item_file_path, item)
+                print(f'\rQueue item #{i} saved', end='')
                 i = i + 1
                 if i == count:
                     break
             except queue.Empty:
                 pass
+        print('')
 
     @staticmethod
     def _append_tiles(tiles, example):
         tiles.append(example['tile'])
+
+    def _create_metadata(self):
+        df = WSITuplesGenerator._load_metadata(
+            dataset_paths=self._dataset_paths,
+            desired_magnification=self._desired_magnification)
+
+        df = WSITuplesGenerator._enhance_metadata(
+            df=df,
+            metadata_enhancement_dir_path=self._metadata_enhancement_dir_path)
+
+        df = WSITuplesGenerator._select_metadata(
+            df=df,
+            tile_size=self._tile_size,
+            desired_magnification=self._desired_magnification)
+
+        df = WSITuplesGenerator._standardize_metadata(
+            df=df)
+
+        df = WSITuplesGenerator._validate_metadata(
+            metadata_df=df,
+            tile_size=self._tile_size,
+            desired_magnification=self._desired_magnification,
+            minimal_tiles_count=self._minimal_tiles_count)
+
+        df = WSITuplesGenerator._add_folds_to_metadata(
+            metadata_df=df,
+            folds_count=self._folds_count)
+
+        return df
 
     def _select_folds_from_metadata(self, folds):
         return self._metadata_df[self._metadata_df[WSITuplesGenerator._fold_column_name].isin(folds)]
@@ -357,9 +733,10 @@ class WSITuplesGenerator:
             'adjusted_tile_size': adjusted_tile_size
         }
 
-    def _calculate_inner_radius_pixels(self, desired_downsample, image_file_name_suffix):
-        mm_to_pixel = slide_utils.get_mm_to_pixel(downsample=desired_downsample, image_file_suffix=image_file_name_suffix)
-        inner_radius_pixels = self._inner_radius * mm_to_pixel
+    def _calculate_inner_radius_pixels(self, desired_downsample, image_file_name_suffix, mpp):
+        # mm_to_pixel = slide_utils.get_mm_to_pixel(downsample=desired_downsample, image_file_suffix=image_file_name_suffix)
+        # inner_radius_pixels = self._inner_radius * mm_to_pixel
+        inner_radius_pixels = int(self._inner_radius / (mpp / 1000))
         return inner_radius_pixels
 
     def _create_random_example(self, slide_descriptor, component_index):
@@ -415,10 +792,11 @@ class WSITuplesGenerator:
         original_tile_size = slide_descriptor['original_tile_size']
         image_file_name_suffix = slide_descriptor['image_file_name_suffix']
         components = slide_descriptor['components']
+        mpp = slide_descriptor['mpp']
         slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
         component = components[component_index]
 
-        inner_radius_pixels = self._calculate_inner_radius_pixels(desired_downsample=desired_downsample, image_file_name_suffix=image_file_name_suffix)
+        inner_radius_pixels = self._calculate_inner_radius_pixels(desired_downsample=desired_downsample, image_file_name_suffix=image_file_name_suffix, mpp=mpp)
         slide = slide_data['slide']
         adjusted_tile_size = slide_data['adjusted_tile_size']
         level = slide_data['level']
@@ -458,10 +836,14 @@ class WSITuplesGenerator:
         er_status = row_anchor_patient[WSITuplesGenerator._er_status_column_name]
         pr_status = row_anchor_patient[WSITuplesGenerator._pr_status_column_name]
         her2_status = row_anchor_patient[WSITuplesGenerator._her2_status_column_name]
+        tumor_type = row_anchor_patient[WSITuplesGenerator._her2_status_column_name]
+        grade = row_anchor_patient[WSITuplesGenerator._grade_column_name]
         filtered_df = df[(df[WSITuplesGenerator._patient_barcode_column_name] != patient_barcode) &
-                         (df[WSITuplesGenerator._pr_status_column_name] != pr_status) &
-                         (df[WSITuplesGenerator._er_status_column_name] != er_status) &
-                         (df[WSITuplesGenerator._her2_status_column_name] != her2_status)]
+                         ((df[WSITuplesGenerator._pr_status_column_name] != pr_status) |
+                         (df[WSITuplesGenerator._er_status_column_name] != er_status) |
+                         (df[WSITuplesGenerator._her2_status_column_name] != her2_status) |
+                         (df[WSITuplesGenerator._tumor_type_column_name] != tumor_type) |
+                         (df[WSITuplesGenerator._grade_column_name] != grade))]
 
         index = int(numpy.random.randint(filtered_df.shape[0], size=1))
         row_negative_patient = filtered_df.iloc[index]
@@ -484,6 +866,7 @@ class WSITuplesGenerator:
         image_file_path = os.path.join(self._dataset_paths[dataset_id], image_file_name)
         image_file_name_stem = pathlib.Path(image_file_path).stem
         image_file_name_suffix = pathlib.Path(image_file_path).suffix
+        mpp = row[WSITuplesGenerator._mpp_column_name]
         magnification = row[WSITuplesGenerator._magnification_column_name]
         legitimate_tiles_count = row[WSITuplesGenerator.get_legitimate_tiles_column_name(tile_size=self._tile_size, desired_magnification=self._desired_magnification)]
         fold = row[WSITuplesGenerator._fold_column_name]
@@ -498,6 +881,7 @@ class WSITuplesGenerator:
             'image_file_name': image_file_name,
             'image_file_name_stem': image_file_name_stem,
             'image_file_name_suffix': image_file_name_suffix,
+            'mpp': mpp,
             'magnification': magnification,
             'legitimate_tiles_count': legitimate_tiles_count,
             'fold': fold,
@@ -590,12 +974,10 @@ class WSITuplesGenerator:
         indices_groups = common_utils.split(items=indices, n=num_workers)
         args = [(df, indices_group, negative_examples_count, q) for indices_group in indices_groups]
         workers = WSITuplesGenerator._start_workers(args=args, f=self._tuples_creation_worker, num_workers=num_workers)
-        # tuples = WSITuplesGenerator._drain_queue(q=q, count=tuples_count)
         WSITuplesGenerator._drain_queue_to_disk(q=q, count=tuples_count, dir_path=dir_path, file_name_stem='tuple')
         WSITuplesGenerator._join_workers(workers=workers)
         WSITuplesGenerator._stop_workers(workers=workers)
         q.close()
-        # return tuples
 
     def get_folds_count(self):
         return self._metadata_df[WSITuplesGenerator._fold_column_name].nunique() + 1
@@ -611,7 +993,7 @@ class WSITuplesGenerator:
             dataset_ids=None,
             minimal_tiles_count=None,
             folds_count=None,
-            enhancement_dir_path=None):
+            metadata_enhancement_dir_path=None):
 
         self._inner_radius = inner_radius
         self._outer_radius = outer_radius
@@ -620,15 +1002,12 @@ class WSITuplesGenerator:
         self._dataset_paths = WSITuplesGenerator._get_dataset_paths(
             dataset_ids=dataset_ids,
             datasets_base_dir_path=datasets_base_dir_path)
-        self._enhancement_dir_path = enhancement_dir_path
 
         if metadata_file_path is not None:
-            self._metadata_df = WSITuplesGenerator._create_metadata(
-                dataset_paths=self._dataset_paths,
-                tile_size=self._tile_size,
-                desired_magnification=self._desired_magnification,
-                minimal_tiles_count=minimal_tiles_count,
-                folds_count=folds_count)
+            self._minimal_tiles_count = minimal_tiles_count
+            self._folds_count = folds_count
+            self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
+            self._metadata_df = self._create_metadata()
         else:
             self._metadata_df = pandas.read_excel(metadata_file_path)
 

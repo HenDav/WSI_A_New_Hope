@@ -27,6 +27,7 @@ parser.add_argument('--train', type=bool, default=True)
 parser.add_argument('--tile-size', type=int, default=256)
 parser.add_argument('--desired-magnification', type=int, default=10)
 parser.add_argument('--metadata-file-path', type=str, default=None)
+parser.add_argument('--metadata-enhancement-dir-path', type=str, default=None)
 parser.add_argument('--datasets-base-dir-path', type=str, default=None)
 parser.add_argument('--dataset-ids', nargs='+', default=['TCGA'])
 parser.add_argument('--minimal-tiles-count', type=int, default=10)
@@ -45,9 +46,10 @@ if __name__ == '__main__':
         datasets_base_dir_path=args.datasets_base_dir_path,
         dataset_ids=args.dataset_ids,
         minimal_tiles_count=args.minimal_tiles_count,
+        metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
         folds_count=args.folds_count)
 
     folds = list(range(train_tuples_generator.get_folds_count()))
     train_folds = [fold for fold in folds if fold != args.test_fold]
     test_folds = [args.test_fold]
-    train_tuples_generator.create_tuples(tuples_count=1000, negative_examples_count=2, folds=train_folds, dir_path='C:/tests/tuples/train', num_workers=8)
+    train_tuples_generator.create_tuples(tuples_count=1000, negative_examples_count=2, folds=train_folds, dir_path='C:/tests/tuples/train', num_workers=15)
