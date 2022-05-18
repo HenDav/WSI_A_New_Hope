@@ -573,7 +573,7 @@ class WSITuplesGenerator:
         return True
 
     @staticmethod
-    def _create_tile_bitmap(original_tile_size, tile_locations, image_file_name, plot_bitmap=False):
+    def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
         indices = (numpy.array(tile_locations) / original_tile_size).astype(int)
         dim1_size = indices[:, 0].max() + 1
         dim2_size = indices[:, 1].max() + 1
@@ -582,11 +582,6 @@ class WSITuplesGenerator:
         for (x, y) in indices:
             bitmap[x, y] = 1
 
-        # if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
-        #     print(bitmap)
-        #     Image.fromarray(bitmap)
-
-        # tile_bitmap = numpy.uint8(Image.fromarray(bitmap.astype(float)))
         tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
 
         if plot_bitmap is True:
@@ -878,19 +873,7 @@ class WSITuplesGenerator:
         desired_downsample = magnification / self._desired_magnification
         original_tile_size = self._tile_size * desired_downsample
         tile_locations = self._create_tile_locations(dataset_id=dataset_id, image_file_name_stem=image_file_name_stem)
-
-
-
-        # try:
-        tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False, image_file_name=image_file_name)
-
-        # if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
-
-        # except Exception:
-        #     print(f'tile_locations.shape: {tile_locations.shape}')
-        #     print(f'original_tile_size: {original_tile_size}')
-        #     print(f'image_file_name: {image_file_name}')
-        #     print(f'image_file_path: {image_file_path}')
+        tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False)
         components = WSITuplesGenerator._create_connected_components(tile_bitmap=tile_bitmap)
 
         slide_descriptor = {
