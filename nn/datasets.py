@@ -586,7 +586,8 @@ class WSITuplesGenerator:
             print(bitmap)
             Image.fromarray(bitmap)
 
-        tile_bitmap = numpy.uint8(Image.fromarray(bitmap))
+        tile_bitmap = numpy.uint8(Image.fromarray(bitmap.astype(float)))
+        # tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
 
         if plot_bitmap is True:
             plt.imshow(tile_bitmap, cmap='gray')
