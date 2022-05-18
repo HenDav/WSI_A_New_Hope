@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --job-name=royvel-test
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --gres=gpu:8
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=64gb
+#SBATCH --output=%x-%j.out
+#SBATCH --qos=normal
+
+srun --gpus=8 --ntasks=8 --container-image=$HOME/nvidia+pytorch+22.02-py3.sqsh --container-mounts $HOME/deep-signature-data:/deep-signature-data,$HOME/deep-signature:/deep-signature /deep-signature/train_arclength_affine.bash

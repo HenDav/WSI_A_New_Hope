@@ -33,6 +33,10 @@ parser.add_argument('--datasets-base-dir-path', type=str, default=None)
 parser.add_argument('--dataset-ids', nargs='+', default=['TCGA'])
 parser.add_argument('--minimal-tiles-count', type=int, default=10)
 parser.add_argument('--folds-count', type=int, default=6)
+parser.add_argument('--num-workers', type=int, default=5)
+parser.add_argument('--negative-examples-count', type=int, default=2)
+parser.add_argument('--tuples-count', type=int, default=1000)
+parser.add_argument('--tuples-dir-path', type=str)
 args = parser.parse_args()
 
 if __name__ == '__main__':
@@ -53,4 +57,4 @@ if __name__ == '__main__':
     folds = list(range(train_tuples_generator.get_folds_count()))
     train_folds = [fold for fold in folds if fold != args.test_fold]
     test_folds = [args.test_fold]
-    train_tuples_generator.create_tuples(tuples_count=1000, negative_examples_count=2, folds=train_folds, dir_path='C:/tests/tuples/train', num_workers=15)
+    train_tuples_generator.create_tuples(tuples_count=args.tuples_count, negative_examples_count=args.negative_examples_count, folds=train_folds, dir_path=args.tuples_dir_path, num_workers=args.num_workers)
