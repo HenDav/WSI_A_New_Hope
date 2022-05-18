@@ -582,9 +582,9 @@ class WSITuplesGenerator:
         for (x, y) in indices:
             bitmap[x, y] = 1
 
-        if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
-            print(bitmap)
-            Image.fromarray(bitmap)
+        # if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
+        #     print(bitmap)
+        #     Image.fromarray(bitmap)
 
         # tile_bitmap = numpy.uint8(Image.fromarray(bitmap.astype(float)))
         tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
