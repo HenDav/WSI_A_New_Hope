@@ -876,14 +876,15 @@ class WSITuplesGenerator:
 
 
 
-        # try:
-        tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False)
+        try:
+            tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False)
 
-        if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
+        # if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
+
+        except Exception:
             print(f'shape: {tile_bitmap.shape}')
-        # except Exception:
-        #     print(f'image_file_name: {image_file_name}')
-        #     print(f'image_file_path: {image_file_path}')
+            print(f'image_file_name: {image_file_name}')
+            print(f'image_file_path: {image_file_path}')
         components = WSITuplesGenerator._create_connected_components(tile_bitmap=tile_bitmap)
 
         slide_descriptor = {
