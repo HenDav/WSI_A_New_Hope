@@ -573,7 +573,7 @@ class WSITuplesGenerator:
         return True
 
     @staticmethod
-    def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
+    def _create_tile_bitmap(original_tile_size, tile_locations, image_file_name, plot_bitmap=False):
         indices = (numpy.array(tile_locations) / original_tile_size).astype(int)
         dim1_size = indices[:, 0].max() + 1
         dim2_size = indices[:, 1].max() + 1
@@ -581,6 +581,9 @@ class WSITuplesGenerator:
 
         for (x, y) in indices:
             bitmap[x, y] = 1
+
+        if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
+            print(bitmap)
 
         tile_bitmap = numpy.uint8(Image.fromarray(bitmap))
 
@@ -877,7 +880,7 @@ class WSITuplesGenerator:
 
 
         try:
-            tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False)
+            tile_bitmap = WSITuplesGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False, image_file_name=image_file_name)
 
         # if image_file_name == 'TCGA-OL-A66H-01Z-00-DX1.E54AF3FA-E59E-404C-BB83-A6FC6FC9B312.svs':
 
