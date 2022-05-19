@@ -37,6 +37,7 @@ parser.add_argument('--num-workers', type=int, default=5)
 parser.add_argument('--negative-examples-count', type=int, default=2)
 parser.add_argument('--tuples-count', type=int, default=1000)
 parser.add_argument('--tuples-dir-path', type=str)
+parser.add_argument('--dump-dir-path', type=str, default=None)
 args = parser.parse_args()
 
 if __name__ == '__main__':
@@ -57,4 +58,10 @@ if __name__ == '__main__':
     folds = list(range(train_tuples_generator.get_folds_count()))
     train_folds = [fold for fold in folds if fold != args.test_fold]
     test_folds = [args.test_fold]
-    train_tuples_generator.create_tuples(tuples_count=args.tuples_count, negative_examples_count=args.negative_examples_count, folds=train_folds, dir_path=args.tuples_dir_path, num_workers=args.num_workers)
+    train_tuples_generator.create_tuples(
+        tuples_count=args.tuples_count,
+        negative_examples_count=args.negative_examples_count,
+        folds=train_folds,
+        dir_path=args.tuples_dir_path,
+        num_workers=args.num_workers,
+        dump_dir_path=args.dump_dir_path)
