@@ -678,7 +678,7 @@ class WSITuplesGenerator:
             try:
                 item = q.get_nowait()
                 item_file_path = os.path.normpath(os.path.join(dir_path, f'{file_name_stem}_{i}.npy'))
-                numpy.save(item_file_path, item)
+                # numpy.save(item_file_path, item)
                 print(f'\rQueue item #{i} saved', end='')
                 i = i + 1
                 if i == count:
