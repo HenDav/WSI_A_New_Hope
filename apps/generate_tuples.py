@@ -43,7 +43,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     np.random.seed(30)
 
-    train_tuples_generator = datasets.WSITuplesGenerator(
+    train_tuples_generator = datasets.WSITupletsGenerator(
         inner_radius=args.inner_radius,
         outer_radius=args.outer_radius,
         tile_size=args.tile_size,

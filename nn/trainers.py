@@ -14,31 +14,18 @@ from torchvision import transforms
 
 
 class ModelTrainer:
-    def __init__(self, model, loss_functions, optimizer, device='cuda'):
+    def __init__(self, model, loss_function, optimizer, device='cuda'):
         self._model = model
-        self._loss_functions = loss_functions
+        self._loss_function = loss_function
         self._optimizer = optimizer
         self._device = device
         self._model.to(device)
 
-    def fit(self, train_dataset, validation_dataset, epochs, train_batch_size, validation_batch_size, results_base_dir_path, preprocess_batch_fn=None, postprocess_batch_fn=None, epoch_handler=None, validation_split=None, shuffle_dataset=True):
-        dataset_size = None
-        train_dataset_size = None
-        validation_dataset_size = None
-        if validation_split is not None:
-            dataset_size = len(train_dataset)
-            indices = list(range(dataset_size))
-            split = int(numpy.floor(validation_split * dataset_size))
-            train_indices, validation_indices = indices[split:], indices[:split]
-            actual_train_dataset = train_dataset
-            actual_validation_dataset = train_dataset
-        else:
-            train_dataset_size = len(train_dataset)
-            validation_dataset_size = len(validation_dataset)
-            train_indices = list(range(train_dataset_size))
-            validation_indices = list(range(validation_dataset_size))
-            actual_train_dataset = train_dataset
-            actual_validation_dataset = validation_dataset
+    def fit(self, train_dataset, validation_dataset, epochs, batch_size, results_base_dir_path, shuffle_dataset=True):
+        train_dataset_size = len(train_dataset)
+        validation_dataset_size = len(validation_dataset)
+        train_indices = list(range(train_dataset_size))
+        validation_indices = list(range(validation_dataset_size))
 
         if shuffle_dataset is True:
             train_sampler = SubsetRandomSampler(train_indices)
@@ -47,24 +34,24 @@ class ModelTrainer:
             train_sampler = SequentialSampler(train_indices)
             validation_sampler = SequentialSampler(validation_indices)
 
-        train_data_loader = DataLoader(actual_train_dataset, batch_size=train_batch_size, sampler=train_sampler, drop_last=False, num_workers=0)
-        validation_data_loader = DataLoader(actual_validation_dataset, batch_size=validation_batch_size, sampler=validation_sampler, drop_last=False, num_workers=0)
+        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=False, num_workers=0)
+        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, drop_last=False, num_workers=0)
 
         epochs_text = epochs if epochs is not None else 'infinite'
 
         ModelTrainer._print_training_configuration('Epochs', epochs_text)
-        ModelTrainer._print_training_configuration('Train Batch size', train_batch_size)
-        ModelTrainer._print_training_configuration('Validation Batch size', validation_batch_size)
+        ModelTrainer._print_training_configuration('Train Batch size', batch_size)
+        ModelTrainer._print_training_configuration('Validation Batch size', batch_size)
         ModelTrainer._print_training_configuration('Training dataset length', len(train_indices))
-        ModelTrainer._print_training_configuration('Training batches per epoch', int(numpy.ceil(len(train_indices) / train_batch_size)))
+        ModelTrainer._print_training_configuration('Training batches per epoch', int(numpy.ceil(len(train_indices) / batch_size)))
         ModelTrainer._print_training_configuration('Validation dataset length', len(validation_indices))
-        ModelTrainer._print_training_configuration('Validation batches per epoch', int(numpy.ceil(len(validation_indices) / validation_batch_size)))
+        ModelTrainer._print_training_configuration('Validation batches per epoch', int(numpy.ceil(len(validation_indices) / batch_size)))
 
         results_dir_path = os.path.normpath(os.path.join(results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
         model_file_path = os.path.normpath(os.path.join(results_dir_path, 'model.pt'))
         results_file_path = os.path.normpath(os.path.join(results_dir_path, 'results.npy'))
         model_architecture_file_path = os.path.normpath(os.path.join(results_dir_path, 'model_arch.txt'))
-        loss_functions_file_path = os.path.normpath(os.path.join(results_dir_path, 'loss_functions.txt'))
+        loss_function_file_path = os.path.normpath(os.path.join(results_dir_path, 'loss_functions.txt'))
         optimizer_file_path = os.path.normpath(os.path.join(results_dir_path, 'optimizer.txt'))
         trainer_data_file_path = os.path.normpath(os.path.join(results_dir_path, 'trainer_data.txt'))
         Path(results_dir_path).mkdir(parents=True, exist_ok=True)
@@ -72,25 +59,19 @@ class ModelTrainer:
         with open(model_architecture_file_path, "w") as text_file:
             text_file.write(str(self._model))
 
-        with open(loss_functions_file_path, "w") as text_file:
-            for loss_function in self._loss_functions:
-                text_file.write(str(loss_function))
-                # print('\n')
+        with open(loss_function_file_path, "w") as text_file:
+            text_file.write(str(self._loss_function))
 
         with open(optimizer_file_path, "w") as text_file:
             text_file.write(str(self._optimizer))
 
         with open(trainer_data_file_path, "w") as text_file:
-            text_file.write(f'train_batch_size: {train_batch_size}\n')
-            text_file.write(f'validation_batch_size: {validation_batch_size}\n')
+            text_file.write(f'train_batch_size: {batch_size}\n')
+            text_file.write(f'validation_batch_size: {batch_size}\n')
             text_file.write(f'epochs: {epochs_text}\n')
             text_file.write(f'results_dir_path: {results_dir_path}\n')
-            if validation_split is not None:
-                text_file.write(f'validation_split: {validation_split}\n')
-                text_file.write(f'dataset_size: {dataset_size}\n')
-            else:
-                text_file.write(f'train_dataset_size: {train_dataset_size}\n')
-                text_file.write(f'validation_dataset_size: {validation_dataset_size}\n')
+            text_file.write(f'train_dataset_size: {train_dataset_size}\n')
+            text_file.write(f'validation_dataset_size: {validation_dataset_size}\n')
 
         print(' - Start Training:')
         results = None
@@ -117,15 +98,12 @@ class ModelTrainer:
             lastest_model_path = os.path.normpath(os.path.join(results_dir_path, f'model_{epoch_index}.pt'))
             torch.save(self._model.state_dict(), lastest_model_path)
 
-            if epoch_handler is not None:
-                epoch_handler(epoch_index)
-
             results = {
                 'train_loss_array': train_loss_array,
                 'validation_loss_array': validation_loss_array,
                 'epochs': epochs_text,
-                'train_batch_size': train_batch_size,
-                'validation_batch_size': validation_batch_size,
+                'train_batch_size': batch_size,
+                'validation_batch_size': batch_size,
                 'model_file_path': model_file_path,
                 'results_file_path': results_file_path
             }
@@ -163,17 +141,10 @@ class ModelTrainer:
         loss = self._evaluate_loss(batch_data=batch_data)
         return loss.item()
 
-    def _postprocess_batch(self, output_features, batch_data):
-        return None
-
     def _evaluate_loss(self, batch_data):
-        preprocessed_input_features = self._preprocess_batch(batch_data=batch_data)
-        output_features = self._model(preprocessed_input_features)
-        postprocessed_output_features = self._postprocess_batch(output_features=output_features, batch_data=batch_data)
-        v = torch.tensor(0).cuda().double()
-        for loss_function in self._loss_functions:
-            v = v + loss_function(output_features=postprocessed_output_features)
-        return v
+        in_features = self._preprocess_batch(batch_data=batch_data)
+        out_features = self._model(in_features)
+        return self._loss_function(out_features)
 
     def _epoch(self, epoch_index, data_loader, process_batch_fn):
         loss_array = numpy.array([])
@@ -206,37 +177,19 @@ class ModelTrainer:
         print(f'        - [Epoch {epoch_index+1:{fill}{align}{index_width}} | Batch {batch_index+1:{fill}{align}{index_width}} / {batch_count}]: Batch Loss = {batch_loss:{fill}{align}{loss_width}}, Avg. Batch Loss = {average_batch_loss:{fill}{align}{loss_width}}, Batch Duration: {batch_duration} sec.')
 
 
-class WSIDistanceModelTrainer(ModelTrainer):
-    def __init__(self, model, loss_functions, optimizer, device='cuda'):
-        ModelTrainer.__init__(self, model=model, loss_functions=loss_functions, optimizer=optimizer, device=device)
+class WSIModelTrainer(ModelTrainer):
+    def __init__(self, model, loss_function, optimizer, device='cuda'):
+        ModelTrainer.__init__(self, model=model, loss_function=loss_function, optimizer=optimizer, device=device)
         self._transform = torch.nn.Sequential(
             transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
             transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)),
             transforms.RandomVerticalFlip(),
-            transforms.RandomHorizontalFlip(),
-            # transforms.CenterCrop(tile_size),
-        )
+            transforms.RandomHorizontalFlip())
+            # transforms.CenterCrop(tile_size)
 
     def _preprocess_batch(self, batch_data):
-        shape = batch_data.shape
-        # preprocessed_input_features = self._transform(torch.reshape(input_features, (shape[0] * shape[1], shape[2], shape[3], shape[4])).type(dtype=torch.float32).cuda() / 255)
-        preprocessed_input_features = torch.reshape(batch_data, (shape[0] * shape[1], shape[2], shape[3], shape[4])).cuda() / 255
-        for i in range(shape[0] * shape[1]):
-            preprocessed_input_features[i, :, :, :] = self._transform(preprocessed_input_features[i, :, :, :])
-
-        return preprocessed_input_features
-
-    def _postprocess_batch(self, output_features, batch_data):
-        shape = batch_data.shape
-        return torch.reshape(output_features, (shape[0], shape[1], -1))
-
-
-class WSIDistanceModelTrainerTest(WSIDistanceModelTrainer):
-    def __init__(self):
-        self._transform = torch.nn.Sequential(
-            transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
-            transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)),
-            transforms.RandomVerticalFlip(),
-            transforms.RandomHorizontalFlip(),
-            # transforms.CenterCrop(tile_size),
-        )
+        x0 = (batch_data[:, 0, :, :, :] / 255).to('cuda')
+        x1 = (batch_data[:, 1, :, :, :] / 255).to('cuda')
+        x0_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x0)
+        x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
+        return torch.stack((x0_aug, x1_aug))

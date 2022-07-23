@@ -36,8 +36,9 @@ dependencies:
   - tensorboard
   - openpyxl
   - opencv
-  - mesa-libgl-cos6-x86_64
+#  - mesa-libgl-cos6-x86_64
   - pip:
       - openslide-python
 #      - opencv-python
       - bresenham
+      - lightly
