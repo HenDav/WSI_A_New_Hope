@@ -35,7 +35,7 @@ dependencies:
   - tensorboard
   - openpyxl
   - opencv
-#  - mesa-libgl-cos6-x86_64
+  - mesa-libgl-cos6-x86_64
 #  - mesalib
 #  - ffmpeg
 #  - libsm-cos6-x86_64
