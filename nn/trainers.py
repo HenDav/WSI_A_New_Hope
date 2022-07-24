@@ -19,7 +19,7 @@ import matplotlib.lines
 
 
 class ModelTrainer:
-    def __init__(self, model, loss_function, optimizer, device='cuda'):
+    def __init__(self, model, loss_function, optimizer, device):
         self._model = model
         self._loss_function = loss_function
         self._optimizer = optimizer
@@ -185,7 +185,7 @@ class ModelTrainer:
 
 
 class WSIModelTrainer(ModelTrainer):
-    def __init__(self, model, loss_function, optimizer, device='cuda'):
+    def __init__(self, model, loss_function, optimizer, device):
         ModelTrainer.__init__(self, model=model, loss_function=loss_function, optimizer=optimizer, device=device)
         self._transform = torch.nn.Sequential(
             transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
@@ -195,8 +195,8 @@ class WSIModelTrainer(ModelTrainer):
             # transforms.CenterCrop(tile_size)
 
     def _preprocess_batch(self, batch_data):
-        x0 = (batch_data[:, 0, :, :, :] / 255).to('cuda')
-        x1 = (batch_data[:, 1, :, :, :] / 255).to('cuda')
+        x0 = (batch_data[:, 0, :, :, :] / 255).to(self._device)
+        x1 = (batch_data[:, 1, :, :, :] / 255).to(self._device)
         x0_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x0)
         x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
         return torch.stack((x0_aug, x1_aug))

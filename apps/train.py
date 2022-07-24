@@ -109,13 +109,19 @@ if __name__ == '__main__':
         validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
 
         model = networks.WSIBYOL()
+        if torch.cuda.device_count() > 1:
+            print("Let's use", torch.cuda.device_count(), "GPUs!")
+            model = torch.nn.DataParallel(model)
+
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
         loss_fn = losses.BYOLLoss()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         model_trainer = trainers.WSIModelTrainer(
             model=model,
             loss_function=loss_fn,
-            optimizer=optimizer)
+            optimizer=optimizer,
+            device=device)
 
         # model_trainer.plot_samples(
         #     train_dataset=train_dataset,
