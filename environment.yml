@@ -39,6 +39,6 @@ dependencies:
   - mesalib
   - pip:
       - openslide-python
-      - opencv-python
+#      - opencv-python
       - bresenham
       - lightly
