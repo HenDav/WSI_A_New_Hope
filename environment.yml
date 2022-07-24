@@ -11,7 +11,7 @@ dependencies:
   - pytorch
   - torchaudio
   - torchvision
-  - cudatoolkit=11.3
+  - cudatoolkit
   - ipython
   - numpy
   - scipy
