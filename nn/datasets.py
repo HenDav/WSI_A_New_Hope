@@ -7,7 +7,8 @@ import io
 import queue
 from datetime import datetime
 from pathlib import Path
-from multiprocessing import Process, Queue, connection, current_process
+import multiprocessing
+from multiprocessing import Process, connection, current_process
 import queue
 import glob
 import re
@@ -1133,7 +1134,7 @@ class WSITupletsGenerator:
         self._df.to_excel(output_file_path)
 
     def _create_slide_descriptors(self, df, num_workers):
-        q = Queue()
+        q = multiprocessing.Manager().Queue()
         rows_count = df.shape[0]
         indices = list(range(rows_count))
         indices_groups = common_utils.split(items=indices, n=num_workers)
@@ -1142,11 +1143,11 @@ class WSITupletsGenerator:
         slide_descriptors = WSITupletsGenerator._drain_queue(q=q, count=rows_count)
         WSITupletsGenerator._join_workers(workers=workers)
         WSITupletsGenerator._stop_workers(workers=workers)
-        q.close()
+        # q.close()
         return slide_descriptors
 
     def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, workers_count):
-        self._tuplets_queue = Queue(maxsize=queue_size)
+        self._tuplets_queue = multiprocessing.Manager().Queue(maxsize=queue_size)
         self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
 
