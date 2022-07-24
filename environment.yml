@@ -37,6 +37,7 @@ dependencies:
   - opencv
   - mesa-libgl-cos6-x86_64
   - mesalib
+  - ffmpeg
   - pip:
       - openslide-python
 #      - opencv-python
