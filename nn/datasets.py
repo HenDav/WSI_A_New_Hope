@@ -7,7 +7,7 @@ import io
 import queue
 from datetime import datetime
 from pathlib import Path
-from multiprocessing import Process, Queue, connection, current_process
+from torch.multiprocessing import Process, Queue
 import queue
 import glob
 import re
