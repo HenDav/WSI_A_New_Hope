@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from distutils.dir_util import copy_tree
 import shutil
+import multiprocessing
 
 # wsi
 from nn import datasets
@@ -26,6 +27,8 @@ import torchvision
 import numpy
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn')
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--inner-radius', type=int, default=2)
     parser.add_argument('--outer-radius', type=int, default=10)

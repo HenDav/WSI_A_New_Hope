@@ -7,8 +7,7 @@ import io
 import queue
 from datetime import datetime
 from pathlib import Path
-import multiprocessing
-from multiprocessing import Process, connection, current_process
+from multiprocessing import Process, Queue, connection, current_process
 import queue
 import glob
 import re
@@ -651,15 +650,23 @@ class WSITupletsGenerator:
     def _drain_queue(q, count):
         items = []
         while True:
-            try:
-                item = q.get_nowait()
-                items.append(item)
-                items_count = len(items)
-                print(f'\rQueue item #{items_count} added', end='')
-                if items_count == count:
-                    break
-            except queue.Empty:
-                pass
+            # try:
+            #     item = q.get_nowait()
+            #     items.append(item)
+            #     items_count = len(items)
+            #     print(f'\rQueue item #{items_count} added', end='')
+            #     if items_count == count:
+            #         break
+            # except queue.Empty:
+            #     pass
+
+            item = q.get()
+            items.append(item)
+            items_count = len(items)
+            print(f'\rQueue item #{items_count} added', end='')
+            if items_count == count:
+                break
+
         print('')
         return items
 
@@ -669,13 +676,22 @@ class WSITupletsGenerator:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
         while True:
             try:
-                item = q.get_nowait()
+                # item = q.get_nowait()
+                # item_file_path = os.path.normpath(os.path.join(dir_path, f'{file_name_stem}_{i}.npy'))
+                # numpy.save(item_file_path, item)
+                # print(f'\rQueue item #{i} saved', end='')
+                # i = i + 1
+                # if i == count:
+                #     break
+
+                item = q.get()
                 item_file_path = os.path.normpath(os.path.join(dir_path, f'{file_name_stem}_{i}.npy'))
                 numpy.save(item_file_path, item)
                 print(f'\rQueue item #{i} saved', end='')
                 i = i + 1
                 if i == count:
                     break
+
             except queue.Empty:
                 pass
         print('')
@@ -1134,7 +1150,7 @@ class WSITupletsGenerator:
         self._df.to_excel(output_file_path)
 
     def _create_slide_descriptors(self, df, num_workers):
-        q = multiprocessing.Manager().Queue()
+        q = Queue()
         rows_count = df.shape[0]
         indices = list(range(rows_count))
         indices_groups = common_utils.split(items=indices, n=num_workers)
@@ -1143,11 +1159,11 @@ class WSITupletsGenerator:
         slide_descriptors = WSITupletsGenerator._drain_queue(q=q, count=rows_count)
         WSITupletsGenerator._join_workers(workers=workers)
         WSITupletsGenerator._stop_workers(workers=workers)
-        # q.close()
+        q.close()
         return slide_descriptors
 
     def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, workers_count):
-        self._tuplets_queue = multiprocessing.Manager().Queue(maxsize=queue_size)
+        self._tuplets_queue = Queue(maxsize=queue_size)
         self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
 
@@ -1193,7 +1209,8 @@ class WSITupletsGenerator:
 
         if replace is True:
             try:
-                new_tuplet = self._tuplets_queue.get_nowait()
+                # new_tuplet = self._tuplets_queue.get_nowait()
+                new_tuplet = self._tuplets_queue.get()
                 rand_index = int(numpy.random.randint(self._dataset_size, size=1))
                 self._tuplets[rand_index] = new_tuplet
             except queue.Empty:
