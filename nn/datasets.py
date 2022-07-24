@@ -527,9 +527,13 @@ class WSITupletsGenerator:
         df = df[~df[WSITupletsGenerator._fold_column_name].isin(WSITupletsGenerator._invalid_values)]
         folds = list(df[WSITupletsGenerator._fold_column_name].unique())
         numeric_folds = [common_utils.to_int(fold) for fold in folds]
-        max_val = numpy.max(numeric_folds) + 1
-        df.loc[df[WSITupletsGenerator._fold_column_name] == 'test', WSITupletsGenerator._fold_column_name] = max_val
-        df[WSITupletsGenerator._fold_column_name] = df[WSITupletsGenerator._fold_column_name].astype(int)
+        try:
+            max_val = numpy.max(numeric_folds) + 1
+            df.loc[df[WSITupletsGenerator._fold_column_name] == 'test', WSITupletsGenerator._fold_column_name] = max_val
+            df[WSITupletsGenerator._fold_column_name] = df[WSITupletsGenerator._fold_column_name].astype(int)
+        except Exception:
+            print(folds)
+            print(numeric_folds)
 
         # remove invalid values
         df = df.replace(WSITupletsGenerator._invalid_values, WSITupletsGenerator._invalid_value)
