@@ -723,6 +723,7 @@ class WSITupletsGenerator:
     def _load_metadata(self):
         df = None
         for _, dataset_id in enumerate(self._dataset_paths):
+            print(f'Processing metadata for {dataset_id}')
             slide_metadata_file = os.path.join(self._dataset_paths[dataset_id], WSITupletsGenerator._get_slides_data_file_name(dataset_id=dataset_id))
             grid_metadata_file = os.path.join(self._dataset_paths[dataset_id], WSITupletsGenerator._get_grids_folder_name(desired_magnification=self._desired_magnification), WSITupletsGenerator._grid_data_file_name)
             slide_df = pandas.read_excel(io=slide_metadata_file)
@@ -757,8 +758,8 @@ class WSITupletsGenerator:
             if df is None:
                 df = current_df
             else:
-                df = df.append(current_df)
-
+                # df = df.append(current_df)
+                df = pandas.concat((df, current_df))
         return df
 
     def _enhance_metadata_tcga(self, df):
@@ -821,7 +822,10 @@ class WSITupletsGenerator:
             calculate_grade=WSITupletsGenerator._calculate_grade_carmel)
 
         enhanced_metadata = pandas.concat([annotations1_carmel, annotations2_carmel])
+        # try:
         df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator._patient_barcode_column_name, WSITupletsGenerator._slide_barcode_prefix_column_name])
+        # except Exception:
+        #     h = 5
         return df
 
     def _enhance_metadata_abctb(self, df):

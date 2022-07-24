@@ -67,6 +67,7 @@ if __name__ == '__main__':
         validation_folds = [fold]
         fold_results_dir_path = os.path.normpath(os.path.join(results_dir_path, f'fold{fold}'))
 
+        print('Creating Train Tuplets Generator')
         train_tuplets_generator = datasets.WSITupletsGenerator(
             folds=train_folds,
             inner_radius=args.inner_radius,
@@ -80,6 +81,7 @@ if __name__ == '__main__':
             metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
             minimal_tiles_count=args.minimal_tiles_count)
 
+        print('Creating Validation Tuplets Generator')
         validation_tuplets_generator = datasets.WSITupletsGenerator(
             folds=validation_folds,
             inner_radius=args.inner_radius,
