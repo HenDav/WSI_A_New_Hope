@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--learning-rate', type=int, default=0.0001)
+    parser.add_argument('--learning-rate', type=float, default=0.0001)
 
     parser.add_argument('--tuplets-dir-path', type=str)
     parser.add_argument('--dump-dir-path', type=str, default=None)
