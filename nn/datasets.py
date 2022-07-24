@@ -358,7 +358,7 @@ class WSITupletsGenerator:
             if dataset_id == 'TCGA':
                 return row[WSITupletsGenerator._patient_barcode_column_name]
             elif dataset_id == 'ABCTB':
-                return row[WSITupletsGenerator._file_column_name]
+                return row[WSITupletsGenerator._file_column_name].replace('tif', 'ndpi')
             elif dataset_id.startswith('CARMEL'):
                 return row[WSITupletsGenerator._slide_barcode_column_name_carmel][:-2]
             elif dataset_id == 'SHEBA':
@@ -527,13 +527,13 @@ class WSITupletsGenerator:
         df = df[~df[WSITupletsGenerator._fold_column_name].isin(WSITupletsGenerator._invalid_values)]
         folds = list(df[WSITupletsGenerator._fold_column_name].unique())
         numeric_folds = [common_utils.to_int(fold) for fold in folds]
-        try:
-            max_val = numpy.max(numeric_folds) + 1
-            df.loc[df[WSITupletsGenerator._fold_column_name] == 'test', WSITupletsGenerator._fold_column_name] = max_val
-            df[WSITupletsGenerator._fold_column_name] = df[WSITupletsGenerator._fold_column_name].astype(int)
-        except Exception:
-            print(folds)
-            print(numeric_folds)
+        # try:
+        max_val = numpy.max(numeric_folds) + 1
+        df.loc[df[WSITupletsGenerator._fold_column_name] == 'test', WSITupletsGenerator._fold_column_name] = max_val
+        df[WSITupletsGenerator._fold_column_name] = df[WSITupletsGenerator._fold_column_name].astype(int)
+        # except Exception:
+        #     print(folds)
+        #     print(numeric_folds)
 
         # remove invalid values
         df = df.replace(WSITupletsGenerator._invalid_values, WSITupletsGenerator._invalid_value)
