@@ -507,7 +507,7 @@ class WSITupletsGenerator:
             WSITupletsGenerator._mpp_column_name,
             WSITupletsGenerator._total_tiles_column_name,
             WSITupletsGenerator._legitimate_tiles_column_name,
-            WSITupletsGenerator._tile_usage_column_name,
+            # WSITupletsGenerator._tile_usage_column_name,
             WSITupletsGenerator._width_column_name,
             WSITupletsGenerator._height_column_name,
             WSITupletsGenerator._magnification_column_name,
