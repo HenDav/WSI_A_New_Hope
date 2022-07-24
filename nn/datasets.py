@@ -151,7 +151,7 @@ class WSITupletsGenerator:
     def _build_path_suffixes():
         path_suffixes = {
             WSITupletsGenerator._dataset_id_tcga: f'Breast/{WSITupletsGenerator._dataset_id_tcga}',
-            WSITupletsGenerator._dataset_id_abctb: f'Breast/{WSITupletsGenerator._dataset_id_abctb}/{WSITupletsGenerator._dataset_id_abctb}',
+            WSITupletsGenerator._dataset_id_abctb: f'Breast/{WSITupletsGenerator._dataset_id_abctb}_TIF',
         }
 
         for i in range(1, 12):
