@@ -24,7 +24,6 @@ dependencies:
   - cython
   - pytest
   - tqdm
-  - opencv
   - freetype
   - plotly
   - ipykernel
@@ -37,8 +36,9 @@ dependencies:
   - openpyxl
   - opencv
   - mesa-libgl-cos6-x86_64
+  - mesalib
   - pip:
       - openslide-python
-#      - opencv-python
+      - opencv-python
       - bresenham
       - lightly
