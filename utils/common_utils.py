@@ -74,3 +74,14 @@ def add_to_patient_dict(patient_dict, patient_barcode, x):
         patient_dict[patient_barcode] = [x]
     else:
         patient_dict[patient_barcode].append(x)
+
+
+def save_object_dict(obj, file_path):
+    dict = {key: value for key, value in obj.__dict__.items() if isinstance(value, str) or isinstance(value, int) or isinstance(value, float)}
+    with open(file_path, "w") as text_file:
+        for key, value in dict.items():
+            text_file.write(f'{key}: {value}\n')
+
+
+def magnification_to_mpp(magnification):
+    return (40 / magnification) * 0.25

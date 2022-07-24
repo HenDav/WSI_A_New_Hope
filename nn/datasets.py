@@ -963,7 +963,8 @@ class WSITupletsGenerator:
 
             positive_angle = 2 * numpy.pi * numpy.random.uniform(size=1)[0]
             positive_dir = numpy.array([numpy.cos(positive_angle), numpy.sin(positive_angle)])
-            positive_radius = inner_radius_pixels * numpy.random.uniform(size=1)[0]
+            # positive_radius = inner_radius_pixels * numpy.random.uniform(size=1)[0]
+            positive_radius = inner_radius_pixels
             positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
             positive_bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
             if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=positive_bitmap_indices) is False:
@@ -1020,8 +1021,9 @@ class WSITupletsGenerator:
         image_file_path = os.path.join(self._dataset_paths[dataset_id], image_file_name)
         image_file_name_stem = pathlib.Path(image_file_path).stem
         image_file_name_suffix = pathlib.Path(image_file_path).suffix
-        mpp = row[WSITupletsGenerator._mpp_column_name]
         magnification = row[WSITupletsGenerator._magnification_column_name]
+        # mpp = row[WSITupletsGenerator._mpp_column_name]
+        mpp = common_utils.magnification_to_mpp(magnification=magnification)
         legitimate_tiles_count = row[WSITupletsGenerator._legitimate_tiles_column_name]
         fold = row[WSITupletsGenerator._fold_column_name]
         desired_downsample = magnification / self._desired_magnification
@@ -1068,15 +1070,15 @@ class WSITupletsGenerator:
             slide_descriptor_index = numpy.random.randint(slide_descriptors_count)
             slide_descriptor = self._slide_descriptors[slide_descriptor_index]
 
-            try:
-                tuplet = self._try_create_tuplet(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
-            except Exception as e:
-                tuplet = None
-                Path(self._dump_dir_path).mkdir(parents=True, exist_ok=True)
-                slide_descriptor['exception'] = str(e)
-                with open(os.path.join(self._dump_dir_path, f'slide_descriptor{slide_descriptor_index}.pkl'), 'wb') as f:
-                    pickle.dump(slide_descriptor, f)
-                print(e)
+            # try:
+            tuplet = self._try_create_tuplet(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
+            # except Exception as e:
+            #     tuplet = None
+            #     Path(self._dump_dir_path).mkdir(parents=True, exist_ok=True)
+            #     slide_descriptor['exception'] = str(e)
+            #     with open(os.path.join(self._dump_dir_path, f'slide_descriptor{slide_descriptor_index}.pkl'), 'wb') as f:
+            #         pickle.dump(slide_descriptor, f)
+            #     print(e)
 
             if tuplet is not None:
                 return tuplet

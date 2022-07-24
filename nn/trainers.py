@@ -12,6 +12,11 @@ from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 from torchvision import transforms
 
+# matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.lines
+
 
 class ModelTrainer:
     def __init__(self, model, loss_function, optimizer, device='cuda'):
@@ -21,7 +26,7 @@ class ModelTrainer:
         self._device = device
         self._model.to(device)
 
-    def fit(self, train_dataset, validation_dataset, epochs, batch_size, results_base_dir_path, shuffle_dataset=True):
+    def fit(self, train_dataset, validation_dataset, epochs, batch_size, results_dir_path, shuffle_dataset=True):
         train_dataset_size = len(train_dataset)
         validation_dataset_size = len(validation_dataset)
         train_indices = list(range(train_dataset_size))
@@ -47,7 +52,6 @@ class ModelTrainer:
         ModelTrainer._print_training_configuration('Validation dataset length', len(validation_indices))
         ModelTrainer._print_training_configuration('Validation batches per epoch', int(numpy.ceil(len(validation_indices) / batch_size)))
 
-        results_dir_path = os.path.normpath(os.path.join(results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
         model_file_path = os.path.normpath(os.path.join(results_dir_path, 'model.pt'))
         results_file_path = os.path.normpath(os.path.join(results_dir_path, 'results.npy'))
         model_architecture_file_path = os.path.normpath(os.path.join(results_dir_path, 'model_arch.txt'))
@@ -95,8 +99,8 @@ class ModelTrainer:
                     torch.save(self._model.state_dict(), model_file_path)
                     best_validation_average_loss = validation_average_loss
 
-            lastest_model_path = os.path.normpath(os.path.join(results_dir_path, f'model_{epoch_index}.pt'))
-            torch.save(self._model.state_dict(), lastest_model_path)
+            # lastest_model_path = os.path.normpath(os.path.join(results_dir_path, f'model_{epoch_index}.pt'))
+            # torch.save(self._model.state_dict(), lastest_model_path)
 
             results = {
                 'train_loss_array': train_loss_array,
@@ -114,6 +118,9 @@ class ModelTrainer:
                 break
 
         return results
+
+    def plot_samples(self, train_dataset, validation_dataset, batch_size):
+        pass
 
     def _train_epoch(self, epoch_index, data_loader):
         self._model.train()
@@ -193,3 +200,39 @@ class WSIModelTrainer(ModelTrainer):
         x0_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x0)
         x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
         return torch.stack((x0_aug, x1_aug))
+
+    def plot_samples(self, train_dataset, validation_dataset, batch_size):
+        train_dataset_size = len(train_dataset)
+        validation_dataset_size = len(validation_dataset)
+        train_indices = list(range(train_dataset_size))
+        validation_indices = list(range(validation_dataset_size))
+
+        train_sampler = SequentialSampler(train_indices)
+        validation_sampler = SequentialSampler(validation_indices)
+
+        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=False, num_workers=0)
+        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, drop_last=False, num_workers=0)
+
+        for batch_index, batch_data in enumerate(train_data_loader, 0):
+            batch_data_aug = self._preprocess_batch(batch_data)
+            for i in range(batch_size):
+                x0 = batch_data_aug[0, i, :, :, :]
+                x1 = batch_data_aug[1, i, :, :, :]
+                fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 20))
+
+                anchor_pic = transforms.ToPILImage()(x0)
+                positive_pic = transforms.ToPILImage()(x1)
+
+                axes[0].imshow(anchor_pic)
+                axes[0].axis('off')
+                axes[0].set_title('Anchor Tile')
+                axes[1].imshow(positive_pic)
+                axes[1].axis('off')
+                axes[1].set_title('Positive Tile')
+
+                plt.show()
+
+            if batch_index == 0:
+                break
+
+
