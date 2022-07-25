@@ -13,27 +13,28 @@ dependencies:
   - cudatoolkit=11.3
   - ipython
 #  - numpy
-  - scipy
-  - scikit-learn
+#  - scipy
+#  - scikit-learn
   - scikit-image
+  - jupyter
   - jupyterlab
   - matplotlib
-  - jupyter
+
   - pandas
-  - cython
+#  - cython
 #  - pytest
   - tqdm
-  - freetype
-  - plotly
-  - ipykernel
+#  - freetype
+#  - plotly
+#  - ipykernel
   - pip
-  - python-kaleido
+#  - python-kaleido
 #  - xlrd
 #  - scikit-survival
 #  - psutil
 #  - tensorboard
   - openpyxl
-  - opencv
+#  - opencv
 #  - mesa-libgl-cos6-x86_64
 #  - cupti
 #  - mesalib
@@ -42,6 +43,6 @@ dependencies:
 #  - xorg-libxext
   - pip:
       - openslide-python
-#      - opencv-python
+      - opencv-python
       - bresenham
       - lightly
