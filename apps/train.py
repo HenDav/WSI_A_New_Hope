@@ -115,8 +115,10 @@ if __name__ == '__main__':
 
         # model = networks.WSIBYOL()
         # if torch.cuda.device_count() > 1:
-        print("========== Let's use", torch.cuda.device_count(), "GPUs! ==========")
+        print(f'torch.cuda.device_count(): {torch.cuda.device_count()}')
         print(f'torch.cuda.is_available(): {torch.cuda.is_available()}')
+        print(f'torch.version.cuda: {torch.version.cuda}')
+
 
             # model = torch.nn.DataParallel(model)
 
