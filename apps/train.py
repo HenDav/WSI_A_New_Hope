@@ -114,8 +114,8 @@ if __name__ == '__main__':
         # validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
 
         # model = networks.WSIBYOL()
-        if torch.cuda.device_count() > 1:
-            print("========== Let's use", torch.cuda.device_count(), "GPUs! ==========")
+        # if torch.cuda.device_count() > 1:
+        print("========== Let's use", torch.cuda.device_count(), "GPUs! ==========")
             # model = torch.nn.DataParallel(model)
 
         # optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
