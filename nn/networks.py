@@ -62,7 +62,7 @@ class WSIBYOL(torch.nn.Module):
     def forward(self, in_features):
         update_momentum(self._model.backbone, self._model.backbone_momentum, m=0.99)
         update_momentum(self._model.projection_head, self._model.projection_head_momentum, m=0.99)
-        print(f'in_features.shape: {in_features}')
+        print(f'================== in_features.shape: {in_features} ==================')
         x0 = in_features[0, :, :, :, :]
         x1 = in_features[1, :, :, :, :]
         p0 = self._model(x0)
