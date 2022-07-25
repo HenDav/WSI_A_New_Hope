@@ -39,8 +39,8 @@ class ModelTrainer:
             train_sampler = SequentialSampler(train_indices)
             validation_sampler = SequentialSampler(validation_indices)
 
-        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=False, num_workers=0)
-        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, drop_last=False, num_workers=0)
+        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True, drop_last=False, num_workers=0)
+        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, pin_memory=True, drop_last=False, num_workers=0)
 
         epochs_text = epochs if epochs is not None else 'infinite'
 
@@ -210,8 +210,8 @@ class WSIModelTrainer(ModelTrainer):
         train_sampler = SequentialSampler(train_indices)
         validation_sampler = SequentialSampler(validation_indices)
 
-        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=False, num_workers=0)
-        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, drop_last=False, num_workers=0)
+        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True, drop_last=False, num_workers=0)
+        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, pin_memory=True, drop_last=False, num_workers=0)
 
         for batch_index, batch_data in enumerate(train_data_loader, 0):
             batch_data_aug = self._preprocess_batch(batch_data)

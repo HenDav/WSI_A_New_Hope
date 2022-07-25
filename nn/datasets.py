@@ -1213,9 +1213,9 @@ class WSITupletsGenerator:
                 # new_tuplet = self._tuplets_queue.get()
                 rand_index = int(numpy.random.randint(self._dataset_size, size=1))
                 self._tuplets[rand_index] = new_tuplet
-                print('=== NEW TUPLET ADDED ===')
+                # print('=== NEW TUPLET ADDED ===')
             except queue.Empty:
-                print('=== QUEUE IS EMPTY ===')
+                # print('=== QUEUE IS EMPTY ===')
                 pass
 
         return numpy.array(tuplet)

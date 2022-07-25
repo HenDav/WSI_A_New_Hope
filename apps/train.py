@@ -66,76 +66,76 @@ if __name__ == '__main__':
     shutil.copytree(src=args.codebase_dir_path, dst=codebase_dest_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
 
     for fold in args.folds:
-        train_folds = n = [train_fold for train_fold in args.folds if train_fold != fold]
-        validation_folds = [fold]
-        fold_results_dir_path = os.path.normpath(os.path.join(results_dir_path, f'fold{fold}'))
+        # train_folds = n = [train_fold for train_fold in args.folds if train_fold != fold]
+        # validation_folds = [fold]
+        # fold_results_dir_path = os.path.normpath(os.path.join(results_dir_path, f'fold{fold}'))
+        #
+        # print('Creating Train Tuplets Generator')
+        # train_tuplets_generator = datasets.WSITupletsGenerator(
+        #     folds=train_folds,
+        #     inner_radius=args.inner_radius,
+        #     outer_radius=args.outer_radius,
+        #     tile_size=args.tile_size,
+        #     desired_magnification=args.desired_magnification,
+        #     dataset_size=args.train_dataset_size,
+        #     dataset_ids=args.dataset_ids,
+        #     datasets_base_dir_path=args.datasets_base_dir_path,
+        #     dump_dir_path=args.dump_dir_path,
+        #     metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
+        #     minimal_tiles_count=args.minimal_tiles_count)
+        #
+        # print('Creating Validation Tuplets Generator')
+        # validation_tuplets_generator = datasets.WSITupletsGenerator(
+        #     folds=validation_folds,
+        #     inner_radius=args.inner_radius,
+        #     outer_radius=args.outer_radius,
+        #     tile_size=args.tile_size,
+        #     desired_magnification=args.desired_magnification,
+        #     dataset_size=args.validation_dataset_size,
+        #     dataset_ids=args.dataset_ids,
+        #     datasets_base_dir_path=args.datasets_base_dir_path,
+        #     dump_dir_path=args.dump_dir_path,
+        #     metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
+        #     minimal_tiles_count=args.minimal_tiles_count)
+        #
+        # validation_tuplets_generator.start_tuplets_creation(
+        #     negative_examples_count=args.negative_examples_count,
+        #     workers_count=args.workers_count,
+        #     queue_size=args.validation_queue_size)
+        #
+        # validation_tuplets_generator.stop_tuplets_creation()
+        #
+        # train_tuplets_generator.start_tuplets_creation(
+        #     negative_examples_count=args.negative_examples_count,
+        #     workers_count=args.workers_count,
+        #     queue_size=args.train_queue_size)
+        #
+        # train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
+        # validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
 
-        print('Creating Train Tuplets Generator')
-        train_tuplets_generator = datasets.WSITupletsGenerator(
-            folds=train_folds,
-            inner_radius=args.inner_radius,
-            outer_radius=args.outer_radius,
-            tile_size=args.tile_size,
-            desired_magnification=args.desired_magnification,
-            dataset_size=args.train_dataset_size,
-            dataset_ids=args.dataset_ids,
-            datasets_base_dir_path=args.datasets_base_dir_path,
-            dump_dir_path=args.dump_dir_path,
-            metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
-            minimal_tiles_count=args.minimal_tiles_count)
-
-        print('Creating Validation Tuplets Generator')
-        validation_tuplets_generator = datasets.WSITupletsGenerator(
-            folds=validation_folds,
-            inner_radius=args.inner_radius,
-            outer_radius=args.outer_radius,
-            tile_size=args.tile_size,
-            desired_magnification=args.desired_magnification,
-            dataset_size=args.validation_dataset_size,
-            dataset_ids=args.dataset_ids,
-            datasets_base_dir_path=args.datasets_base_dir_path,
-            dump_dir_path=args.dump_dir_path,
-            metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
-            minimal_tiles_count=args.minimal_tiles_count)
-
-        validation_tuplets_generator.start_tuplets_creation(
-            negative_examples_count=args.negative_examples_count,
-            workers_count=args.workers_count,
-            queue_size=args.validation_queue_size)
-
-        validation_tuplets_generator.stop_tuplets_creation()
-
-        train_tuplets_generator.start_tuplets_creation(
-            negative_examples_count=args.negative_examples_count,
-            workers_count=args.workers_count,
-            queue_size=args.train_queue_size)
-
-        train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
-        validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
-
-        model = networks.WSIBYOL()
+        # model = networks.WSIBYOL()
         if torch.cuda.device_count() > 1:
-            print("Let's use", torch.cuda.device_count(), "GPUs!")
-            model = torch.nn.DataParallel(model)
+            print("========== Let's use", torch.cuda.device_count(), "GPUs! ==========")
+            # model = torch.nn.DataParallel(model)
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-        loss_fn = losses.BYOLLoss()
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        model_trainer = trainers.WSIModelTrainer(
-            model=model,
-            loss_function=loss_fn,
-            optimizer=optimizer,
-            device=device)
-
-        # model_trainer.plot_samples(
+        # optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+        # loss_fn = losses.BYOLLoss()
+        # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        #
+        # model_trainer = trainers.WSIModelTrainer(
+        #     model=model,
+        #     loss_function=loss_fn,
+        #     optimizer=optimizer,
+        #     device=device)
+        #
+        # # model_trainer.plot_samples(
+        # #     train_dataset=train_dataset,
+        # #     validation_dataset=validation_dataset,
+        # #     batch_size=args.batch_size)
+        #
+        # model_trainer.fit(
         #     train_dataset=train_dataset,
         #     validation_dataset=validation_dataset,
-        #     batch_size=args.batch_size)
-
-        model_trainer.fit(
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            results_dir_path=fold_results_dir_path)
+        #     epochs=args.epochs,
+        #     batch_size=args.batch_size,
+        #     results_dir_path=fold_results_dir_path)
