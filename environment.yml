@@ -8,10 +8,10 @@ channels:
   - defaults
 dependencies:
   - python=3.9
-  - pytorch
-  - torchaudio
-  - torchvision
-  - cudatoolkit
+#  - pytorch
+#  - torchaudio
+#  - torchvision
+#  - cudatoolkit=11.3
   - ipython
   - numpy
   - scipy
@@ -22,7 +22,7 @@ dependencies:
   - jupyter
   - pandas
   - cython
-  - pytest
+#  - pytest
   - tqdm
   - freetype
   - plotly
