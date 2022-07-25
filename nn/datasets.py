@@ -1209,11 +1209,13 @@ class WSITupletsGenerator:
 
         if replace is True:
             try:
-                # new_tuplet = self._tuplets_queue.get_nowait()
-                new_tuplet = self._tuplets_queue.get()
+                new_tuplet = self._tuplets_queue.get_nowait()
+                # new_tuplet = self._tuplets_queue.get()
                 rand_index = int(numpy.random.randint(self._dataset_size, size=1))
                 self._tuplets[rand_index] = new_tuplet
+                print('=== NEW TUPLET ADDED ===')
             except queue.Empty:
+                print('=== QUEUE IS EMPTY ===')
                 pass
 
         return numpy.array(tuplet)
