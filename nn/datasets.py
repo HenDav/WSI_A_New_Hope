@@ -1081,32 +1081,18 @@ class WSITupletsGenerator:
             slide_descriptor = self._create_slide_descriptor(row=row)
             q.put(slide_descriptor)
 
-    def _tuples_creation_worker(self, df, indices, negative_examples_count, q):
-        for i in itertools.count(0):
-            if indices is not None and i == len(indices):
+    def _tuples_creation_worker(self, df, tuplet_indices, slide_indices, negative_examples_count, q):
+        tuplets_created = 0
+        for i in itertools.count():
+            if tuplet_indices is not None and tuplets_created == len(tuplet_indices):
                 break
 
-            tuplet = self._create_tuplet(df=df, negative_examples_count=negative_examples_count)
-            q.put(tuplet)
-
-    def _create_tuplet(self, df, negative_examples_count):
-        slide_descriptors_count = len(self._slide_descriptors)
-        while True:
-            slide_descriptor_index = numpy.random.randint(slide_descriptors_count)
+            slide_descriptor_index = slide_indices[i % len(slide_indices)]
             slide_descriptor = self._slide_descriptors[slide_descriptor_index]
-
-            # try:
             tuplet = self._try_create_tuplet(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
-            # except Exception as e:
-            #     tuplet = None
-            #     Path(self._dump_dir_path).mkdir(parents=True, exist_ok=True)
-            #     slide_descriptor['exception'] = str(e)
-            #     with open(os.path.join(self._dump_dir_path, f'slide_descriptor{slide_descriptor_index}.pkl'), 'wb') as f:
-            #         pickle.dump(slide_descriptor, f)
-            #     print(e)
-
             if tuplet is not None:
-                return tuplet
+                q.put(tuplet)
+                tuplets_created = tuplets_created + 1
 
     def _try_create_tuplet(self, df, slide_descriptor, negative_examples_count):
         tiles = []
@@ -1167,12 +1153,15 @@ class WSITupletsGenerator:
         self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
 
-        indices_groups = None
+        tuplet_indices_groups = None
         if tuplets_count < numpy.inf:
-            indices = list(range(tuplets_count))
-            indices_groups = common_utils.split(items=indices, n=workers_count)
+            tuplet_indices = list(range(tuplets_count))
+            tuplet_indices_groups = common_utils.split(items=tuplet_indices, n=workers_count)
 
-        args = [(self._df, indices_groups, negative_examples_count, self._tuplets_queue) for _ in range(workers_count)]
+        slide_indices = list(range(len(self._slide_descriptors)))
+        slide_indices_groups = common_utils.split(items=slide_indices, n=workers_count)
+
+        args = [(self._df, tuplet_indices_groups[i] if tuplet_indices_groups is not None else None, slide_indices_groups[i], negative_examples_count, self._tuplets_queue) for i in range(workers_count)]
         self._tuplets_workers = WSITupletsGenerator._start_workers(args=args, f=self._tuples_creation_worker, workers_count=workers_count)
 
         # WSITuplesGenerator._drain_queue_to_disk(q=q, count=tuples_count, dir_path=dir_path, file_name_stem='tuple')
