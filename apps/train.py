@@ -55,6 +55,8 @@ if __name__ == '__main__':
     parser.add_argument('--train-dataset-size', type=int, default=1000)
     parser.add_argument('--train-queue-size', type=int, default=100)
 
+    parser.add_argument('--validation-rate', type=int, default=10)
+
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--learning-rate', type=float, default=0.0001)
