@@ -199,7 +199,7 @@ class WSIModelTrainer(ModelTrainer):
         x1 = (batch_data[:, 1, :, :, :] / 255).to(self._device)
         x0_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x0)
         x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
-        return torch.stack((x0_aug, x1_aug))
+        return torch.stack((x0_aug, x1_aug), dim=1)
 
     def plot_samples(self, train_dataset, validation_dataset, batch_size):
         train_dataset_size = len(train_dataset)
