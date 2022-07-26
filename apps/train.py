@@ -6,6 +6,7 @@ from pathlib import Path
 from distutils.dir_util import copy_tree
 import shutil
 import multiprocessing
+import logging
 
 # wsi
 from nn import datasets
@@ -26,11 +27,45 @@ import torchvision
 # numpy
 import numpy
 
-if __name__ == '__main__':
-    print(f'torch.cuda.device_count(): {torch.cuda.device_count()}')
-    print(f'torch.cuda.is_available(): {torch.cuda.is_available()}')
-    print(f'torch.version.cuda: {torch.version.cuda}')
 
+def create_results_dir(results_base_dir_path):
+    results_dir_path = os.path.normpath(os.path.join(results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
+    Path(results_dir_path).mkdir(parents=True, exist_ok=True)
+    return results_dir_path
+
+
+def setup_logging(results_dir_path):
+    logging_file_path = os.path.normpath(os.path.join(results_dir_path, 'log.txt'))
+
+    # set up logging to file - see previous section for more details
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                        datefmt='%m-%d %H:%M',
+                        filename=logging_file_path,
+                        filemode='w')
+
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+
+    # set a format which is simpler for console use
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+
+    # add the handler to the root logger
+    logging.getLogger().addHandler(console)
+
+
+def backup_codebase(results_dir_path, logger):
+    codebase_dest_dir_path = os.path.normpath(os.path.join(results_dir_path, 'code'))
+    common_utils.save_object_dict(obj=args, file_path=os.path.join(results_dir_path, 'args.txt'))
+    shutil.copytree(src=args.codebase_dir_path, dst=codebase_dest_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
+    logger.info(f'Codebase copied to: {codebase_dest_dir_path}')
+
+
+if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn')
 
     parser = argparse.ArgumentParser()
@@ -65,18 +100,20 @@ if __name__ == '__main__':
     parser.add_argument('--dump-dir-path', type=str, default=None)
     args = parser.parse_args()
 
-    results_dir_path = os.path.normpath(os.path.join(args.results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
-    codebase_dest_dir_path = os.path.normpath(os.path.join(results_dir_path, 'code'))
-    Path(results_dir_path).mkdir(parents=True, exist_ok=True)
-    common_utils.save_object_dict(obj=args, file_path=os.path.join(results_dir_path, 'args.txt'))
-    shutil.copytree(src=args.codebase_dir_path, dst=codebase_dest_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
+    results_dir_path = create_results_dir(results_base_dir_path=args.results_base_dir_path)
+    setup_logging(results_dir_path=results_dir_path)
+    logger = logging.getLogger('train.py')
+    backup_codebase(results_dir_path=results_dir_path, logger=logger)
 
+    logger.info(f'torch.cuda.device_count(): {torch.cuda.device_count()}')
+    logger.info(f'torch.cuda.is_available(): {torch.cuda.is_available()}')
+    logger.info(f'torch.version.cuda: {torch.version.cuda}')
     for fold in args.folds:
         train_folds = n = [train_fold for train_fold in args.folds if train_fold != fold]
         validation_folds = [fold]
         fold_results_dir_path = os.path.normpath(os.path.join(results_dir_path, f'fold{fold}'))
 
-        print('Creating Train Tuplets Generator')
+        logger.info('Creating train tuplets generator')
         train_tuplets_generator = datasets.WSITupletsGenerator(
             folds=train_folds,
             inner_radius=args.inner_radius,
@@ -90,7 +127,7 @@ if __name__ == '__main__':
             metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
             minimal_tiles_count=args.minimal_tiles_count)
 
-        print('Creating Validation Tuplets Generator')
+        logger.info('Creating validation tuplets generator')
         validation_tuplets_generator = datasets.WSITupletsGenerator(
             folds=validation_folds,
             inner_radius=args.inner_radius,
@@ -104,33 +141,44 @@ if __name__ == '__main__':
             metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
             minimal_tiles_count=args.minimal_tiles_count)
 
+        logger.info('Starting generation of validation tuplets')
         validation_tuplets_generator.start_tuplets_creation(
             negative_examples_count=args.negative_examples_count,
             workers_count=args.workers_count,
             queue_size=args.validation_queue_size)
 
+        logger.info('Stopping generation of validation tuplets')
         validation_tuplets_generator.stop_tuplets_creation()
 
+        logger.info('Starting generation of train tuplets')
         train_tuplets_generator.start_tuplets_creation(
             negative_examples_count=args.negative_examples_count,
             workers_count=args.workers_count,
             queue_size=args.train_queue_size)
 
+        logger.info('Creating train and validation datasets')
         train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
         validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
 
+        logger.info('Creating model')
         model = networks.WSIBYOL()
         if torch.cuda.device_count() > 1:
+            logger.info(f'Wrapping model with torch.nn.DataParallel (torch.cuda.device_count(): {torch.cuda.device_count()})')
             model = torch.nn.DataParallel(model)
 
+        logger.info(f'Creating optimizer (learning rate: {args.learning_rate}')
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+
+        logger.info(f'Creating loss function')
         loss_fn = losses.BYOLLoss()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+        logger.info(f'Creating model trainer')
         model_trainer = trainers.WSIModelTrainer(
             model=model,
             loss_function=loss_fn,
             optimizer=optimizer,
+            validation_rate=args.validation_rate,
             device=device)
 
         model_trainer.plot_samples(

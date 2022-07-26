@@ -19,11 +19,12 @@ import matplotlib.lines
 
 
 class ModelTrainer:
-    def __init__(self, model, loss_function, optimizer, device):
+    def __init__(self, model, loss_function, optimizer, validation_rate, device):
         self._model = model
         self._loss_function = loss_function
         self._optimizer = optimizer
         self._device = device
+        self._validation_rate = validation_rate
         self._model.to(device)
 
     def fit(self, train_dataset, validation_dataset, epochs, batch_size, results_dir_path, shuffle_dataset=True):
@@ -86,21 +87,24 @@ class ModelTrainer:
             print(f'    - Training Epoch #{epoch_index+1}:')
             train_loss = self._train_epoch(epoch_index=epoch_index, data_loader=train_data_loader)
             train_loss_array = numpy.append(train_loss_array, [numpy.mean(train_loss)])
-            print(f'    - Validation Epoch #{epoch_index+1}:')
-            validation_loss = self._validation_epoch(epoch_index=epoch_index, data_loader=validation_data_loader)
-            validation_loss_array = numpy.append(validation_loss_array, [numpy.mean(validation_loss)])
 
-            if best_validation_average_loss is None:
-                torch.save(self._model.state_dict(), model_file_path)
-                best_validation_average_loss = numpy.mean(validation_loss)
-            else:
-                validation_average_loss = numpy.mean(validation_loss)
-                if validation_average_loss < best_validation_average_loss:
+            if epoch_index % self._validation_rate == 0:
+                print(f'    - Validation Epoch #{epoch_index+1}:')
+                validation_loss = self._validation_epoch(epoch_index=epoch_index, data_loader=validation_data_loader)
+                validation_loss_array = numpy.append(validation_loss_array, [numpy.mean(validation_loss)])
+
+                if best_validation_average_loss is None:
                     torch.save(self._model.state_dict(), model_file_path)
-                    best_validation_average_loss = validation_average_loss
+                    best_validation_average_loss = numpy.mean(validation_loss)
+                else:
+                    validation_average_loss = numpy.mean(validation_loss)
+                    if validation_average_loss < best_validation_average_loss:
+                        torch.save(self._model.state_dict(), model_file_path)
+                        best_validation_average_loss = validation_average_loss
 
-            # lastest_model_path = os.path.normpath(os.path.join(results_dir_path, f'model_{epoch_index}.pt'))
-            # torch.save(self._model.state_dict(), lastest_model_path)
+
+                lastest_model_path = os.path.normpath(os.path.join(results_dir_path, f'model_{epoch_index}.pt'))
+                torch.save(self._model.state_dict(), lastest_model_path)
 
             results = {
                 'train_loss_array': train_loss_array,
@@ -185,8 +189,8 @@ class ModelTrainer:
 
 
 class WSIModelTrainer(ModelTrainer):
-    def __init__(self, model, loss_function, optimizer, device):
-        ModelTrainer.__init__(self, model=model, loss_function=loss_function, optimizer=optimizer, device=device)
+    def __init__(self, model, loss_function, optimizer, validation_rate, device):
+        ModelTrainer.__init__(self, model=model, loss_function=loss_function, optimizer=optimizer, validation_rate=validation_rate, device=device)
         self._transform = torch.nn.Sequential(
             transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
             transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)),
