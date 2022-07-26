@@ -131,14 +131,14 @@ if __name__ == '__main__':
             optimizer=optimizer,
             device=device)
 
-        # model_trainer.plot_samples(
-        #     train_dataset=train_dataset,
-        #     validation_dataset=validation_dataset,
-        #     batch_size=args.batch_size)
-
-        model_trainer.fit(
+        model_trainer.plot_samples(
             train_dataset=train_dataset,
             validation_dataset=validation_dataset,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            results_dir_path=fold_results_dir_path)
+            batch_size=args.batch_size)
+
+        # model_trainer.fit(
+        #     train_dataset=train_dataset,
+        #     validation_dataset=validation_dataset,
+        #     epochs=args.epochs,
+        #     batch_size=args.batch_size,
+        #     results_dir_path=fold_results_dir_path)

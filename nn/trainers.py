@@ -216,8 +216,8 @@ class WSIModelTrainer(ModelTrainer):
         for batch_index, batch_data in enumerate(train_data_loader, 0):
             batch_data_aug = self._preprocess_batch(batch_data)
             for i in range(batch_size):
-                x0 = batch_data_aug[0, i, :, :, :]
-                x1 = batch_data_aug[1, i, :, :, :]
+                x0 = batch_data_aug[i, 0, :, :, :]
+                x1 = batch_data_aug[i, 1, :, :, :]
                 fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 20))
 
                 anchor_pic = transforms.ToPILImage()(x0)
