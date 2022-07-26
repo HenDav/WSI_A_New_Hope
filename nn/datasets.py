@@ -1265,3 +1265,5 @@ class WSITupletsGenerator:
         self._tuplets = None
 
         self._df = self._load_metadata()
+        # self._df = self._df.iloc[[10]]
+
