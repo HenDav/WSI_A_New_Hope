@@ -65,6 +65,155 @@ def backup_codebase(results_dir_path, logger):
     logger.info(f'Codebase copied to: {codebase_dest_dir_path}')
 
 
+def create_tuplets_generator(args, validation_fold, logger):
+    train_folds = [train_fold for train_fold in args.folds if train_fold != validation_fold]
+    validation_folds = [validation_fold]
+
+    logger.info('Creating train tuplets generator')
+    train_tuplets_generator = datasets.WSITupletsGenerator(
+        folds=train_folds,
+        inner_radius=args.inner_radius,
+        outer_radius=args.outer_radius,
+        tile_size=args.tile_size,
+        desired_magnification=args.desired_magnification,
+        dataset_size=args.train_dataset_size,
+        dataset_ids=args.dataset_ids,
+        datasets_base_dir_path=args.datasets_base_dir_path,
+        dump_dir_path=args.dump_dir_path,
+        metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
+        minimal_tiles_count=args.minimal_tiles_count)
+
+    logger.info('Creating validation tuplets generator')
+    validation_tuplets_generator = datasets.WSITupletsGenerator(
+        folds=validation_folds,
+        inner_radius=args.inner_radius,
+        outer_radius=args.outer_radius,
+        tile_size=args.tile_size,
+        desired_magnification=args.desired_magnification,
+        dataset_size=args.validation_dataset_size,
+        dataset_ids=args.dataset_ids,
+        datasets_base_dir_path=args.datasets_base_dir_path,
+        dump_dir_path=args.dump_dir_path,
+        metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
+        minimal_tiles_count=args.minimal_tiles_count)
+
+    return train_tuplets_generator, validation_tuplets_generator
+
+
+def generate_validation_data(args, validation_tuplets_generator, logger):
+    logger.info('Starting generation of validation tuplets')
+    validation_tuplets_generator.start_tuplets_creation(
+        negative_examples_count=args.negative_examples_count,
+        workers_count=args.workers_count,
+        queue_size=args.validation_queue_size)
+
+    logger.info('Stopping generation of validation tuplets')
+    validation_tuplets_generator.stop_tuplets_creation()
+
+
+def generate_train_data(args, train_tuplets_generator, logger):
+    logger.info('Starting generation of train tuplets')
+    train_tuplets_generator.start_tuplets_creation(
+        negative_examples_count=args.negative_examples_count,
+        workers_count=args.workers_count,
+        queue_size=args.train_queue_size)
+
+
+def create_datasets(args, train_tuplets_generator, validation_tuplets_generator, logger):
+    logger.info('Creating train and validation datasets')
+    train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
+    validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
+    return train_dataset, validation_dataset
+
+
+def create_model(args, logger):
+    logger.info('Creating model')
+    model = networks.WSIBYOL()
+    if torch.cuda.device_count() > 1:
+        logger.info(f'Wrapping model with torch.nn.DataParallel (torch.cuda.device_count(): {torch.cuda.device_count()})')
+        model = torch.nn.DataParallel(model)
+    return model
+
+
+def create_optimizer(args, logger):
+    logger.info(f'Creating optimizer (learning rate: {args.learning_rate}')
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    return optimizer
+
+
+def create_loss_function(args, logger):
+    logger.info(f'Creating loss function')
+    loss_fn = losses.BYOLLoss()
+    return loss_fn
+
+
+def create_model_trainer(args, model, optimizer, loss_fn, logger):
+    logger.info(f'Creating model trainer')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model_trainer = trainers.WSIModelTrainer(
+        model=model,
+        loss_function=loss_fn,
+        optimizer=optimizer,
+        validation_rate=args.validation_rate,
+        device=device)
+
+    return model_trainer
+
+
+def train_folds(args, validation_fold, logger):
+    train_tuplets_generator, validation_tuplets_generator = create_tuplets_generator(
+        args=args,
+        validation_fold=validation_fold,
+        logger=logger)
+
+    generate_validation_data(
+        args=args,
+        validation_tuplets_generator=validation_tuplets_generator,
+        logger=logger)
+
+    generate_train_data(
+        args=args,
+        train_tuplets_generator=train_tuplets_generator,
+        logger=logger)
+
+    train_dataset, validation_dataset = create_datasets(
+        args=args,
+        train_tuplets_generator=train_tuplets_generator,
+        validation_tuplets_generator=validation_tuplets_generator,
+        logger=logger)
+
+    model = create_model(
+        args=args,
+        logger=logger)
+
+    optimizer = create_optimizer(
+        args=args,
+        logger=logger)
+
+    loss_fn = create_loss_function(
+        args=args,
+        logger=logger)
+
+    model_trainer = create_model_trainer(
+        args=args,
+        model=model,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        logger=logger)
+
+    model_trainer.plot_samples(
+        train_dataset=train_dataset,
+        validation_dataset=validation_dataset,
+        batch_size=args.batch_size)
+
+    model_trainer.fit(
+        train_dataset=train_dataset,
+        validation_dataset=validation_dataset,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        results_dir_path=fold_results_dir_path)
+
+
 if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn')
 
@@ -108,87 +257,9 @@ if __name__ == '__main__':
     logger.info(f'torch.cuda.device_count(): {torch.cuda.device_count()}')
     logger.info(f'torch.cuda.is_available(): {torch.cuda.is_available()}')
     logger.info(f'torch.version.cuda: {torch.version.cuda}')
-    for fold in args.folds:
-        train_folds = n = [train_fold for train_fold in args.folds if train_fold != fold]
-        validation_folds = [fold]
-        fold_results_dir_path = os.path.normpath(os.path.join(results_dir_path, f'fold{fold}'))
 
-        logger.info('Creating train tuplets generator')
-        train_tuplets_generator = datasets.WSITupletsGenerator(
-            folds=train_folds,
-            inner_radius=args.inner_radius,
-            outer_radius=args.outer_radius,
-            tile_size=args.tile_size,
-            desired_magnification=args.desired_magnification,
-            dataset_size=args.train_dataset_size,
-            dataset_ids=args.dataset_ids,
-            datasets_base_dir_path=args.datasets_base_dir_path,
-            dump_dir_path=args.dump_dir_path,
-            metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
-            minimal_tiles_count=args.minimal_tiles_count)
-
-        logger.info('Creating validation tuplets generator')
-        validation_tuplets_generator = datasets.WSITupletsGenerator(
-            folds=validation_folds,
-            inner_radius=args.inner_radius,
-            outer_radius=args.outer_radius,
-            tile_size=args.tile_size,
-            desired_magnification=args.desired_magnification,
-            dataset_size=args.validation_dataset_size,
-            dataset_ids=args.dataset_ids,
-            datasets_base_dir_path=args.datasets_base_dir_path,
-            dump_dir_path=args.dump_dir_path,
-            metadata_enhancement_dir_path=args.metadata_enhancement_dir_path,
-            minimal_tiles_count=args.minimal_tiles_count)
-
-        logger.info('Starting generation of validation tuplets')
-        validation_tuplets_generator.start_tuplets_creation(
-            negative_examples_count=args.negative_examples_count,
-            workers_count=args.workers_count,
-            queue_size=args.validation_queue_size)
-
-        logger.info('Stopping generation of validation tuplets')
-        validation_tuplets_generator.stop_tuplets_creation()
-
-        logger.info('Starting generation of train tuplets')
-        train_tuplets_generator.start_tuplets_creation(
-            negative_examples_count=args.negative_examples_count,
-            workers_count=args.workers_count,
-            queue_size=args.train_queue_size)
-
-        logger.info('Creating train and validation datasets')
-        train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
-        validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
-
-        logger.info('Creating model')
-        model = networks.WSIBYOL()
-        if torch.cuda.device_count() > 1:
-            logger.info(f'Wrapping model with torch.nn.DataParallel (torch.cuda.device_count(): {torch.cuda.device_count()})')
-            model = torch.nn.DataParallel(model)
-
-        logger.info(f'Creating optimizer (learning rate: {args.learning_rate}')
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-
-        logger.info(f'Creating loss function')
-        loss_fn = losses.BYOLLoss()
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        logger.info(f'Creating model trainer')
-        model_trainer = trainers.WSIModelTrainer(
-            model=model,
-            loss_function=loss_fn,
-            optimizer=optimizer,
-            validation_rate=args.validation_rate,
-            device=device)
-
-        model_trainer.plot_samples(
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            batch_size=args.batch_size)
-
-        # model_trainer.fit(
-        #     train_dataset=train_dataset,
-        #     validation_dataset=validation_dataset,
-        #     epochs=args.epochs,
-        #     batch_size=args.batch_size,
-        #     results_dir_path=fold_results_dir_path)
+    for validation_fold in args.folds:
+        train_folds(
+            args=args,
+            validation_fold=validation_fold,
+            logger=logger)
