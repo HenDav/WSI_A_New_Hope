@@ -16,7 +16,15 @@ from lightly.models.utils import deactivate_requires_grad
 from lightly.models.utils import update_momentum
 
 
-class BYOL(torch.nn.Module):
+class FeatureExtractor(torch.nn.Module):
+    pass
+
+
+class Classifier(torch.nn.Module):
+    pass
+
+
+class BYOL(FeatureExtractor):
     def __init__(self, backbone):
         super().__init__()
 
@@ -43,7 +51,7 @@ class BYOL(torch.nn.Module):
         return z
 
 
-class WSIBYOL(torch.nn.Module):
+class BYOL50(FeatureExtractor):
     def __init__(self):
         super().__init__()
         self._resnet = torchvision.models.resnet50()
@@ -70,3 +78,10 @@ class WSIBYOL(torch.nn.Module):
         p1 = self._model(x1)
         z1 = self._model.forward_momentum(x1)
         return torch.stack((p0, z0, p1, z1))
+
+
+class CompoundClassifier(Classifier):
+    def __init__(self, FeatureExtractorClass, ClassifierClass):
+        super().__init__()
+        self._feature_extractor = FeatureExtractorClass()
+        self._classifier = ClassifierClass()

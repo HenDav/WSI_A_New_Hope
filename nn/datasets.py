@@ -53,16 +53,17 @@ class WSITuplesDataset(Dataset):
         return numpy.load(self._tuple_files[index])
 
 
-class WSITuplesOnlineDataset(Dataset):
-    def __init__(self, tuplets_generator, replace):
+class WSITupletsOnlineDataset(Dataset):
+    def __init__(self, tuplets_generator):
         self._tuplets_generator = tuplets_generator
-        self._replace = replace
+        # self._replace = replace
 
     def __len__(self):
         return self._tuplets_generator.get_dataset_size()
 
     def __getitem__(self, index):
-        return self._tuplets_generator.get_tuplet(index=index, replace=self._replace)
+        return self._tuplets_generator.get_tuplet(index=index)
+        # return self._tuplets_generator.get_tuplet(index=index, replace=self._replace)
 
 
 class WSITupletsGenerator:
@@ -773,8 +774,8 @@ class WSITupletsGenerator:
             current_df = self._postvalidate_metadata(
                 df=current_df)
 
-            current_df = self._select_folds_from_metadata(
-                df=current_df)
+            # current_df = self._select_folds_from_metadata(
+            #     df=current_df)
 
             if df is None:
                 df = current_df
@@ -899,8 +900,8 @@ class WSITupletsGenerator:
         valid_slide_indices = numpy.array(list(all_indices - indices_of_slides_without_grid - indices_of_slides_with_few_tiles))
         return df.iloc[valid_slide_indices]
 
-    def _select_folds_from_metadata(self, df):
-        return df[df[WSITupletsGenerator._fold_column_name].isin(self._folds)]
+    def _select_folds_from_metadata(self, df, folds):
+        return df[df[WSITupletsGenerator._fold_column_name].isin(folds)]
 
     def _open_slide(self, image_file_path, desired_downsample):
         slide = openslide.open_slide(image_file_path)
@@ -1148,10 +1149,11 @@ class WSITupletsGenerator:
         q.close()
         return slide_descriptors
 
-    def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, workers_count):
+    def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, folds, workers_count):
         self._tuplets_queue = Queue(maxsize=queue_size)
         self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
         self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
+        df = self._select_folds_from_metadata(df=self._df, folds=folds)
 
         tuplet_indices_groups = None
         if tuplets_count < numpy.inf:
@@ -1161,7 +1163,7 @@ class WSITupletsGenerator:
         slide_indices = list(range(len(self._slide_descriptors)))
         slide_indices_groups = common_utils.split(items=slide_indices, n=workers_count)
 
-        args = [(self._df, tuplet_indices_groups[i] if tuplet_indices_groups is not None else None, slide_indices_groups[i], negative_examples_count, self._tuplets_queue) for i in range(workers_count)]
+        args = [(df, tuplet_indices_groups[i] if tuplet_indices_groups is not None else None, slide_indices_groups[i], negative_examples_count, self._tuplets_queue) for i in range(workers_count)]
         self._tuplets_workers = WSITupletsGenerator._start_workers(args=args, f=self._tuples_creation_worker, workers_count=workers_count)
 
         # WSITuplesGenerator._drain_queue_to_disk(q=q, count=tuples_count, dir_path=dir_path, file_name_stem='tuple')
@@ -1169,11 +1171,12 @@ class WSITupletsGenerator:
         # WSITuplesGenerator._stop_workers(workers=workers)
         # q.close()
 
-    def start_tuplets_creation(self, negative_examples_count, queue_size, workers_count):
+    def start_tuplets_creation(self, queue_size, negative_examples_count, folds, workers_count):
         self._queue_tuplets(
             tuplets_count=numpy.inf,
             queue_size=queue_size,
             negative_examples_count=negative_examples_count,
+            folds=folds,
             workers_count=workers_count)
 
         self._tuplets = WSITupletsGenerator._drain_queue(q=self._tuplets_queue, count=self._dataset_size)
@@ -1183,11 +1186,12 @@ class WSITupletsGenerator:
         WSITupletsGenerator._stop_workers(workers=self._tuplets_workers)
         self._tuplets_queue.close()
 
-    def save_tuplets(self, tuplets_count, negative_examples_count, workers_count, dir_path):
+    def save_tuplets(self, tuplets_count, negative_examples_count, folds, workers_count, dir_path):
         self._queue_tuplets(
             tuplets_count=tuplets_count,
             queue_size=tuplets_count,
             negative_examples_count=negative_examples_count,
+            folds=folds,
             workers_count=workers_count)
 
         WSITupletsGenerator._drain_queue_to_disk(q=self._tuplets_queue, count=tuplets_count, dir_path=dir_path, file_name_stem='tuple')
@@ -1196,16 +1200,16 @@ class WSITupletsGenerator:
         mod_index = numpy.mod(index, self._dataset_size)
         tuplet = self._tuplets[mod_index]
 
-        if replace is True:
-            try:
-                new_tuplet = self._tuplets_queue.get_nowait()
-                # new_tuplet = self._tuplets_queue.get()
-                rand_index = int(numpy.random.randint(self._dataset_size, size=1))
-                self._tuplets[rand_index] = new_tuplet
-                # print('=== NEW TUPLET ADDED ===')
-            except queue.Empty:
-                # print('=== QUEUE IS EMPTY ===')
-                pass
+        # if replace is True:
+        try:
+            new_tuplet = self._tuplets_queue.get_nowait()
+            # new_tuplet = self._tuplets_queue.get()
+            rand_index = int(numpy.random.randint(self._dataset_size, size=1))
+            self._tuplets[rand_index] = new_tuplet
+            # print('=== NEW TUPLET ADDED ===')
+        except queue.Empty:
+            # print('=== QUEUE IS EMPTY ===')
+            pass
 
         return numpy.array(tuplet)
 
@@ -1214,7 +1218,6 @@ class WSITupletsGenerator:
 
     def __init__(
             self,
-            folds,
             inner_radius,
             outer_radius,
             tile_size,
@@ -1225,8 +1228,6 @@ class WSITupletsGenerator:
             dataset_ids,
             minimal_tiles_count,
             metadata_enhancement_dir_path):
-
-        self._folds = folds
         self._inner_radius = inner_radius
         self._outer_radius = outer_radius
         self._tile_size = tile_size
@@ -1234,25 +1235,15 @@ class WSITupletsGenerator:
         self._dataset_paths = WSITupletsGenerator._get_dataset_paths(
             dataset_ids=dataset_ids,
             datasets_base_dir_path=datasets_base_dir_path)
-
         self._minimal_tiles_count = minimal_tiles_count
         self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
         self._dump_dir_path = dump_dir_path
-
-        # if metadata_file_path is not None:
-        #     self._minimal_tiles_count = minimal_tiles_count
-        #     self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
-        #     self._metadata_df = self._load_metadata()
-        # else:
-        #     self._metadata_df = pandas.read_excel(metadata_file_path)
-
         self._dataset_size = dataset_size
         self._slide_descriptors = []
         self._image_file_name_to_slide_descriptor = {}
         self._tuplets_queue = None
         self._tuplets_workers = None
         self._tuplets = None
-
         self._df = self._load_metadata()
         # self._df = self._df.iloc[[10]]
 

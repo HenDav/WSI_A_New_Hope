@@ -28,13 +28,48 @@ import torchvision
 import numpy
 
 
-def create_results_dir(results_base_dir_path):
-    results_dir_path = os.path.normpath(os.path.join(results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--inner-radius', type=int, default=2)
+    parser.add_argument('--outer-radius', type=int, default=10)
+    parser.add_argument('--tile-size', type=int, default=256)
+    parser.add_argument('--desired-magnification', type=int, default=10)
+    parser.add_argument('--dataset-ids', nargs='+', default=['TCGA'])
+    parser.add_argument('--minimal-tiles-count', type=int, default=10)
+    parser.add_argument('--folds', type=int, nargs='+', default=[1, 2, 3, 4, 5])
+    parser.add_argument('--workers-count', type=int, default=5)
+    parser.add_argument('--negative-examples-count', type=int, default=2)
+
+    parser.add_argument('--metadata-file-path', type=str, default=None)
+    parser.add_argument('--metadata-enhancement-dir-path', type=str, default=None)
+    parser.add_argument('--datasets-base-dir-path', type=str, default=None)
+    parser.add_argument('--results-base-dir-path', type=str, default=None)
+    parser.add_argument('--codebase-dir-path', type=str, default=None)
+
+    parser.add_argument('--validation-dataset-size', type=int, default=1000)
+    parser.add_argument('--validation-queue-size', type=int, default=100)
+    parser.add_argument('--train-dataset-size', type=int, default=1000)
+    parser.add_argument('--train-queue-size', type=int, default=100)
+
+    parser.add_argument('--validation-rate', type=int, default=10)
+
+    parser.add_argument('--epochs', type=int, default=500)
+    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--learning-rate', type=float, default=0.0001)
+
+    parser.add_argument('--tuplets-dir-path', type=str)
+    parser.add_argument('--dump-dir-path', type=str, default=None)
+    args = parser.parse_args()
+    return args
+
+
+def create_results_dir_path(args):
+    results_dir_path = os.path.normpath(os.path.join(args.results_base_dir_path, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
     Path(results_dir_path).mkdir(parents=True, exist_ok=True)
     return results_dir_path
 
 
-def setup_logging(results_dir_path):
+def setup_logging(args, results_dir_path):
     logging_file_path = os.path.normpath(os.path.join(results_dir_path, 'log.txt'))
 
     # set up logging to file - see previous section for more details
@@ -57,12 +92,14 @@ def setup_logging(results_dir_path):
     # add the handler to the root logger
     logging.getLogger().addHandler(console)
 
+    logging.info(f'results_dir_path: {results_dir_path}')
 
-def backup_codebase(results_dir_path, logger):
+
+def backup_codebase(args, results_dir_path, logger):
     codebase_dest_dir_path = os.path.normpath(os.path.join(results_dir_path, 'code'))
+    logger.info(f'codebase_dest_dir_path: {codebase_dest_dir_path}')
     common_utils.save_object_dict(obj=args, file_path=os.path.join(results_dir_path, 'args.txt'))
     shutil.copytree(src=args.codebase_dir_path, dst=codebase_dest_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
-    logger.info(f'Codebase copied to: {codebase_dest_dir_path}')
 
 
 def create_tuplets_generator(args, validation_fold, logger):
@@ -121,8 +158,8 @@ def generate_train_data(args, train_tuplets_generator, logger):
 
 def create_datasets(args, train_tuplets_generator, validation_tuplets_generator, logger):
     logger.info('Creating train and validation datasets')
-    train_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
-    validation_dataset = datasets.WSITuplesOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
+    train_dataset = datasets.WSITupletsOnlineDataset(tuplets_generator=train_tuplets_generator, replace=True)
+    validation_dataset = datasets.WSITupletsOnlineDataset(tuplets_generator=validation_tuplets_generator, replace=False)
     return train_dataset, validation_dataset
 
 
@@ -135,7 +172,7 @@ def create_model(args, logger):
     return model
 
 
-def create_optimizer(args, logger):
+def create_optimizer(args, model, logger):
     logger.info(f'Creating optimizer (learning rate: {args.learning_rate}')
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     return optimizer
@@ -147,20 +184,21 @@ def create_loss_function(args, logger):
     return loss_fn
 
 
-def create_model_trainer(args, model, optimizer, loss_fn, logger):
+def create_model_trainer(args, model, optimizer, loss_fn, results_dir_path, logger):
     logger.info(f'Creating model trainer')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model_trainer = trainers.WSIModelTrainer(
         model=model,
         loss_function=loss_fn,
         optimizer=optimizer,
-        validation_rate=args.validation_rate,
+        model_storage_rate=args.validation_rate,
+        results_dir_path=results_dir_path,
         device=device)
 
     return model_trainer
 
 
-def train_folds(args, validation_fold, logger):
+def train_folds(args, results_dir_path, validation_fold, logger):
     train_tuplets_generator, validation_tuplets_generator = create_tuplets_generator(
         args=args,
         validation_fold=validation_fold,
@@ -188,6 +226,7 @@ def train_folds(args, validation_fold, logger):
 
     optimizer = create_optimizer(
         args=args,
+        model=model,
         logger=logger)
 
     loss_fn = create_loss_function(
@@ -206,53 +245,41 @@ def train_folds(args, validation_fold, logger):
         validation_dataset=validation_dataset,
         batch_size=args.batch_size)
 
+    # fold_results_dir_path = create_fold_results_dir_path(
+    #     args=args,
+    #     validation_fold=validation_fold,
+    #     logger=logger)
+
+    # tensorboard_log_dir_path = create_tensorboard_log_dir_path(
+    #     args=args,
+    #     logger=logger)
+
     model_trainer.fit(
         train_dataset=train_dataset,
         validation_dataset=validation_dataset,
         epochs=args.epochs,
-        batch_size=args.batch_size,
-        results_dir_path=fold_results_dir_path)
+        experiment_name=f'fold{validation_fold}',
+        batch_size=args.batch_size)
 
 
 if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn')
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--inner-radius', type=int, default=2)
-    parser.add_argument('--outer-radius', type=int, default=10)
-    parser.add_argument('--tile-size', type=int, default=256)
-    parser.add_argument('--desired-magnification', type=int, default=10)
-    parser.add_argument('--dataset-ids', nargs='+', default=['TCGA'])
-    parser.add_argument('--minimal-tiles-count', type=int, default=10)
-    parser.add_argument('--folds', type=int, nargs='+', default=[1, 2, 3, 4, 5])
-    parser.add_argument('--workers-count', type=int, default=5)
-    parser.add_argument('--negative-examples-count', type=int, default=2)
+    args = parse_args()
 
-    parser.add_argument('--metadata-file-path', type=str, default=None)
-    parser.add_argument('--metadata-enhancement-dir-path', type=str, default=None)
-    parser.add_argument('--datasets-base-dir-path', type=str, default=None)
-    parser.add_argument('--results-base-dir-path', type=str, default=None)
-    parser.add_argument('--codebase-dir-path', type=str, default=None)
+    results_dir_path = create_results_dir_path(
+        args=args)
 
-    parser.add_argument('--validation-dataset-size', type=int, default=1000)
-    parser.add_argument('--validation-queue-size', type=int, default=100)
-    parser.add_argument('--train-dataset-size', type=int, default=1000)
-    parser.add_argument('--train-queue-size', type=int, default=100)
+    setup_logging(
+        args=args,
+        results_dir_path=results_dir_path)
 
-    parser.add_argument('--validation-rate', type=int, default=10)
-
-    parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--learning-rate', type=float, default=0.0001)
-
-    parser.add_argument('--tuplets-dir-path', type=str)
-    parser.add_argument('--dump-dir-path', type=str, default=None)
-    args = parser.parse_args()
-
-    results_dir_path = create_results_dir(results_base_dir_path=args.results_base_dir_path)
-    setup_logging(results_dir_path=results_dir_path)
     logger = logging.getLogger('train.py')
-    backup_codebase(results_dir_path=results_dir_path, logger=logger)
+
+    backup_codebase(
+        args=args,
+        results_dir_path=results_dir_path,
+        logger=logger)
 
     logger.info(f'torch.cuda.device_count(): {torch.cuda.device_count()}')
     logger.info(f'torch.cuda.is_available(): {torch.cuda.is_available()}')
@@ -261,5 +288,6 @@ if __name__ == '__main__':
     for validation_fold in args.folds:
         train_folds(
             args=args,
+            results_dir_path=results_dir_path,
             validation_fold=validation_fold,
             logger=logger)
