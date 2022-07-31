@@ -13,6 +13,10 @@ def read_region_around_point(slide, point, tile_size, adjusted_tile_size, level)
 def get_best_level_for_downsample(slide, desired_downsample, tile_size):
     level = None
     level_downsample = None
+
+    if desired_downsample < 1:
+        pass
+
     for i, downsample in enumerate(slide.level_downsamples):
         if math.isclose(desired_downsample, downsample, rel_tol=1e-3):
             level = i
