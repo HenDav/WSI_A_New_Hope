@@ -30,7 +30,6 @@ class ModelTrainer:
             validation_dataset,
             epochs,
             batch_size,
-            experiment_name,
             model_storage_rate,
             results_dir_path,
             device):
@@ -41,19 +40,18 @@ class ModelTrainer:
         self._validation_dataset = validation_dataset
         self._epochs = epochs
         self._batch_size = batch_size
-        self._experiment_name = experiment_name
         self._model_storage_rate = model_storage_rate
         self._results_dir_path = results_dir_path
 
-        self._experiment_results_dir_path = self._create_experiment_results_dir_path(
-            results_dir_path=results_dir_path,
-            experiment_name=experiment_name)
+        # self._experiment_results_dir_path = self._create_experiment_results_dir_path(
+        #     results_dir_path=results_dir_path,
+        #     experiment_name=experiment_name)
 
         self._logger = logging.getLogger(
             name=self.__class__.__name__)
 
-        self._summary_writer = SummaryWriter(
-            log_dir=self._experiment_results_dir_path)
+        # self._summary_writer = SummaryWriter(
+        #     log_dir=self._experiment_results_dir_path)
 
         self._device = device
         self._model.to(device)
@@ -233,7 +231,6 @@ class WSIModelTrainer(ModelTrainer):
             validation_dataset,
             epochs,
             batch_size,
-            experiment_name,
             model_storage_rate,
             results_dir_path,
             device):
@@ -246,7 +243,6 @@ class WSIModelTrainer(ModelTrainer):
             validation_dataset=validation_dataset,
             epochs=epochs,
             batch_size=batch_size,
-            experiment_name=experiment_name,
             model_storage_rate=model_storage_rate,
             results_dir_path=results_dir_path,
             device=device)

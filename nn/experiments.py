@@ -13,8 +13,8 @@ from nn import datasets
 from nn import trainers
 from nn import losses
 from nn import networks
-from networks import *
-from losses import *
+from nn.networks import *
+from nn.losses import *
 from utils import common_utils
 
 # matplotlib
@@ -34,20 +34,21 @@ class Experiment:
     def __init__(self, args):
         self._args = args
         self._results_dir_path = self._create_results_dir_path()
+        self._device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self._setup_logging()
         self._logger = logging.getLogger(name=self.__class__.__name__)
-        logging.info(f'results_dir_path: {self._results_dir_path}')
+        self._logger.info(f'results_dir_path: {self._results_dir_path}')
         self._backup_codebase()
 
-        logging.info(f'Initializing train data:')
+        self._logger.info(f'Initializing train data:')
         self._train_tuplets_generator = self._create_tuplets_generator()
         self._train_tuplets_dataset = self._create_tuplets_dataset(tuplets_generator=self._train_tuplets_generator)
 
-        logging.info(f'Initializing validation data:')
+        self._logger.info(f'Initializing validation data:')
         self._validation_tuplets_generator = self._create_tuplets_generator()
         self._validation_tuplets_dataset = self._create_tuplets_dataset(tuplets_generator=self._validation_tuplets_generator)
 
-        logging.info(f'Initializing pytorch environment:')
+        self._logger.info(f'Initializing pytorch environment:')
         self._model = self._create_model()
         self._optimizer = self._create_optimizer()
         self._loss_fn = self._create_loss_function()
@@ -88,7 +89,7 @@ class Experiment:
         shutil.copytree(src=self._args.codebase_dir_path, dst=codebase_dest_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
 
     def _create_tuplets_generator(self):
-        self._logger.info('Creating tuplets generator')
+        self._logger.info('      - Creating tuplets generator')
         tuplets_generator = datasets.WSITupletsGenerator(
             inner_radius=self._args.inner_radius,
             outer_radius=self._args.outer_radius,
@@ -122,12 +123,12 @@ class Experiment:
             queue_size=self._args.train_queue_size)
 
     def _create_tuplets_dataset(self, tuplets_generator):
-        self._logger.info('Creating tuplets dataset')
+        self._logger.info('      - Creating tuplets dataset')
         tuplets_dataset = datasets.WSITupletsOnlineDataset(tuplets_generator=tuplets_generator)
         return tuplets_dataset
 
     def _create_model(self):
-        self._logger.info('Creating model:')
+        self._logger.info('      - Creating model')
 
         try:
             FeatureExtractorClass = globals()[self._args.feature_extractor_model_class]
@@ -149,7 +150,7 @@ class Experiment:
             raise f'Unknown model pairing: {self._args.feature_extractor_model_class}, {self._args.classifier_model_class}'
 
         if torch.cuda.device_count() > 1:
-            self._logger.info(f'Wrapping model with torch.nn.DataParallel (torch.cuda.device_count(): {torch.cuda.device_count()})')
+            self._logger.info(f'      - Wrapping model with torch.nn.DataParallel (torch.cuda.device_count(): {torch.cuda.device_count()})')
             model = torch.nn.DataParallel(model)
 
         self._logger.info(model)
@@ -157,13 +158,13 @@ class Experiment:
         return model
 
     def _create_optimizer(self):
-        self._logger.info(f'Creating optimizer:')
+        self._logger.info(f'      - Creating optimizer:')
         optimizer = torch.optim.AdamW(self._model.parameters(), lr=self._args.learning_rate)
         self._logger.info(optimizer)
         return optimizer
 
     def _create_loss_function(self):
-        self._logger.info(f'Creating loss function:')
+        self._logger.info(f'      - Creating loss function:')
 
         try:
             LossFunctionClass = globals()[self._args.loss_function_class]
@@ -177,8 +178,7 @@ class Experiment:
         return loss_fn
 
     def _create_model_trainer(self):
-        self._logger.info(f'Creating model trainer')
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self._logger.info(f'      - Creating model trainer')
         model_trainer = trainers.WSIModelTrainer(
             model=self._model,
             loss_function=self._loss_fn,
@@ -189,7 +189,7 @@ class Experiment:
             batch_size=self._args.batch_size,
             model_storage_rate=self._args.model_storage_rate,
             results_dir_path=self._results_dir_path,
-            device=device)
+            device=self._device)
 
         return model_trainer
 
@@ -256,7 +256,13 @@ class Experiment:
         torch.save(self._model.state_dict(), initial_model_file_path)
 
         for validation_fold in self._args.folds:
-            self._model_trainer.plot_samples()
+            train_folds = [train_fold for train_fold in self._args.folds if train_fold != validation_fold]
+            self._model.load_state_dict(torch.load(initial_model_file_path, map_location=self._device))
+            self._generate_validation_data(folds=[validation_fold])
+            self._generate_train_data(folds=train_folds)
             self._model_trainer.fit()
+
+            # self._model_trainer.plot_samples()
+            # self._model_trainer.fit()
 
 
