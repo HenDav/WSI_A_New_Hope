@@ -5,13 +5,14 @@ import pathlib
 import math
 import io
 import queue
-from datetime import datetime
-from pathlib import Path
-from torch.multiprocessing import Process, Queue
-import queue
 import glob
 import re
 import itertools
+import logging
+from datetime import datetime
+from pathlib import Path
+from torch.multiprocessing import Process, Queue
+from typing import List, Set, Tuple, Dict, Union, Callable
 
 # pandas
 import pandas
@@ -66,14 +67,211 @@ class WSITupletsOnlineDataset(Dataset):
         # return self._tuplets_generator.get_tuplet(index=index, replace=self._replace)
 
 
+class ConnectedComponent:
+    def __init__(self, bitmap):
+        self._bitmap = bitmap.astype(int)
+        self._indices = numpy.where(self._bitmap)
+        self._size = numpy.count_nonzero(self._bitmap)
+        self._top_left = numpy.array([numpy.min(self._indices[0]), numpy.min(self._indices[1])])
+        self._bottom_right = numpy.array([numpy.max(self._indices[0]), numpy.max(self._indices[1])])
+        self._tile_indices = numpy.array([self._indices[0], self._indices[1]]).transpose()
+
+    @property
+    def component_bitmap(self):
+        return self._bitmap
+
+    @property
+    def component_indices(self):
+        return self._indices
+
+    @property
+    def component_size(self):
+        return self._size
+
+    @property
+    def top_left(self):
+        return self._top_left
+
+    @property
+    def bottom_right(self):
+        return self._bottom_right
+
+    @property
+    def tile_indices(self):
+        return self._tile_indices
+
+
+class SlideDescriptor:
+    _min_component_ratio = 0.92
+    _max_aspect_ratio_diff = 0.02
+
+    def __init__(self, row: pandas.Series, dataset_path: str, desired_magnification: int, tile_size: int):
+        self._row = row
+        self._dataset_path = dataset_path
+        self._desired_magnification = desired_magnification
+        self._tile_size = tile_size
+        self._image_file_name = self._row[WSITupletsGenerator.file_column_name]
+        self._image_file_path = os.path.join(dataset_path, self._image_file_name)
+        self._dataset_id = self._row[WSITupletsGenerator.dataset_id_column_name]
+        self._image_file_name_stem = pathlib.Path(self._image_file_path).stem
+        self._image_file_name_suffix = pathlib.Path(self._image_file_path).suffix
+        self._magnification = row[WSITupletsGenerator.magnification_column_name]
+        self._mpp = common_utils.magnification_to_mpp(magnification=self._magnification)
+        self._legitimate_tiles_count = row[WSITupletsGenerator.legitimate_tiles_column_name]
+        self._fold = row[WSITupletsGenerator.fold_column_name]
+        self._desired_downsample = self._magnification / self._desired_magnification
+        self._slide = openslide.open_slide(self._image_file_path)
+        self._level, self._selected_level_tile_size = slide_utils.get_best_level_for_downsample(slide=self._slide, desired_downsample=self._desired_downsample, tile_size=self._tile_size)
+        self._desired_tile_size = self._tile_size * self._desired_downsample
+        self._tile_locations = self._create_tile_locations()
+        self._tile_bitmap = self._create_tile_bitmap(plot_bitmap=False)
+        self._components = self._create_connected_components()
+
+    @property
+    def image_file_name(self) -> str:
+        return self._image_file_name
+
+    @property
+    def image_file_path(self) -> str:
+        return self._image_file_path
+
+    @property
+    def image_file_name_stem(self) -> str:
+        return self._image_file_name_stem
+
+    @property
+    def dataset_id(self) -> str:
+        return self._dataset_id
+
+    @property
+    def slide(self) -> openslide.OpenSlide:
+        return self._slide
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    @property
+    def actual_tile_size(self) -> int:
+        return self._selected_level_tile_size
+
+    @property
+    def desired_tile_size(self) -> int:
+        return self._desired_tile_size
+
+    @property
+    def mpp(self) -> float:
+        return self._mpp
+
+    @property
+    def components(self):
+        return self._components
+
+    def get_component(self, component_index: int) -> ConnectedComponent:
+        return self._components[component_index]
+
+    def get_random_component(self) -> ConnectedComponent:
+        component_index = int(numpy.random.randint(len(self._components), size=1))
+        return self.get_component(component_index=component_index)
+
+    def get_random_tile(self):
+        # image_file_path = slide_descriptor['image_file_path']
+        # desired_downsample = slide_descriptor['desired_downsample']
+        # original_tile_size = slide_descriptor['original_tile_size']
+        # components = slide_descriptor['components']
+        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+
+
+        # tile_indices = component['tile_indices']
+        # tiles_bitmap = component['tiles_bitmap']
+        # slide = slide_data['slide']
+        # adjusted_tile_size = slide_data['adjusted_tile_size']
+        # level = slide_data['level']
+
+        attempts = 0
+        component = self.get_random_component()
+        while True:
+            if attempts == WSITupletsGenerator._max_attempts:
+                break
+
+            index = int(numpy.random.randint(component.tile_indices.shape[0], size=1))
+            random_tile_indices = component.tile_indices[index, :]
+            location = random_tile_indices * self._desired_tile_size
+            point_offset = (self._desired_tile_size * numpy.random.uniform(size=2)).astype(int)
+            point = point_offset + location
+            bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
+            if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
+                attempts = attempts + 1
+                continue
+
+            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, selected_level_tile_size=adjusted_tile_size, level=level)
+            tile_grayscale = tile.convert('L')
+            hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
+            white_ratio = numpy.sum(hist[WSITupletsGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
+            if white_ratio > WSITupletsGenerator._white_ratio_threshold:
+                attempts = attempts + 1
+                continue
+
+            return {
+                'tile': numpy.array(tile),
+                'point': point
+            }
+
+        return None
+
+    def _create_tile_bitmap(self, plot_bitmap: bool = False) -> Image:
+        indices = (numpy.array(self._tile_locations) / self._desired_tile_size).astype(int)
+        dim1_size = indices[:, 0].max() + 1
+        dim2_size = indices[:, 1].max() + 1
+        bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
+
+        for (x, y) in indices:
+            bitmap[x, y] = 1
+
+        tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
+
+        if plot_bitmap is True:
+            plt.imshow(tile_bitmap, cmap='gray')
+            plt.show()
+
+        return tile_bitmap
+
+    def _create_tile_locations(self) -> numpy.ndarray:
+        grid_file_path = os.path.normpath(os.path.join(self._dataset_path, f'Grids_{self._desired_magnification}', f'{self._image_file_name_stem}--tlsz{self._tile_size}.data'))
+        with open(grid_file_path, 'rb') as file_handle:
+            locations = numpy.array(pickle.load(file_handle))
+            locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
+
+        return locations
+
+    def _create_connected_components(self) -> List[ConnectedComponent]:
+        components_count, components_labels, components_stats, _ = cv2.connectedComponentsWithStats(self._tile_bitmap)
+        components = []
+
+        for component_id in range(1, components_count):
+            component_bitmap = (components_labels == component_id)
+            components.append(ConnectedComponent(bitmap=component_bitmap))
+
+        components_sorted = sorted(components, key=lambda item: item.component_size, reverse=True)
+        largest_component = components_sorted[0]
+        largest_component_aspect_ratio = common_utils.calculate_box_aspect_ratio(largest_component.top_left, largest_component.bottom_right)
+        largest_component_size = largest_component.component_size
+        valid_components = [largest_component]
+        for component in components_sorted[1:]:
+            current_aspect_ratio = common_utils.calculate_box_aspect_ratio(component.top_left, component.bottom_right)
+            current_component_size = component.component_size
+            if (numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < SlideDescriptor._max_aspect_ratio_diff) and ((current_component_size / largest_component_size) > SlideDescriptor._min_component_ratio):
+                valid_components.append(component)
+
+        return valid_components
+
+
 class WSITupletsGenerator:
     # General parameters
     _test_fold_id = 'test'
     _max_attempts = 10
     _white_ratio_threshold = 0.5
     _histogram_min_intensity_level = 170
-    _min_component_ratio = 0.92
-    _max_aspect_ratio_diff = 0.02
 
     # Invalid values
     _invalid_values = ['Missing Data', 'Not performed', '[Not Evaluated]', '[Not Available]']
@@ -91,27 +289,6 @@ class WSITupletsGenerator:
     _bad_segmentation_column_name = 'bad segmentation'
     _grids_data_prefix = 'slides_data_'
     _grid_data_file_name = 'Grid_data.xlsx'
-
-    # Unified
-    _file_column_name = 'file'
-    _patient_barcode_column_name = 'patient_barcode'
-    _dataset_id_column_name = 'id'
-    _mpp_column_name = 'mpp'
-    _scan_date_column_name = 'scan_date'
-    _width_column_name = 'width'
-    _height_column_name = 'height'
-    _magnification_column_name = 'magnification'
-    _er_status_column_name = 'er_status'
-    _pr_status_column_name = 'pr_status'
-    _her2_status_column_name = 'her2_status'
-    _fold_column_name = 'fold'
-    _grade_column_name = 'grade'
-    _tumor_type_column_name = 'tumor_type'
-    _slide_barcode_column_name = 'slide_barcode'
-    _slide_barcode_prefix_column_name = 'slide_barcode_prefix'
-    _legitimate_tiles_column_name = 'legitimate_tiles'
-    _total_tiles_column_name = 'total_tiles'
-    _tile_usage_column_name = 'tile_usage'
 
     # Carmel
     _slide_barcode_column_name_carmel = 'slide barcode'
@@ -148,8 +325,29 @@ class WSITupletsGenerator:
     _her2_status_column_name_shared = 'Her2 status'
     _fold_column_name_shared = 'test fold idx'
 
+    # Curated
+    file_column_name = 'file'
+    patient_barcode_column_name = 'patient_barcode'
+    dataset_id_column_name = 'id'
+    mpp_column_name = 'mpp'
+    scan_date_column_name = 'scan_date'
+    width_column_name = 'width'
+    height_column_name = 'height'
+    magnification_column_name = 'magnification'
+    er_status_column_name = 'er_status'
+    pr_status_column_name = 'pr_status'
+    her2_status_column_name = 'her2_status'
+    fold_column_name = 'fold'
+    grade_column_name = 'grade'
+    tumor_type_column_name = 'tumor_type'
+    slide_barcode_column_name = 'slide_barcode'
+    slide_barcode_prefix_column_name = 'slide_barcode_prefix'
+    legitimate_tiles_column_name = 'legitimate_tiles'
+    total_tiles_column_name = 'total_tiles'
+    tile_usage_column_name = 'tile_usage'
+
     @staticmethod
-    def _build_path_suffixes():
+    def _build_path_suffixes() -> Dict:
         path_suffixes = {
             WSITupletsGenerator._dataset_id_tcga: f'Breast/{WSITupletsGenerator._dataset_id_tcga}',
             WSITupletsGenerator._dataset_id_abctb: f'Breast/{WSITupletsGenerator._dataset_id_abctb}_TIF',
@@ -164,15 +362,15 @@ class WSITupletsGenerator:
         return path_suffixes
 
     @staticmethod
-    def _get_slides_data_file_name(dataset_id):
+    def _get_slides_data_file_name(dataset_id: str) -> str:
         return f'slides_data_{dataset_id}.xlsx'
 
     @staticmethod
-    def _get_grids_folder_name(desired_magnification):
-        return f'Grids_{str(desired_magnification)}'
+    def _get_grids_folder_name(desired_magnification: int) -> str:
+        return f'Grids_{desired_magnification}'
 
     @staticmethod
-    def _get_dataset_paths(dataset_ids, datasets_base_dir_path):
+    def _get_dataset_paths(dataset_ids: List[str], datasets_base_dir_path: str) -> Dict:
         dir_dict = {}
         path_suffixes = WSITupletsGenerator._build_path_suffixes()
 
@@ -184,14 +382,14 @@ class WSITupletsGenerator:
         return dir_dict
 
     @staticmethod
-    def _get_dataset_id_prefix(dataset_id):
+    def _get_dataset_id_prefix(dataset_id: str) -> str:
         return ''.join(i for i in dataset_id if not i.isdigit())
 
     ############
     ### TCGA ###
     ############
     @staticmethod
-    def _calculate_grade_tcga(row):
+    def _calculate_grade_tcga(row: pandas.Series) -> Union[str, int]:
         try:
             column_names = ['Epithelial tubule formation', 'Nuclear pleomorphism', 'Mitosis']
             grade_score = 0
@@ -211,7 +409,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_tumor_type_tcga(row):
+    def _calculate_tumor_type_tcga(row: pandas.Series) -> str:
         try:
             column_name = '2016 Histology Annotations'
             tumor_type = row[column_name]
@@ -226,7 +424,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_slide_barcode_prefix_tcga(row):
+    def _calculate_slide_barcode_prefix_tcga(row: pandas.Series) -> str:
         try:
             return row[WSITupletsGenerator._patient_barcode_column_name_enhancement_tcga]
         except Exception:
@@ -236,7 +434,7 @@ class WSITupletsGenerator:
     ### ABCTB ###
     #############
     @staticmethod
-    def _calculate_grade_abctb(row):
+    def _calculate_grade_abctb(row: pandas.Series) -> Union[str, int]:
         try:
             column_name = 'Histopathological Grade'
             column_score = re.findall(r'\d+', str(row[column_name]))
@@ -248,7 +446,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_tumor_type_abctb(row):
+    def _calculate_tumor_type_abctb(row: pandas.Series) -> str:
         try:
             column_name = 'Primary Histologic Diagnosis'
             tumor_type = row[column_name]
@@ -263,7 +461,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_slide_barcode_prefix_abctb(row):
+    def _calculate_slide_barcode_prefix_abctb(row: pandas.Series) -> str:
         try:
             return row[WSITupletsGenerator._file_column_name_enhancement_abctb]
         except Exception:
@@ -273,7 +471,7 @@ class WSITupletsGenerator:
     ### CARMEL ###
     ##############
     @staticmethod
-    def _calculate_grade_carmel(row):
+    def _calculate_grade_carmel(row: pandas.Series) -> Union[str, int]:
         try:
             column_name = 'Grade'
             column_score = re.findall(r'\d+(?:\.\d+)?', str(row[column_name]))
@@ -285,7 +483,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_tumor_type_carmel(row):
+    def _calculate_tumor_type_carmel(row: pandas.Series) -> str:
         try:
             column_name = 'TumorType'
             tumor_type = row[column_name]
@@ -300,7 +498,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_slide_barcode_prefix_carmel(row):
+    def _calculate_slide_barcode_prefix_carmel(row: pandas.Series) -> str:
         try:
             slide_barcode = row[WSITupletsGenerator._slide_barcode_column_name_enhancement_carmel]
             block_id = row[WSITupletsGenerator._block_id_column_name_enhancement_carmel]
@@ -316,7 +514,7 @@ class WSITupletsGenerator:
     ### SHEBA ###
     #############
     @staticmethod
-    def _calculate_grade_sheba(row):
+    def _calculate_grade_sheba(row: pandas.Series) -> Union[str, int]:
         try:
             column_name = 'Grade'
             column_score = re.findall(r'\d+(?:\.\d+)?', str(row[column_name]))
@@ -328,7 +526,7 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_tumor_type_sheba(row):
+    def _calculate_tumor_type_sheba(row: pandas.Series) -> str:
         try:
             column_name = 'Histology'
             tumor_type = row[column_name]
@@ -343,9 +541,9 @@ class WSITupletsGenerator:
             return 'NA'
 
     @staticmethod
-    def _calculate_slide_barcode_prefix_sheba(row):
+    def _calculate_slide_barcode_prefix_sheba(row: pandas.Series) -> str:
         try:
-            return row[WSITupletsGenerator._patient_barcode_column_name]
+            return row[WSITupletsGenerator.patient_barcode_column_name]
         except Exception:
             return 'NA'
 
@@ -353,17 +551,17 @@ class WSITupletsGenerator:
     ### ALL ###
     ###########
     @staticmethod
-    def _calculate_slide_barcode_prefix(row):
+    def _calculate_slide_barcode_prefix(row: pandas.Series) -> str:
         try:
-            dataset_id = row[WSITupletsGenerator._dataset_id_column_name]
+            dataset_id = row[WSITupletsGenerator.dataset_id_column_name]
             if dataset_id == 'TCGA':
-                return row[WSITupletsGenerator._patient_barcode_column_name]
+                return row[WSITupletsGenerator.patient_barcode_column_name]
             elif dataset_id == 'ABCTB':
-                return row[WSITupletsGenerator._file_column_name].replace('tif', 'ndpi')
+                return row[WSITupletsGenerator.file_column_name].replace('tif', 'ndpi')
             elif dataset_id.startswith('CARMEL'):
                 return row[WSITupletsGenerator._slide_barcode_column_name_carmel][:-2]
             elif dataset_id == 'SHEBA':
-                return row[WSITupletsGenerator._patient_barcode_column_name]
+                return row[WSITupletsGenerator.patient_barcode_column_name]
         except Exception:
             return 'NA'
 
@@ -397,17 +595,17 @@ class WSITupletsGenerator:
     #         return 'NA'
 
     @staticmethod
-    def _extract_annotations(df, patient_barcode_column_name, calculate_slide_barcode_prefix, calculate_tumor_type, calculate_grade):
-        df[WSITupletsGenerator._slide_barcode_prefix_column_name] = df.apply(lambda row: calculate_slide_barcode_prefix(row), axis=1)
-        df[WSITupletsGenerator._tumor_type_column_name] = df.apply(lambda row: calculate_tumor_type(row), axis=1)
-        df[WSITupletsGenerator._grade_column_name] = df.apply(lambda row: calculate_grade(row), axis=1)
+    def _extract_annotations(df: pandas.DataFrame, patient_barcode_column_name: str, calculate_slide_barcode_prefix: Callable, calculate_tumor_type: Callable, calculate_grade: Callable) -> pandas.DataFrame:
+        df[WSITupletsGenerator.slide_barcode_prefix_column_name] = df.apply(lambda row: calculate_slide_barcode_prefix(row), axis=1)
+        df[WSITupletsGenerator.tumor_type_column_name] = df.apply(lambda row: calculate_tumor_type(row), axis=1)
+        df[WSITupletsGenerator.grade_column_name] = df.apply(lambda row: calculate_grade(row), axis=1)
 
         annotations = df[[
             patient_barcode_column_name,
-            WSITupletsGenerator._slide_barcode_prefix_column_name,
-            WSITupletsGenerator._grade_column_name,
-            WSITupletsGenerator._tumor_type_column_name]]
-        annotations = annotations.rename(columns={patient_barcode_column_name: WSITupletsGenerator._patient_barcode_column_name})
+            WSITupletsGenerator.slide_barcode_prefix_column_name,
+            WSITupletsGenerator.grade_column_name,
+            WSITupletsGenerator.tumor_type_column_name]]
+        annotations = annotations.rename(columns={patient_barcode_column_name: WSITupletsGenerator.patient_barcode_column_name})
 
         # print('')
         # print('TCGA Enhanced Data:')
@@ -495,43 +693,43 @@ class WSITupletsGenerator:
     #     return abctb_data
 
     @staticmethod
-    def _add_slide_barcode_prefix(df):
-        df[WSITupletsGenerator._slide_barcode_prefix_column_name] = df.apply(lambda row: WSITupletsGenerator._calculate_slide_barcode_prefix(row), axis=1)
+    def _add_slide_barcode_prefix(df: pandas.DataFrame) -> pandas.DataFrame:
+        df[WSITupletsGenerator.slide_barcode_prefix_column_name] = df.apply(lambda row: WSITupletsGenerator._calculate_slide_barcode_prefix(row), axis=1)
         return df
 
     @staticmethod
-    def _select_metadata(df):
+    def _select_metadata(df: pandas.DataFrame) -> pandas.DataFrame:
         df = df[[
-            WSITupletsGenerator._file_column_name,
-            WSITupletsGenerator._patient_barcode_column_name,
-            WSITupletsGenerator._dataset_id_column_name,
-            WSITupletsGenerator._mpp_column_name,
-            WSITupletsGenerator._total_tiles_column_name,
-            WSITupletsGenerator._legitimate_tiles_column_name,
+            WSITupletsGenerator.file_column_name,
+            WSITupletsGenerator.patient_barcode_column_name,
+            WSITupletsGenerator.dataset_id_column_name,
+            WSITupletsGenerator.mpp_column_name,
+            WSITupletsGenerator.total_tiles_column_name,
+            WSITupletsGenerator.legitimate_tiles_column_name,
             # WSITupletsGenerator._tile_usage_column_name,
-            WSITupletsGenerator._width_column_name,
-            WSITupletsGenerator._height_column_name,
-            WSITupletsGenerator._magnification_column_name,
-            WSITupletsGenerator._er_status_column_name,
-            WSITupletsGenerator._pr_status_column_name,
-            WSITupletsGenerator._her2_status_column_name,
-            WSITupletsGenerator._grade_column_name,
-            WSITupletsGenerator._tumor_type_column_name,
-            WSITupletsGenerator._fold_column_name
+            WSITupletsGenerator.width_column_name,
+            WSITupletsGenerator.height_column_name,
+            WSITupletsGenerator.magnification_column_name,
+            WSITupletsGenerator.er_status_column_name,
+            WSITupletsGenerator.pr_status_column_name,
+            WSITupletsGenerator.her2_status_column_name,
+            WSITupletsGenerator.grade_column_name,
+            WSITupletsGenerator.tumor_type_column_name,
+            WSITupletsGenerator.fold_column_name
         ]]
         return df
 
     @staticmethod
-    def _standardize_metadata(df):
+    def _standardize_metadata(df: pandas.DataFrame) -> pandas.DataFrame:
         # fix folds
         pandas.options.mode.chained_assignment = None
-        df = df[~df[WSITupletsGenerator._fold_column_name].isin(WSITupletsGenerator._invalid_values)]
-        folds = list(df[WSITupletsGenerator._fold_column_name].unique())
+        df = df[~df[WSITupletsGenerator.fold_column_name].isin(WSITupletsGenerator._invalid_values)]
+        folds = list(df[WSITupletsGenerator.fold_column_name].unique())
         numeric_folds = [common_utils.to_int(fold) for fold in folds]
         # try:
         max_val = numpy.max(numeric_folds) + 1
-        df.loc[df[WSITupletsGenerator._fold_column_name] == 'test', WSITupletsGenerator._fold_column_name] = max_val
-        df[WSITupletsGenerator._fold_column_name] = df[WSITupletsGenerator._fold_column_name].astype(int)
+        df.loc[df[WSITupletsGenerator.fold_column_name] == 'test', WSITupletsGenerator.fold_column_name] = max_val
+        df[WSITupletsGenerator.fold_column_name] = df[WSITupletsGenerator.fold_column_name].astype(int)
         # except Exception:
         #     print(folds)
         #     print(numeric_folds)
@@ -541,11 +739,11 @@ class WSITupletsGenerator:
         df = df.dropna()
         return df
 
-    @staticmethod
-    def _add_folds_to_metadata(metadata_df, folds_count):
-        folds = numpy.random.randint(folds_count, size=metadata_df.shape[0])
-        metadata_df[WSITupletsGenerator._fold_column_name] = folds
-        return metadata_df
+    # @staticmethod
+    # def _add_folds_to_metadata(metadata_df, folds_count):
+    #     folds = numpy.random.randint(folds_count, size=metadata_df.shape[0])
+    #     metadata_df[WSITupletsGenerator.fold_column_name] = folds
+    #     return metadata_df
 
     @staticmethod
     def _calculate_bitmap_indices(point, tile_size):
@@ -565,66 +763,70 @@ class WSITupletsGenerator:
                     return False
         return True
 
-    @staticmethod
-    def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
-        indices = (numpy.array(tile_locations) / original_tile_size).astype(int)
-        dim1_size = indices[:, 0].max() + 1
-        dim2_size = indices[:, 1].max() + 1
-        bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
+    # @staticmethod
+    # def _create_tile_bitmap(original_tile_size, tile_locations, plot_bitmap=False):
+    #     indices = (numpy.array(tile_locations) / original_tile_size).astype(int)
+    #     dim1_size = indices[:, 0].max() + 1
+    #     dim2_size = indices[:, 1].max() + 1
+    #     bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
+    #
+    #     for (x, y) in indices:
+    #         bitmap[x, y] = 1
+    #
+    #     tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
+    #
+    #     if plot_bitmap is True:
+    #         plt.imshow(tile_bitmap, cmap='gray')
+    #         plt.show()
+    #
+    #     return tile_bitmap
+    #
+    # @staticmethod
+    # def _create_connected_components(tile_bitmap):
+    #     components_count, components_labels, components_stats, _ = cv2.connectedComponentsWithStats(tile_bitmap)
+    #     components = []
+    #
+    #     # if components_count == 1:
+    #     #     continue
+    #
+    #     for component_id in range(1, components_count):
+    #         current_bitmap = (components_labels == component_id)
+    #         component_indices = numpy.where(current_bitmap)
+    #         component_size = numpy.count_nonzero(current_bitmap)
+    #         top_left = numpy.array([numpy.min(component_indices[0]), numpy.min(component_indices[1])])
+    #         bottom_right = numpy.array([numpy.max(component_indices[0]), numpy.max(component_indices[1])])
+    #         tile_indices = numpy.array([component_indices[0], component_indices[1]]).transpose()
+    #
+    #         components.append({
+    #             'tiles_bitmap': current_bitmap.astype(int),
+    #             'component_size': component_size,
+    #             'top_left': top_left,
+    #             'bottom_right': bottom_right,
+    #             'tile_indices': tile_indices
+    #         })
+    #
+    #     components_sorted = sorted(components, key=lambda item: item['component_size'], reverse=True)
+    #     largest_component = components_sorted[0]
+    #     largest_component_aspect_ratio = common_utils.calculate_box_aspect_ratio(largest_component['top_left'], largest_component['bottom_right'])
+    #     largest_component_size = largest_component['component_size']
+    #     valid_components = [largest_component]
+    #     for component in components_sorted[1:]:
+    #         current_aspect_ratio = common_utils.calculate_box_aspect_ratio(component['top_left'], component['bottom_right'])
+    #         current_component_size = component['component_size']
+    #         if numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < WSITupletsGenerator._max_aspect_ratio_diff and (current_component_size / largest_component_size) > WSITupletsGenerator._min_component_ratio:
+    #             valid_components.append(component)
+    #
+    #     return valid_components
 
-        for (x, y) in indices:
-            bitmap[x, y] = 1
-
-        tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
-
-        if plot_bitmap is True:
-            plt.imshow(tile_bitmap, cmap='gray')
-            plt.show()
-
-        return tile_bitmap
-
-    @staticmethod
-    def _create_connected_components(tile_bitmap):
-        components_count, components_labels, components_stats, _ = cv2.connectedComponentsWithStats(tile_bitmap)
-        components = []
-
-        # if components_count == 1:
-        #     continue
-
-        for component_id in range(1, components_count):
-            current_bitmap = (components_labels == component_id)
-            component_indices = numpy.where(current_bitmap)
-            component_size = numpy.count_nonzero(current_bitmap)
-            top_left = numpy.array([numpy.min(component_indices[0]), numpy.min(component_indices[1])])
-            bottom_right = numpy.array([numpy.max(component_indices[0]), numpy.max(component_indices[1])])
-            tile_indices = numpy.array([component_indices[0], component_indices[1]]).transpose()
-
-            components.append({
-                'tiles_bitmap': current_bitmap.astype(int),
-                'component_size': component_size,
-                'top_left': top_left,
-                'bottom_right': bottom_right,
-                'tile_indices': tile_indices
-            })
-
-        components_sorted = sorted(components, key=lambda item: item['component_size'], reverse=True)
-        largest_component = components_sorted[0]
-        largest_component_aspect_ratio = common_utils.calculate_box_aspect_ratio(largest_component['top_left'], largest_component['bottom_right'])
-        largest_component_size = largest_component['component_size']
-        valid_components = [largest_component]
-        for component in components_sorted[1:]:
-            current_aspect_ratio = common_utils.calculate_box_aspect_ratio(component['top_left'], component['bottom_right'])
-            current_component_size = component['component_size']
-            if numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < WSITupletsGenerator._max_aspect_ratio_diff and (current_component_size / largest_component_size) > WSITupletsGenerator._min_component_ratio:
-                valid_components.append(component)
-
-        return valid_components
-
-    @staticmethod
-    def _get_random_component_index(slide_descriptor):
-        components = slide_descriptor['components']
-        component_index = int(numpy.random.randint(len(components), size=1))
-        return component_index
+    # @staticmethod
+    # def _get_random_connected_component(slide_descriptor: SlideDescriptor) -> int:
+    #     component_index = int(numpy.random.randint(len(slide_descriptor.components), size=1))
+    #     return slide
+    #
+    # @staticmethod
+    # def _get_random_component_index(slide_descriptor: SlideDescriptor) -> int:
+    #     component_index = int(numpy.random.randint(len(slide_descriptor.components), size=1))
+    #     return component_index
 
     @staticmethod
     def _start_workers(args, f, workers_count):
@@ -705,28 +907,28 @@ class WSITupletsGenerator:
         column_names = {}
         for dataset_id_prefix in WSITupletsGenerator._dataset_id_prefixes:
             column_names[dataset_id_prefix] = {}
-            column_names[dataset_id_prefix][WSITupletsGenerator._file_column_name_shared] = WSITupletsGenerator._file_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._patient_barcode_column_name_shared] = WSITupletsGenerator._patient_barcode_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._dataset_id_column_name_shared] = WSITupletsGenerator._dataset_id_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._mpp_column_name_shared] = WSITupletsGenerator._mpp_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._scan_date_column_name_shared] = WSITupletsGenerator._scan_date_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._width_column_name_shared] = WSITupletsGenerator._width_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._height_column_name_shared] = WSITupletsGenerator._height_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._magnification_column_name_shared] = WSITupletsGenerator._magnification_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._er_status_column_name_shared] = WSITupletsGenerator._er_status_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._pr_status_column_name_shared] = WSITupletsGenerator._pr_status_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._her2_status_column_name_shared] = WSITupletsGenerator._her2_status_column_name
-            column_names[dataset_id_prefix][WSITupletsGenerator._fold_column_name_shared] = WSITupletsGenerator._fold_column_name
-            column_names[dataset_id_prefix][self._get_total_tiles_column_name()] = WSITupletsGenerator._total_tiles_column_name
-            column_names[dataset_id_prefix][self._get_legitimate_tiles_column_name()] = WSITupletsGenerator._legitimate_tiles_column_name
-            column_names[dataset_id_prefix][self._get_slide_tile_usage_column_name(dataset_id_prefix=dataset_id_prefix)] = WSITupletsGenerator._tile_usage_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._file_column_name_shared] = WSITupletsGenerator.file_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._patient_barcode_column_name_shared] = WSITupletsGenerator.patient_barcode_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._dataset_id_column_name_shared] = WSITupletsGenerator.dataset_id_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._mpp_column_name_shared] = WSITupletsGenerator.mpp_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._scan_date_column_name_shared] = WSITupletsGenerator.scan_date_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._width_column_name_shared] = WSITupletsGenerator.width_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._height_column_name_shared] = WSITupletsGenerator.height_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._magnification_column_name_shared] = WSITupletsGenerator.magnification_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._er_status_column_name_shared] = WSITupletsGenerator.er_status_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._pr_status_column_name_shared] = WSITupletsGenerator.pr_status_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._her2_status_column_name_shared] = WSITupletsGenerator.her2_status_column_name
+            column_names[dataset_id_prefix][WSITupletsGenerator._fold_column_name_shared] = WSITupletsGenerator.fold_column_name
+            column_names[dataset_id_prefix][self._get_total_tiles_column_name()] = WSITupletsGenerator.total_tiles_column_name
+            column_names[dataset_id_prefix][self._get_legitimate_tiles_column_name()] = WSITupletsGenerator.legitimate_tiles_column_name
+            column_names[dataset_id_prefix][self._get_slide_tile_usage_column_name(dataset_id_prefix=dataset_id_prefix)] = WSITupletsGenerator.tile_usage_column_name
 
             if dataset_id_prefix.startswith(WSITupletsGenerator._dataset_id_sheba):
-                column_names[dataset_id_prefix][WSITupletsGenerator._er_status_column_name_sheba] = WSITupletsGenerator._er_status_column_name
-                column_names[dataset_id_prefix][WSITupletsGenerator._pr_status_column_name_sheba] = WSITupletsGenerator._pr_status_column_name
-                column_names[dataset_id_prefix][WSITupletsGenerator._her2_status_column_name_sheba] = WSITupletsGenerator._her2_status_column_name
-                column_names[dataset_id_prefix][WSITupletsGenerator._grade_column_name_sheba] = WSITupletsGenerator._grade_column_name
-                column_names[dataset_id_prefix][WSITupletsGenerator._tumor_type_column_name_sheba] = WSITupletsGenerator._tumor_type_column_name
+                column_names[dataset_id_prefix][WSITupletsGenerator._er_status_column_name_sheba] = WSITupletsGenerator.er_status_column_name
+                column_names[dataset_id_prefix][WSITupletsGenerator._pr_status_column_name_sheba] = WSITupletsGenerator.pr_status_column_name
+                column_names[dataset_id_prefix][WSITupletsGenerator._her2_status_column_name_sheba] = WSITupletsGenerator.her2_status_column_name
+                column_names[dataset_id_prefix][WSITupletsGenerator._grade_column_name_sheba] = WSITupletsGenerator.grade_column_name
+                column_names[dataset_id_prefix][WSITupletsGenerator._tumor_type_column_name_sheba] = WSITupletsGenerator.tumor_type_column_name
 
         return column_names
 
@@ -745,14 +947,14 @@ class WSITupletsGenerator:
     def _load_metadata(self):
         df = None
         for _, dataset_id in enumerate(self._dataset_paths):
-            print(f'Processing metadata for {dataset_id}')
+            self._logger.info(f'Processing metadata for {dataset_id}...')
             slide_metadata_file = os.path.join(self._dataset_paths[dataset_id], WSITupletsGenerator._get_slides_data_file_name(dataset_id=dataset_id))
             grid_metadata_file = os.path.join(self._dataset_paths[dataset_id], WSITupletsGenerator._get_grids_folder_name(desired_magnification=self._desired_magnification), WSITupletsGenerator._grid_data_file_name)
             slide_df = pandas.read_excel(io=slide_metadata_file)
             grid_df = pandas.read_excel(io=grid_metadata_file)
-            current_df = pandas.DataFrame({**slide_df.set_index(keys=WSITupletsGenerator._file_column_name).to_dict(), **grid_df.set_index(keys=WSITupletsGenerator._file_column_name).to_dict()})
+            current_df = pandas.DataFrame({**slide_df.set_index(keys=WSITupletsGenerator.file_column_name).to_dict(), **grid_df.set_index(keys=WSITupletsGenerator.file_column_name).to_dict()})
             current_df.reset_index(inplace=True)
-            current_df.rename(columns={'index': WSITupletsGenerator._file_column_name}, inplace=True)
+            current_df.rename(columns={'index': WSITupletsGenerator.file_column_name}, inplace=True)
 
             current_df = self._prevalidate_metadata(
                 df=current_df)
@@ -774,14 +976,12 @@ class WSITupletsGenerator:
             current_df = self._postvalidate_metadata(
                 df=current_df)
 
-            # current_df = self._select_folds_from_metadata(
-            #     df=current_df)
-
             if df is None:
                 df = current_df
             else:
-                # df = df.append(current_df)
                 df = pandas.concat((df, current_df))
+
+            self._logger.info(f'Processing metadata for {dataset_id}... Done.')
         return df
 
     def _enhance_metadata_tcga(self, df):
@@ -817,7 +1017,7 @@ class WSITupletsGenerator:
             calculate_grade=WSITupletsGenerator._calculate_grade_tcga)
 
         enhanced_metadata = pandas.concat([annotations_tcga])
-        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator._patient_barcode_column_name, WSITupletsGenerator._slide_barcode_prefix_column_name])
+        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator.patient_barcode_column_name, WSITupletsGenerator.slide_barcode_prefix_column_name])
         return df
 
     def _enhance_metadata_carmel(self, df):
@@ -845,7 +1045,7 @@ class WSITupletsGenerator:
 
         enhanced_metadata = pandas.concat([annotations1_carmel, annotations2_carmel])
         # try:
-        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator._patient_barcode_column_name, WSITupletsGenerator._slide_barcode_prefix_column_name])
+        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator.patient_barcode_column_name, WSITupletsGenerator.slide_barcode_prefix_column_name])
         # except Exception:
         #     h = 5
         return df
@@ -864,7 +1064,7 @@ class WSITupletsGenerator:
             calculate_grade=WSITupletsGenerator._calculate_grade_abctb)
 
         enhanced_metadata = pandas.concat([annotations_abctb])
-        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator._patient_barcode_column_name, WSITupletsGenerator._slide_barcode_prefix_column_name])
+        df = pandas.merge(left=df, right=enhanced_metadata, on=[WSITupletsGenerator.patient_barcode_column_name, WSITupletsGenerator.slide_barcode_prefix_column_name])
         return df
 
     def _enhance_metadata(self, df, dataset_id):
@@ -893,15 +1093,15 @@ class WSITupletsGenerator:
         return df.iloc[valid_slide_indices]
 
     def _postvalidate_metadata(self, df):
-        indices_of_slides_without_grid = set(df.index[df[WSITupletsGenerator._total_tiles_column_name] == -1])
-        indices_of_slides_with_few_tiles = set(df.index[df[WSITupletsGenerator._legitimate_tiles_column_name] < self._minimal_tiles_count])
+        indices_of_slides_without_grid = set(df.index[df[WSITupletsGenerator.total_tiles_column_name] == -1])
+        indices_of_slides_with_few_tiles = set(df.index[df[WSITupletsGenerator.legitimate_tiles_column_name] < self._minimal_tiles_count])
 
         all_indices = set(numpy.array(range(df.shape[0])))
         valid_slide_indices = numpy.array(list(all_indices - indices_of_slides_without_grid - indices_of_slides_with_few_tiles))
         return df.iloc[valid_slide_indices]
 
     def _select_folds_from_metadata(self, df, folds):
-        return df[df[WSITupletsGenerator._fold_column_name].isin(folds)]
+        return df[df[WSITupletsGenerator.fold_column_name].isin(folds)]
 
     def _open_slide(self, image_file_path, desired_downsample):
         slide = openslide.open_slide(image_file_path)
@@ -913,27 +1113,26 @@ class WSITupletsGenerator:
             'adjusted_tile_size': adjusted_tile_size
         }
 
-    def _calculate_inner_radius_pixels(self, desired_downsample, image_file_name_suffix, mpp):
-        # mm_to_pixel = slide_utils.get_mm_to_pixel(downsample=desired_downsample, image_file_suffix=image_file_name_suffix)
-        # inner_radius_pixels = self._inner_radius * mm_to_pixel
+    def _calculate_inner_radius_pixels(self, mpp: float):
         inner_radius_pixels = int(self._inner_radius / (mpp / 1000))
         return inner_radius_pixels
 
-    def _create_random_example(self, slide_descriptor, component_index):
-        image_file_path = slide_descriptor['image_file_path']
-        desired_downsample = slide_descriptor['desired_downsample']
-        original_tile_size = slide_descriptor['original_tile_size']
-        components = slide_descriptor['components']
-        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
-        component = components[component_index]
+    def _create_random_example(self, slide_descriptor: SlideDescriptor, component_index: int):
+        # image_file_path = slide_descriptor['image_file_path']
+        # desired_downsample = slide_descriptor['desired_downsample']
+        # original_tile_size = slide_descriptor['original_tile_size']
+        # components = slide_descriptor['components']
+        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
 
-        tile_indices = component['tile_indices']
-        tiles_bitmap = component['tiles_bitmap']
-        slide = slide_data['slide']
-        adjusted_tile_size = slide_data['adjusted_tile_size']
-        level = slide_data['level']
+
+        # tile_indices = component['tile_indices']
+        # tiles_bitmap = component['tiles_bitmap']
+        # slide = slide_data['slide']
+        # adjusted_tile_size = slide_data['adjusted_tile_size']
+        # level = slide_data['level']
 
         attempts = 0
+        component = slide_descriptor.get_component(component_index=component_index)
         while True:
             if attempts == WSITupletsGenerator._max_attempts:
                 break
@@ -948,7 +1147,7 @@ class WSITupletsGenerator:
                 attempts = attempts + 1
                 continue
 
-            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, adjusted_tile_size=adjusted_tile_size, level=level)
+            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, selected_level_tile_size=adjusted_tile_size, level=level)
             tile_grayscale = tile.convert('L')
             hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
             white_ratio = numpy.sum(hist[WSITupletsGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
@@ -966,21 +1165,20 @@ class WSITupletsGenerator:
     def _create_anchor_example(self, slide_descriptor, component_index):
         return self._create_random_example(slide_descriptor=slide_descriptor, component_index=component_index)
 
-    def _create_positive_example(self, slide_descriptor, component_index, anchor_point):
-        image_file_path = slide_descriptor['image_file_path']
-        desired_downsample = slide_descriptor['desired_downsample']
-        original_tile_size = slide_descriptor['original_tile_size']
-        image_file_name_suffix = slide_descriptor['image_file_name_suffix']
-        components = slide_descriptor['components']
-        mpp = slide_descriptor['mpp']
-        slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
-        component = components[component_index]
-
-        inner_radius_pixels = self._calculate_inner_radius_pixels(desired_downsample=desired_downsample, image_file_name_suffix=image_file_name_suffix, mpp=mpp)
-        slide = slide_data['slide']
-        adjusted_tile_size = slide_data['adjusted_tile_size']
-        level = slide_data['level']
-        tiles_bitmap = component['tiles_bitmap']
+    def _create_positive_example(self, slide_descriptor: SlideDescriptor, component_index: int, anchor_point: numpy.ndarray):
+        # image_file_path = slide_descriptor['image_file_path']
+        # desired_downsample = slide_descriptor['desired_downsample']
+        # original_tile_size = slide_descriptor['original_tile_size']
+        # image_file_name_suffix = slide_descriptor['image_file_name_suffix']
+        # components = slide_descriptor['components']
+        # mpp = slide_descriptor['mpp']
+        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+        component = slide_descriptor.get_component(component_index=component_index)
+        inner_radius_pixels = self._calculate_inner_radius_pixels(mpp=slide_descriptor.mpp)
+        # slide = slide_data['slide']
+        # adjusted_tile_size = slide_data['adjusted_tile_size']
+        # level = slide_data['level']
+        # tiles_bitmap = component['tiles_bitmap']
 
         attempts = 0
         while True:
@@ -993,7 +1191,7 @@ class WSITupletsGenerator:
             positive_radius = inner_radius_pixels
             positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
             positive_bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
-            if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=positive_bitmap_indices) is False:
+            if WSITupletsGenerator._validate_location(bitmap=component.tiles_bitmap, indices=positive_bitmap_indices) is False:
                 attempts = attempts + 1
                 continue
 
@@ -1001,7 +1199,7 @@ class WSITupletsGenerator:
                 slide=slide,
                 point=positive_point,
                 tile_size=self._tile_size,
-                adjusted_tile_size=adjusted_tile_size,
+                selected_level_tile_size=adjusted_tile_size,
                 level=level)
 
             return {
@@ -1012,68 +1210,39 @@ class WSITupletsGenerator:
         return None
 
     def _create_negative_example(self, df, slide_descriptor):
-        row_anchor_patient = self._df.loc[self._df[WSITupletsGenerator._file_column_name] == slide_descriptor['image_file_name']].iloc[0]
-        patient_barcode = row_anchor_patient[WSITupletsGenerator._patient_barcode_column_name]
-        er_status = row_anchor_patient[WSITupletsGenerator._er_status_column_name]
-        pr_status = row_anchor_patient[WSITupletsGenerator._pr_status_column_name]
-        her2_status = row_anchor_patient[WSITupletsGenerator._her2_status_column_name]
-        tumor_type = row_anchor_patient[WSITupletsGenerator._her2_status_column_name]
-        grade = row_anchor_patient[WSITupletsGenerator._grade_column_name]
-        filtered_df = df[(df[WSITupletsGenerator._patient_barcode_column_name] != patient_barcode) &
-                         ((df[WSITupletsGenerator._pr_status_column_name] != pr_status) |
-                          (df[WSITupletsGenerator._er_status_column_name] != er_status) |
-                          (df[WSITupletsGenerator._her2_status_column_name] != her2_status) |
-                          (df[WSITupletsGenerator._tumor_type_column_name] != tumor_type) |
-                          (df[WSITupletsGenerator._grade_column_name] != grade))]
+        row_anchor_patient = self._df.loc[self._df[WSITupletsGenerator.file_column_name] == slide_descriptor['image_file_name']].iloc[0]
+        patient_barcode = row_anchor_patient[WSITupletsGenerator.patient_barcode_column_name]
+        er_status = row_anchor_patient[WSITupletsGenerator.er_status_column_name]
+        pr_status = row_anchor_patient[WSITupletsGenerator.pr_status_column_name]
+        her2_status = row_anchor_patient[WSITupletsGenerator.her2_status_column_name]
+        tumor_type = row_anchor_patient[WSITupletsGenerator.her2_status_column_name]
+        grade = row_anchor_patient[WSITupletsGenerator.grade_column_name]
+        filtered_df = df[(df[WSITupletsGenerator.patient_barcode_column_name] != patient_barcode) &
+                         ((df[WSITupletsGenerator.pr_status_column_name] != pr_status) |
+                          (df[WSITupletsGenerator.er_status_column_name] != er_status) |
+                          (df[WSITupletsGenerator.her2_status_column_name] != her2_status) |
+                          (df[WSITupletsGenerator.tumor_type_column_name] != tumor_type) |
+                          (df[WSITupletsGenerator.grade_column_name] != grade))]
 
         index = int(numpy.random.randint(filtered_df.shape[0], size=1))
         row_negative_patient = filtered_df.iloc[index]
-        image_file_name_negative_patient = row_negative_patient[WSITupletsGenerator._file_column_name]
+        image_file_name_negative_patient = row_negative_patient[WSITupletsGenerator.file_column_name]
         slide_descriptor_negative_patient = self._image_file_name_to_slide_descriptor[image_file_name_negative_patient]
         component_index = WSITupletsGenerator._get_random_component_index(slide_descriptor=slide_descriptor_negative_patient)
         return self._create_random_example(slide_descriptor=slide_descriptor_negative_patient, component_index=component_index)
 
-    def _create_tile_locations(self, dataset_id, image_file_name_stem):
-        grid_file_path = os.path.normpath(os.path.join(self._dataset_paths[dataset_id], f'Grids_{self._desired_magnification}', f'{image_file_name_stem}--tlsz{self._tile_size}.data'))
-        with open(grid_file_path, 'rb') as file_handle:
-            locations = numpy.array(pickle.load(file_handle))
-            locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
-
-        return locations
+    # def _create_tile_locations(self, dataset_id, image_file_name_stem):
+    #     grid_file_path = os.path.normpath(os.path.join(self._dataset_paths[dataset_id], f'Grids_{self._desired_magnification}', f'{image_file_name_stem}--tlsz{self._tile_size}.data'))
+    #     with open(grid_file_path, 'rb') as file_handle:
+    #         locations = numpy.array(pickle.load(file_handle))
+    #         locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
+    #
+    #     return locations
 
     def _create_slide_descriptor(self, row):
-        image_file_name = row[WSITupletsGenerator._file_column_name]
-        dataset_id = row[WSITupletsGenerator._dataset_id_column_name]
-        image_file_path = os.path.join(self._dataset_paths[dataset_id], image_file_name)
-        image_file_name_stem = pathlib.Path(image_file_path).stem
-        image_file_name_suffix = pathlib.Path(image_file_path).suffix
-        magnification = row[WSITupletsGenerator._magnification_column_name]
-        # mpp = row[WSITupletsGenerator._mpp_column_name]
-        mpp = common_utils.magnification_to_mpp(magnification=magnification)
-        legitimate_tiles_count = row[WSITupletsGenerator._legitimate_tiles_column_name]
-        fold = row[WSITupletsGenerator._fold_column_name]
-        desired_downsample = magnification / self._desired_magnification
-        original_tile_size = self._tile_size * desired_downsample
-        tile_locations = self._create_tile_locations(dataset_id=dataset_id, image_file_name_stem=image_file_name_stem)
-        tile_bitmap = WSITupletsGenerator._create_tile_bitmap(original_tile_size=original_tile_size, tile_locations=tile_locations, plot_bitmap=False)
-        components = WSITupletsGenerator._create_connected_components(tile_bitmap=tile_bitmap)
-
-        slide_descriptor = {
-            'image_file_path': image_file_path,
-            'image_file_name': image_file_name,
-            'image_file_name_stem': image_file_name_stem,
-            'image_file_name_suffix': image_file_name_suffix,
-            'mpp': mpp,
-            'magnification': magnification,
-            'legitimate_tiles_count': legitimate_tiles_count,
-            'fold': fold,
-            'tile_locations': tile_locations,
-            'tile_bitmap': tile_bitmap,
-            'desired_downsample': desired_downsample,
-            'original_tile_size': original_tile_size,
-            'components': components
-        }
-
+        dataset_id = row[WSITupletsGenerator.dataset_id_column_name]
+        dataset_path = self._dataset_paths[dataset_id]
+        slide_descriptor = SlideDescriptor(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
         return slide_descriptor
 
     def _slide_descriptors_creation_worker(self, df, indices, q):
@@ -1095,7 +1264,7 @@ class WSITupletsGenerator:
                 q.put(tuplet)
                 tuplets_created = tuplets_created + 1
 
-    def _try_create_tuplet(self, df, slide_descriptor, negative_examples_count):
+    def _try_create_tuplet(self, df: pandas.DataFrame, slide_descriptor: SlideDescriptor, negative_examples_count: int):
         tiles = []
 
         # Anchor Example
@@ -1152,7 +1321,7 @@ class WSITupletsGenerator:
     def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, folds, workers_count):
         self._tuplets_queue = Queue(maxsize=queue_size)
         self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
-        self._image_file_name_to_slide_descriptor = dict((desc['image_file_name'], desc) for desc in self._slide_descriptors)
+        self._image_file_name_to_slide_descriptor = dict((slide_descriptor.image_file_name, slide_descriptor) for slide_descriptor in self._slide_descriptors)
         df = self._select_folds_from_metadata(df=self._df, folds=folds)
 
         tuplet_indices_groups = None
@@ -1228,6 +1397,7 @@ class WSITupletsGenerator:
             dataset_ids,
             minimal_tiles_count,
             metadata_enhancement_dir_path):
+        self._logger = logging.getLogger(name=self.__class__.__name__)
         self._inner_radius = inner_radius
         self._outer_radius = outer_radius
         self._tile_size = tile_size
