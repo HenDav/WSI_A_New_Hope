@@ -67,44 +67,7 @@ class WSITupletsOnlineDataset(Dataset):
         # return self._tuplets_generator.get_tuplet(index=index, replace=self._replace)
 
 
-class ConnectedComponent:
-    def __init__(self, bitmap):
-        self._bitmap = bitmap.astype(int)
-        self._indices = numpy.where(self._bitmap)
-        self._size = numpy.count_nonzero(self._bitmap)
-        self._top_left = numpy.array([numpy.min(self._indices[0]), numpy.min(self._indices[1])])
-        self._bottom_right = numpy.array([numpy.max(self._indices[0]), numpy.max(self._indices[1])])
-        self._tile_indices = numpy.array([self._indices[0], self._indices[1]]).transpose()
-
-    @property
-    def component_bitmap(self):
-        return self._bitmap
-
-    @property
-    def component_indices(self):
-        return self._indices
-
-    @property
-    def component_size(self):
-        return self._size
-
-    @property
-    def top_left(self):
-        return self._top_left
-
-    @property
-    def bottom_right(self):
-        return self._bottom_right
-
-    @property
-    def tile_indices(self):
-        return self._tile_indices
-
-
-class SlideDescriptor:
-    _min_component_ratio = 0.92
-    _max_aspect_ratio_diff = 0.02
-
+class SlideContext:
     def __init__(self, row: pandas.Series, dataset_path: str, desired_magnification: int, tile_size: int):
         self._row = row
         self._dataset_path = dataset_path
@@ -121,11 +84,17 @@ class SlideDescriptor:
         self._fold = row[WSITupletsGenerator.fold_column_name]
         self._desired_downsample = self._magnification / self._desired_magnification
         self._slide = openslide.open_slide(self._image_file_path)
-        self._level, self._selected_level_tile_size = slide_utils.get_best_level_for_downsample(slide=self._slide, desired_downsample=self._desired_downsample, tile_size=self._tile_size)
-        self._desired_tile_size = self._tile_size * self._desired_downsample
-        self._tile_locations = self._create_tile_locations()
-        self._tile_bitmap = self._create_tile_bitmap(plot_bitmap=False)
-        self._components = self._create_connected_components()
+        self._level, self._level_downsample = self._get_best_level_for_downsample()
+        self._selected_level_tile_size = self._tile_size * self._level_downsample
+        self._zero_level_tile_size = self._tile_size * self._desired_downsample
+
+    @property
+    def dataset_path(self) -> str:
+        return self._dataset_path
+
+    @property
+    def desired_magnification(self) -> int:
+        return self._desired_magnification
 
     @property
     def image_file_name(self) -> str:
@@ -152,75 +121,212 @@ class SlideDescriptor:
         return self._level
 
     @property
-    def actual_tile_size(self) -> int:
+    def tile_size(self) -> int:
+        return self._tile_size
+
+    @property
+    def selected_level_tile_size(self) -> int:
         return self._selected_level_tile_size
 
     @property
-    def desired_tile_size(self) -> int:
-        return self._desired_tile_size
+    def selected_level_half_tile_size(self) -> int:
+        return self._selected_level_tile_size // 2
+
+    @property
+    def zero_level_tile_size(self) -> int:
+        return self._zero_level_tile_size
+
+    @property
+    def zero_level_half_tile_size(self) -> int:
+        return self._zero_level_tile_size // 2
 
     @property
     def mpp(self) -> float:
         return self._mpp
 
+    def mm_to_pixels(self, mm: float) -> int:
+        pixels = int(mm / (self._mpp / 1000))
+        return pixels
+
+    def read_region_around_pixel(self, pixel: numpy.ndarray) -> Image:
+        top_left_pixel = (pixel - self.selected_level_tile_size / 2).astype(int)
+        region = self.slide.read_region(top_left_pixel, self.level, (self.selected_level_tile_size, self.selected_level_tile_size)).convert('RGB')
+        if self.selected_level_tile_size != self.tile_size:
+            region = region.resize((self.tile_size, self.tile_size))
+        return region
+
+    def _get_best_level_for_downsample(self):
+        level = 0
+        level_downsample = self._desired_downsample
+        if self._desired_downsample > 1:
+            for i, downsample in enumerate(self._slide.level_downsamples):
+                if math.isclose(self._desired_downsample, downsample, rel_tol=1e-3):
+                    level = i
+                    level_downsample = 1
+                    break
+                elif downsample < self._desired_downsample:
+                    level = i
+                    level_downsample = int(self._desired_downsample / self._slide.level_downsamples[level])
+
+        # A tile of size (tile_size, tile_size) in an image downsampled by 'level_downsample', will cover the same image portion of a tile of size (adjusted_tile_size, adjusted_tile_size) in the original image
+        return level, level_downsample
+
+
+class SlideElement:
+    def __init__(self, slide_context: SlideContext):
+        self._slide_context = slide_context
+
     @property
-    def components(self):
-        return self._components
-
-    def get_component(self, component_index: int) -> ConnectedComponent:
-        return self._components[component_index]
-
-    def get_random_component(self) -> ConnectedComponent:
-        component_index = int(numpy.random.randint(len(self._components), size=1))
-        return self.get_component(component_index=component_index)
-
-    def get_random_tile(self):
-        # image_file_path = slide_descriptor['image_file_path']
-        # desired_downsample = slide_descriptor['desired_downsample']
-        # original_tile_size = slide_descriptor['original_tile_size']
-        # components = slide_descriptor['components']
-        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+    def slide_context(self) -> SlideContext:
+        return self._slide_context
 
 
-        # tile_indices = component['tile_indices']
-        # tiles_bitmap = component['tiles_bitmap']
-        # slide = slide_data['slide']
-        # adjusted_tile_size = slide_data['adjusted_tile_size']
-        # level = slide_data['level']
+class Tile(SlideElement):
+    def __init__(self, slide_context: SlideContext, tile_location: numpy.ndarray):
+        super().__init__(slide_context=slide_context)
+        self._slide_context = slide_context
+        self._tile_location = tile_location
 
-        attempts = 0
-        component = self.get_random_component()
-        while True:
-            if attempts == WSITupletsGenerator._max_attempts:
-                break
+    @property
+    def tile_location(self) -> numpy.ndarray:
+        return self._tile_location
 
-            index = int(numpy.random.randint(component.tile_indices.shape[0], size=1))
-            random_tile_indices = component.tile_indices[index, :]
-            location = random_tile_indices * self._desired_tile_size
-            point_offset = (self._desired_tile_size * numpy.random.uniform(size=2)).astype(int)
-            point = point_offset + location
-            bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
-            if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
-                attempts = attempts + 1
-                continue
+    def get_random_pixel(self) -> numpy.ndarray:
+        pixel = self._tile_location * self._slide_context.zero_level_tile_size + self._slide_context.zero_level_half_tile_size
+        offset = (self._slide_context.zero_level_half_tile_size * numpy.random.uniform(size=2)).astype(int)
+        pixel = pixel + offset
+        return pixel
 
-            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, selected_level_tile_size=adjusted_tile_size, level=level)
-            tile_grayscale = tile.convert('L')
-            hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
-            white_ratio = numpy.sum(hist[WSITupletsGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
-            if white_ratio > WSITupletsGenerator._white_ratio_threshold:
-                attempts = attempts + 1
-                continue
 
-            return {
-                'tile': numpy.array(tile),
-                'point': point
-            }
+class ConnectedComponent(SlideElement):
+    def __init__(self, slide_context: SlideContext, bitmap: numpy.ndarray):
+        super().__init__(slide_context=slide_context)
+        self._bitmap = bitmap
+        self._valid_tiles_count = numpy.count_nonzero(self._bitmap)
+        self._valid_tile_indices = numpy.where(self._bitmap)
+        self._tile_locations = numpy.array([self._valid_tile_indices[0], self._valid_tile_indices[1]]).transpose()
+        self._top_left_tile_location = numpy.array([numpy.min(self._valid_tile_indices[0]), numpy.min(self._valid_tile_indices[1])])
+        self._bottom_right_tile_location = numpy.array([numpy.max(self._valid_tile_indices[0]), numpy.max(self._valid_tile_indices[1])])
+        self._tiles_list = self._create_tiles_list()
+        self._tiles_dict = self._create_tiles_dict()
 
+    @property
+    def bitmap(self) -> numpy.ndarray:
+        return self._bitmap
+
+    @property
+    def valid_tiles_count(self) -> int:
+        return self._valid_tiles_count
+
+    @property
+    def top_left_tile_location(self) -> numpy.ndarray:
+        return self._top_left_tile_location
+
+    @property
+    def bottom_right_tile_location(self) -> numpy.ndarray:
+        return self._bottom_right_tile_location
+
+    @property
+    def tile_locations(self) -> numpy.ndarray:
+        return self._tile_locations
+
+    def _create_tiles_list(self) -> List[Tile]:
+        tiles = []
+        for i in range(self._valid_tiles_count):
+            tiles.append(Tile(slide_context=self._slide_context, tile_location=self._tile_locations[i, :]))
+        return tiles
+
+    def _create_tiles_dict(self) -> Dict[bytes, Tile]:
+        tiles_dict = {}
+        for tile in self._tiles_list:
+            tiles_dict[tile.tile_location.tobytes()] = tile
+
+        return tiles_dict
+
+    def get_random_tile(self) -> Tile:
+        tile_index = int(numpy.random.randint(self._valid_tiles_count, size=1))
+        return self._tiles_list[tile_index]
+
+    def get_random_pixel(self) -> numpy.ndarray:
+        tile = self.get_random_tile()
+        return tile.get_random_pixel()
+
+    def is_interior_tile(self, tile: Tile) -> bool:
+        for i in range(3):
+            for j in range(3):
+                current_tile_location = tile.tile_location + numpy.array([i, j])
+                if not self.is_valid_tile_location(tile_location=current_tile_location):
+                    return False
+
+                bit = self._bitmap[current_tile_location]
+                if bit == 0:
+                    return False
+        return True
+
+    def get_tile_at_pixel(self, pixel: numpy.ndarray) -> Union[Tile, None]:
+        tile_location = (pixel / self._slide_context.zero_level_tile_size).astype(int)
+        if self.is_valid_tile_location(tile_location=tile_location):
+            return self._tiles_dict[tile_location.tobytes()]
         return None
 
+    def is_valid_tile_location(self, tile_location: numpy.ndarray) -> bool:
+        if tile_location.tobytes() in self._tiles_dict:
+            return True
+        return False
+
+
+class Patch(SlideElement):
+    def __init__(self, slide_context: SlideContext, component: ConnectedComponent, center_pixel: numpy.ndarray):
+        super().__init__(slide_context=slide_context)
+        self._component = component
+        self._center_pixel = center_pixel
+        self._image = self._slide_context.read_region_around_pixel(pixel=center_pixel)
+
+    @property
+    def image(self) -> Image:
+        return self._image
+
+    @property
+    def component(self) -> ConnectedComponent:
+        return self._component
+
+    @property
+    def center_pixel(self) -> numpy.ndarray:
+        return self._center_pixel
+
+    # def get_white_ratio(self, white_intensity_threshold: int) -> float:
+    #     patch_grayscale = self._image.convert('L')
+    #     hist, _ = numpy.histogram(a=patch_grayscale, bins=self._slide_context.tile_size)
+    #     white_ratio = numpy.sum(hist[white_intensity_threshold:]) / (self._slide_context.tile_size * self._slide_context.tile_size)
+    #     return white_ratio
+
+    def get_containing_tile(self) -> Union[Tile, None]:
+        return self._component.get_tile_at_pixel(self._center_pixel)
+
+
+class Slide(SlideElement):
+    _min_component_ratio = 0.92
+    _max_aspect_ratio_diff = 0.02
+
+    def __init__(self, slide_context: SlideContext):
+        super().__init__(slide_context=slide_context)
+        self._tile_locations = self._create_tile_locations()
+        self._tile_bitmap = self._create_tile_bitmap(plot_bitmap=False)
+        self._tile_components = self._create_connected_components()
+
+    @property
+    def components(self):
+        return self._tile_components
+
+    def get_component(self, component_index: int) -> ConnectedComponent:
+        return self._tile_components[component_index]
+
+    def get_random_component(self) -> ConnectedComponent:
+        component_index = int(numpy.random.randint(len(self._tile_components), size=1))
+        return self.get_component(component_index=component_index)
+
     def _create_tile_bitmap(self, plot_bitmap: bool = False) -> Image:
-        indices = (numpy.array(self._tile_locations) / self._desired_tile_size).astype(int)
+        indices = (numpy.array(self._tile_locations) / self._slide_context.zero_level_tile_size).astype(int)
         dim1_size = indices[:, 0].max() + 1
         dim2_size = indices[:, 1].max() + 1
         bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
@@ -237,7 +343,7 @@ class SlideDescriptor:
         return tile_bitmap
 
     def _create_tile_locations(self) -> numpy.ndarray:
-        grid_file_path = os.path.normpath(os.path.join(self._dataset_path, f'Grids_{self._desired_magnification}', f'{self._image_file_name_stem}--tlsz{self._tile_size}.data'))
+        grid_file_path = os.path.normpath(os.path.join(self._slide_context.dataset_path, f'Grids_{self._slide_context.desired_magnification}', f'{self._slide_context.image_file_name_stem}--tlsz{self._slide_context.tile_size}.data'))
         with open(grid_file_path, 'rb') as file_handle:
             locations = numpy.array(pickle.load(file_handle))
             locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
@@ -249,21 +355,67 @@ class SlideDescriptor:
         components = []
 
         for component_id in range(1, components_count):
-            component_bitmap = (components_labels == component_id)
+            component_bitmap = (components_labels == component_id).astype(int)
             components.append(ConnectedComponent(bitmap=component_bitmap))
 
         components_sorted = sorted(components, key=lambda item: item.component_size, reverse=True)
         largest_component = components_sorted[0]
         largest_component_aspect_ratio = common_utils.calculate_box_aspect_ratio(largest_component.top_left, largest_component.bottom_right)
-        largest_component_size = largest_component.component_size
+        largest_component_size = largest_component.valid_tiles_count
         valid_components = [largest_component]
         for component in components_sorted[1:]:
             current_aspect_ratio = common_utils.calculate_box_aspect_ratio(component.top_left, component.bottom_right)
-            current_component_size = component.component_size
-            if (numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < SlideDescriptor._max_aspect_ratio_diff) and ((current_component_size / largest_component_size) > SlideDescriptor._min_component_ratio):
+            current_component_size = component.valid_tiles_count
+            if (numpy.abs(largest_component_aspect_ratio - current_aspect_ratio) < Slide._max_aspect_ratio_diff) and ((current_component_size / largest_component_size) > Slide._min_component_ratio):
                 valid_components.append(component)
 
         return valid_components
+
+
+class PatchExtractor:
+    _max_attempts = 10
+    _white_ratio_threshold = 0.5
+    _white_intensity_threshold = 170
+
+    def __init__(self, slide: Slide, inner_radius_mm: float):
+        self._slide = slide
+        self._inner_radius_mm = inner_radius_mm
+        self._inner_radius_pixels = self._slide.slide_context.mm_to_pixels(mm=inner_radius_mm)
+
+    def extract_patch(self, patch_validators: List[Callable[[Patch], bool]], reference_patch: Patch = None) -> Patch:
+        attempts = 0
+        while True:
+            if attempts == PatchExtractor._max_attempts:
+                break
+
+            if reference_patch is None:
+                component = self._slide.get_random_component()
+                pixel = component.get_random_pixel()
+            else:
+                component = reference_patch.component
+                pixel = reference_patch.center_pixel
+
+            angle = 2 * numpy.pi * numpy.random.uniform(size=1)[0]
+            direction = numpy.array([numpy.cos(angle), numpy.sin(angle)])
+            proximate_pixel = (pixel + self._inner_radius_pixels * direction).astype(int)
+            tile = component.get_tile_at_pixel(pixel=proximate_pixel)
+            if (tile is None) or (not component.is_interior_tile(tile=tile)):
+                attempts = attempts + 1
+                continue
+
+            patch = Patch(slide_context=self._slide.slide_context, component=component, center_pixel=proximate_pixel)
+            patch_validation_failed = False
+            for patch_validator in patch_validators:
+                if not patch_validator(patch):
+                    attempts = attempts + 1
+                    patch_validation_failed = True
+                    break
+
+            if patch_validation_failed is True:
+                attempts = attempts + 1
+                continue
+
+            return patch
 
 
 class WSITupletsGenerator:
@@ -271,7 +423,7 @@ class WSITupletsGenerator:
     _test_fold_id = 'test'
     _max_attempts = 10
     _white_ratio_threshold = 0.5
-    _histogram_min_intensity_level = 170
+    _white_intensity_threshold = 170
 
     # Invalid values
     _invalid_values = ['Missing Data', 'Not performed', '[Not Evaluated]', '[Not Available]']
@@ -900,8 +1052,13 @@ class WSITupletsGenerator:
         print('')
 
     @staticmethod
-    def _append_tiles(tiles, example):
-        tiles.append(example['tile'])
+    def _validate_histogram(patch: Patch) -> bool:
+        patch_grayscale = patch.image.convert('L')
+        hist, _ = numpy.histogram(a=patch_grayscale, bins=patch.slide_context.tile_size)
+        white_ratio = numpy.sum(hist[WSITupletsGenerator._white_intensity_threshold:]) / (patch.slide_context.tile_size * patch.slide_context.tile_size)
+        if white_ratio > WSITupletsGenerator._white_ratio_threshold:
+            return False
+        return True
 
     def _build_column_names(self):
         column_names = {}
@@ -1113,101 +1270,101 @@ class WSITupletsGenerator:
             'adjusted_tile_size': adjusted_tile_size
         }
 
-    def _calculate_inner_radius_pixels(self, mpp: float):
-        inner_radius_pixels = int(self._inner_radius / (mpp / 1000))
-        return inner_radius_pixels
+    # def _calculate_inner_radius_pixels(self, mpp: float):
+    #     inner_radius_pixels = int(self._inner_radius_mm / (mpp / 1000))
+    #     return inner_radius_pixels
 
-    def _create_random_example(self, slide_descriptor: SlideDescriptor, component_index: int):
-        # image_file_path = slide_descriptor['image_file_path']
-        # desired_downsample = slide_descriptor['desired_downsample']
-        # original_tile_size = slide_descriptor['original_tile_size']
-        # components = slide_descriptor['components']
-        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+    # def _create_random_example(self, slide_descriptor: Slide, component_index: int):
+    #     # image_file_path = slide_descriptor['image_file_path']
+    #     # desired_downsample = slide_descriptor['desired_downsample']
+    #     # original_tile_size = slide_descriptor['original_tile_size']
+    #     # components = slide_descriptor['components']
+    #     # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+    #
+    #
+    #     # tile_indices = component['tile_indices']
+    #     # tiles_bitmap = component['tiles_bitmap']
+    #     # slide = slide_data['slide']
+    #     # adjusted_tile_size = slide_data['adjusted_tile_size']
+    #     # level = slide_data['level']
+    #
+    #     attempts = 0
+    #     component = slide_descriptor.get_component(component_index=component_index)
+    #     while True:
+    #         if attempts == WSITupletsGenerator._max_attempts:
+    #             break
+    #
+    #         index = int(numpy.random.randint(tile_indices.shape[0], size=1))
+    #         random_tile_indices = tile_indices[index, :]
+    #         location = random_tile_indices * original_tile_size
+    #         point_offset = (original_tile_size * numpy.random.uniform(size=2)).astype(int)
+    #         point = point_offset + location
+    #         bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
+    #         if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
+    #             attempts = attempts + 1
+    #             continue
+    #
+    #         tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, selected_level_tile_size=adjusted_tile_size, level=level)
+    #         tile_grayscale = tile.convert('L')
+    #         hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
+    #         white_ratio = numpy.sum(hist[WSITupletsGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
+    #         if white_ratio > WSITupletsGenerator._white_ratio_threshold:
+    #             attempts = attempts + 1
+    #             continue
+    #
+    #         return {
+    #             'tile': numpy.array(tile),
+    #             'point': point
+    #         }
+    #
+    #     return None
 
-
-        # tile_indices = component['tile_indices']
-        # tiles_bitmap = component['tiles_bitmap']
-        # slide = slide_data['slide']
-        # adjusted_tile_size = slide_data['adjusted_tile_size']
-        # level = slide_data['level']
-
-        attempts = 0
-        component = slide_descriptor.get_component(component_index=component_index)
-        while True:
-            if attempts == WSITupletsGenerator._max_attempts:
-                break
-
-            index = int(numpy.random.randint(tile_indices.shape[0], size=1))
-            random_tile_indices = tile_indices[index, :]
-            location = random_tile_indices * original_tile_size
-            point_offset = (original_tile_size * numpy.random.uniform(size=2)).astype(int)
-            point = point_offset + location
-            bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=point, tile_size=original_tile_size)
-            if WSITupletsGenerator._validate_location(bitmap=tiles_bitmap, indices=bitmap_indices) is False:
-                attempts = attempts + 1
-                continue
-
-            tile = slide_utils.read_region_around_point(slide=slide, point=point, tile_size=self._tile_size, selected_level_tile_size=adjusted_tile_size, level=level)
-            tile_grayscale = tile.convert('L')
-            hist, _ = numpy.histogram(tile_grayscale, bins=self._tile_size)
-            white_ratio = numpy.sum(hist[WSITupletsGenerator._histogram_min_intensity_level:]) / (self._tile_size * self._tile_size)
-            if white_ratio > WSITupletsGenerator._white_ratio_threshold:
-                attempts = attempts + 1
-                continue
-
-            return {
-                'tile': numpy.array(tile),
-                'point': point
-            }
-
-        return None
-
-    def _create_anchor_example(self, slide_descriptor, component_index):
-        return self._create_random_example(slide_descriptor=slide_descriptor, component_index=component_index)
-
-    def _create_positive_example(self, slide_descriptor: SlideDescriptor, component_index: int, anchor_point: numpy.ndarray):
-        # image_file_path = slide_descriptor['image_file_path']
-        # desired_downsample = slide_descriptor['desired_downsample']
-        # original_tile_size = slide_descriptor['original_tile_size']
-        # image_file_name_suffix = slide_descriptor['image_file_name_suffix']
-        # components = slide_descriptor['components']
-        # mpp = slide_descriptor['mpp']
-        # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
-        component = slide_descriptor.get_component(component_index=component_index)
-        inner_radius_pixels = self._calculate_inner_radius_pixels(mpp=slide_descriptor.mpp)
-        # slide = slide_data['slide']
-        # adjusted_tile_size = slide_data['adjusted_tile_size']
-        # level = slide_data['level']
-        # tiles_bitmap = component['tiles_bitmap']
-
-        attempts = 0
-        while True:
-            if attempts == WSITupletsGenerator._max_attempts:
-                break
-
-            positive_angle = 2 * numpy.pi * numpy.random.uniform(size=1)[0]
-            positive_dir = numpy.array([numpy.cos(positive_angle), numpy.sin(positive_angle)])
-            # positive_radius = inner_radius_pixels * numpy.random.uniform(size=1)[0]
-            positive_radius = inner_radius_pixels
-            positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
-            positive_bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
-            if WSITupletsGenerator._validate_location(bitmap=component.tiles_bitmap, indices=positive_bitmap_indices) is False:
-                attempts = attempts + 1
-                continue
-
-            positive_tile = slide_utils.read_region_around_point(
-                slide=slide,
-                point=positive_point,
-                tile_size=self._tile_size,
-                selected_level_tile_size=adjusted_tile_size,
-                level=level)
-
-            return {
-                'tile': numpy.array(positive_tile),
-                'point': positive_point
-            }
-
-        return None
+    # def _create_anchor_example(self, slide_descriptor, component_index):
+    #     return self._create_random_example(slide_descriptor=slide_descriptor, component_index=component_index)
+    #
+    # def _create_positive_example(self, slide_descriptor: Slide, component_index: int, anchor_point: numpy.ndarray):
+    #     # image_file_path = slide_descriptor['image_file_path']
+    #     # desired_downsample = slide_descriptor['desired_downsample']
+    #     # original_tile_size = slide_descriptor['original_tile_size']
+    #     # image_file_name_suffix = slide_descriptor['image_file_name_suffix']
+    #     # components = slide_descriptor['components']
+    #     # mpp = slide_descriptor['mpp']
+    #     # slide_data = self._open_slide(image_file_path=image_file_path, desired_downsample=desired_downsample)
+    #     component = slide_descriptor.get_component(component_index=component_index)
+    #     inner_radius_pixels = self._calculate_inner_radius_pixels(mpp=slide_descriptor.mpp)
+    #     # slide = slide_data['slide']
+    #     # adjusted_tile_size = slide_data['adjusted_tile_size']
+    #     # level = slide_data['level']
+    #     # tiles_bitmap = component['tiles_bitmap']
+    #
+    #     attempts = 0
+    #     while True:
+    #         if attempts == WSITupletsGenerator._max_attempts:
+    #             break
+    #
+    #         positive_angle = 2 * numpy.pi * numpy.random.uniform(size=1)[0]
+    #         positive_dir = numpy.array([numpy.cos(positive_angle), numpy.sin(positive_angle)])
+    #         # positive_radius = inner_radius_pixels * numpy.random.uniform(size=1)[0]
+    #         positive_radius = inner_radius_pixels
+    #         positive_point = (anchor_point + positive_radius * positive_dir).astype(int)
+    #         positive_bitmap_indices = WSITupletsGenerator._calculate_bitmap_indices(point=positive_point, tile_size=original_tile_size)
+    #         if WSITupletsGenerator._validate_location(bitmap=component.tiles_bitmap, indices=positive_bitmap_indices) is False:
+    #             attempts = attempts + 1
+    #             continue
+    #
+    #         positive_tile = slide_utils.read_region_around_point(
+    #             slide=slide,
+    #             point=positive_point,
+    #             tile_size=self._tile_size,
+    #             selected_level_tile_size=adjusted_tile_size,
+    #             level=level)
+    #
+    #         return {
+    #             'tile': numpy.array(positive_tile),
+    #             'point': positive_point
+    #         }
+    #
+    #     return None
 
     def _create_negative_example(self, df, slide_descriptor):
         row_anchor_patient = self._df.loc[self._df[WSITupletsGenerator.file_column_name] == slide_descriptor['image_file_name']].iloc[0]
@@ -1242,7 +1399,7 @@ class WSITupletsGenerator:
     def _create_slide_descriptor(self, row):
         dataset_id = row[WSITupletsGenerator.dataset_id_column_name]
         dataset_path = self._dataset_paths[dataset_id]
-        slide_descriptor = SlideDescriptor(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
+        slide_descriptor = Slide(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
         return slide_descriptor
 
     def _slide_descriptors_creation_worker(self, df, indices, q):
@@ -1259,53 +1416,28 @@ class WSITupletsGenerator:
 
             slide_descriptor_index = slide_indices[i % len(slide_indices)]
             slide_descriptor = self._slide_descriptors[slide_descriptor_index]
-            tuplet = self._try_create_tuplet(df=df, slide_descriptor=slide_descriptor, negative_examples_count=negative_examples_count)
+            tuplet = self._try_create_tuplet(df=df, slide=slide_descriptor, negative_examples_count=negative_examples_count)
             if tuplet is not None:
                 q.put(tuplet)
                 tuplets_created = tuplets_created + 1
 
-    def _try_create_tuplet(self, df: pandas.DataFrame, slide_descriptor: SlideDescriptor, negative_examples_count: int):
-        tiles = []
+    def _try_create_tuplet(self, df: pandas.DataFrame, slide: Slide, negative_examples_count: int):
+        patches = []
+        patch_extractor = PatchExtractor(slide=slide, inner_radius_mm=self._inner_radius_mm)
 
-        # Anchor Example
-        component_index = WSITupletsGenerator._get_random_component_index(slide_descriptor=slide_descriptor)
-        anchor_example = self._create_anchor_example(
-            slide_descriptor=slide_descriptor,
-            component_index=component_index)
+        anchor_patch = patch_extractor.extract_patch(patch_validators=[WSITupletsGenerator._validate_histogram])
+        patches.append(numpy.array(anchor_patch.image))
 
-        if anchor_example is None:
-            return None
+        positive_patch = patch_extractor.extract_patch(patch_validators=[], reference_patch=anchor_patch)
+        patches.append(numpy.array(positive_patch.image))
 
-        WSITupletsGenerator._append_tiles(tiles=tiles, example=anchor_example)
+        # for i in range(negative_examples_count):
+        #     pass
 
-        # Positive Example
-        anchor_point = anchor_example['point']
-        positive_example = self._create_positive_example(
-            slide_descriptor=slide_descriptor,
-            component_index=component_index,
-            anchor_point=anchor_point)
+        patches_tuplet = numpy.transpose(numpy.stack(patches), (0, 3, 1, 2))
+        return patches_tuplet
 
-        if positive_example is None:
-            return None
-
-        WSITupletsGenerator._append_tiles(tiles=tiles, example=positive_example)
-
-        # Negative Examples
-        for i in range(negative_examples_count):
-            negative_example = self._create_negative_example(df=df, slide_descriptor=slide_descriptor)
-            if negative_example is None:
-                return None
-
-            WSITupletsGenerator._append_tiles(tiles=tiles, example=negative_example)
-
-        tiles_tuplet = numpy.transpose(numpy.stack(tiles), (0, 3, 1, 2))
-
-        return tiles_tuplet
-
-    def save_metadata(self, output_file_path):
-        self._df.to_excel(output_file_path)
-
-    def _create_slide_descriptors(self, df, num_workers):
+    def _create_slides(self, df, num_workers):
         q = Queue()
         rows_count = df.shape[0]
         indices = list(range(rows_count))
@@ -1320,7 +1452,7 @@ class WSITupletsGenerator:
 
     def _queue_tuplets(self, tuplets_count, queue_size, negative_examples_count, folds, workers_count):
         self._tuplets_queue = Queue(maxsize=queue_size)
-        self._slide_descriptors = self._create_slide_descriptors(df=self._df, num_workers=workers_count)
+        self._slide_descriptors = self._create_slides(df=self._df, num_workers=workers_count)
         self._image_file_name_to_slide_descriptor = dict((slide_descriptor.image_file_name, slide_descriptor) for slide_descriptor in self._slide_descriptors)
         df = self._select_folds_from_metadata(df=self._df, folds=folds)
 
@@ -1365,6 +1497,9 @@ class WSITupletsGenerator:
 
         WSITupletsGenerator._drain_queue_to_disk(q=self._tuplets_queue, count=tuplets_count, dir_path=dir_path, file_name_stem='tuple')
 
+    def save_metadata(self, output_file_path):
+        self._df.to_excel(output_file_path)
+
     def get_tuplet(self, index, replace=True):
         mod_index = numpy.mod(index, self._dataset_size)
         tuplet = self._tuplets[mod_index]
@@ -1387,8 +1522,8 @@ class WSITupletsGenerator:
 
     def __init__(
             self,
-            inner_radius,
-            outer_radius,
+            inner_radius_mm,
+            outer_radius_mm,
             tile_size,
             desired_magnification,
             dataset_size,
@@ -1398,8 +1533,8 @@ class WSITupletsGenerator:
             minimal_tiles_count,
             metadata_enhancement_dir_path):
         self._logger = logging.getLogger(name=self.__class__.__name__)
-        self._inner_radius = inner_radius
-        self._outer_radius = outer_radius
+        self._inner_radius_mm = inner_radius_mm
+        self._outer_radius_mm = outer_radius_mm
         self._tile_size = tile_size
         self._desired_magnification = desired_magnification
         self._dataset_paths = WSITupletsGenerator._get_dataset_paths(

@@ -91,8 +91,8 @@ class Experiment:
     def _create_tuplets_generator(self):
         self._logger.info('      - Creating tuplets generator')
         tuplets_generator = datasets.WSITupletsGenerator(
-            inner_radius=self._args.inner_radius,
-            outer_radius=self._args.outer_radius,
+            inner_radius_mm=self._args.inner_radius,
+            outer_radius_mm=self._args.outer_radius,
             tile_size=self._args.tile_size,
             desired_magnification=self._args.desired_magnification,
             dataset_size=self._args.train_dataset_size,

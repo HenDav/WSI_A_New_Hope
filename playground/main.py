@@ -51,8 +51,8 @@ if __name__ == '__main__':
         train=True,
         datasets_base_dir_path=datasets_base_dir_path,
         max_size=50,
-        inner_radius=2,
-        outer_radius=11)
+        inner_radius_mm=2,
+        outer_radius_mm=11)
 
     train_dataset.start(load_buffer=True, buffer_base_dir_path=buffers_base_dir)
 

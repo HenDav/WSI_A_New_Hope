@@ -1,5 +1,6 @@
 # python peripherals
 import math
+from collections import namedtuple
 
 # numpy
 import numpy
@@ -31,8 +32,12 @@ def get_best_level_for_downsample(slide: openslide.OpenSlide, desired_downsample
                 level = i
                 level_downsample = int(desired_downsample / slide.level_downsamples[level])
 
-    # A tile of size (tile_size, tile_size) in an image downsampled by 'level_downsample', will cover the same image portion of a tile of size (adjusted_tile_size, adjusted_tile_size) in the original image
-    selected_level_tile_size = tile_size * level_downsample
+    # # A tile of size (tile_size, tile_size) in an image downsampled by 'level_downsample', will cover the same image portion of a tile of size (adjusted_tile_size, adjusted_tile_size) in the original image
+    # selected_level_tile_size = tile_size * level_downsample
+
+    Point = namedtuple('Point', 'x y')
+    pt1 = Point(1.0, 5.0)
+    pt2 = Point(2.5, 1.5)
 
     return level, selected_level_tile_size
 

@@ -1,0 +1,17 @@
+srun -w gipdeep10 -p gipmed -A gipmed -n 47 --gres=gpu:1 --pty bash
+
+ export PYTHONPATH=.
+
+ tmux new -s my-test
+
+tmux a -t 1
+
+tmux ls
+
+ tmux attach
+
+srun -w gipdeep10 -p gipmed -A gipmed -n 20 --gres=gpu:4 --pty bash
+
+srun -w gipdeep10 -p gipmed -A gipmed -c 90 --gres=gpu:8 --pty bash
+
+scancel --signal=TERM --state=RUNNING 29591 && scancel --signal=KILL --state=PENDING 29591
