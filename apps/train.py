@@ -1,32 +1,15 @@
 # python core
 import argparse
-import os
-from datetime import datetime
-from pathlib import Path
-from distutils.dir_util import copy_tree
-import shutil
-import multiprocessing
-import logging
 
 # wsi
-from nn import datasets
-from nn import trainers
-from nn import losses
-from nn import networks
 from nn import experiments
-from utils import common_utils
+
 
 # matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import matplotlib.lines
 
 # pytorch
-import torch
-import torchvision
 
 # numpy
-import numpy
 
 
 def parse_args():

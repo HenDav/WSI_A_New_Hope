@@ -1,3 +1,4 @@
+name: gipmed-wsi
 channels:
   - conda-forge
   - nvidia
@@ -6,7 +7,7 @@ channels:
   - anaconda
   - defaults
 dependencies:
-#  - python=3.9
+  - python=3.10
   - pytorch
   - torchaudio
   - torchvision
@@ -46,3 +47,6 @@ dependencies:
       - opencv-python
       - bresenham
       - lightly
+      - wandb
+      - gitpython
+      - typed-argument-parser

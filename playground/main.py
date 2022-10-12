@@ -38,7 +38,7 @@ if __name__ == '__main__':
     batch_size = 4
     buffers_base_dir = 'C:/GitHub/WSI_MIL/buffers'
 
-    train_dataset = datasets.WSITupletsGenerator(
+    train_dataset = datasets.MetadataManager(
         dataset_size=dataset_size,
         buffer_size=50,
         replace=True,
