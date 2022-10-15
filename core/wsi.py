@@ -1,7 +1,7 @@
 # python core
 import os
 import pickle
-import pathlib
+from pathlib import Path
 import math
 import itertools
 from typing import List, Dict, Union, Callable
@@ -39,16 +39,16 @@ from core import constants, utils
 # SlideContext Class
 # =================================================
 class SlideContext:
-    def __init__(self, row: pandas.Series, dataset_path: str, desired_magnification: int, tile_size: int):
+    def __init__(self, row: pandas.Series, dataset_path: Path, desired_magnification: int, tile_size: int):
         self._row = row
         self._dataset_path = dataset_path
         self._desired_magnification = desired_magnification
         self._tile_size = tile_size
         self._image_file_name = self._row[constants.file_column_name]
-        self._image_file_path = os.path.join(dataset_path, self._image_file_name)
+        self._image_file_path = Path(os.path.join(dataset_path, self._image_file_name))
         self._dataset_id = self._row[constants.dataset_id_column_name]
-        self._image_file_name_stem = pathlib.Path(self._image_file_path).stem
-        self._image_file_name_suffix = pathlib.Path(self._image_file_path).suffix
+        self._image_file_name_stem = self._image_file_path.stem
+        self._image_file_name_suffix = self._image_file_path.suffix
         self._magnification = row[constants.magnification_column_name]
         self._mpp = utils.magnification_to_mpp(magnification=self._magnification)
         self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name]
@@ -60,7 +60,7 @@ class SlideContext:
         self._zero_level_tile_size = self._tile_size * self._desired_downsample
 
     @property
-    def dataset_path(self) -> str:
+    def dataset_path(self) -> Path:
         return self._dataset_path
 
     @property
@@ -72,7 +72,7 @@ class SlideContext:
         return self._image_file_name
 
     @property
-    def image_file_path(self) -> str:
+    def image_file_path(self) -> Path:
         return self._image_file_path
 
     @property

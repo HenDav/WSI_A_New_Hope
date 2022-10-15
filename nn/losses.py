@@ -1,5 +1,6 @@
 # python peripherals
 import itertools
+from abc import ABC, abstractmethod
 
 # torch
 import torch
@@ -7,7 +8,13 @@ import torch
 # lightly
 from lightly.loss import NegativeCosineSimilarity
 
+# tap
+from tap import Tap
 
+
+# =================================================
+# TupletLoss Class
+# =================================================
 class TupletLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -29,6 +36,9 @@ class TupletLoss(torch.nn.Module):
         return v13.mean(dim=0)
 
 
+# =================================================
+# BYOLLoss Class
+# =================================================
 class BYOLLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -40,3 +50,28 @@ class BYOLLoss(torch.nn.Module):
         p1 = in_features[2, :, :]
         z1 = in_features[3, :, :]
         return 0.5 * (self._criterion(p0, z1) + self._criterion(p1, z0))
+
+
+# =================================================
+# DatasetArgumentsParser Class
+# =================================================
+class LossArgumentsParser(ABC, Tap):
+    @abstractmethod
+    def create_loss(self) -> torch.nn.Module:
+        pass
+
+
+# =================================================
+# TupletLossArgumentsParser Class
+# =================================================
+class TupletLossArgumentsParser(LossArgumentsParser):
+    def create_loss(self) -> torch.nn.Module:
+        return TupletLoss()
+
+
+# =================================================
+# BYOLLossArgumentsParser Class
+# =================================================
+class BYOLLossArgumentsParser(LossArgumentsParser):
+    def create_loss(self) -> torch.nn.Module:
+        return BYOLLoss()

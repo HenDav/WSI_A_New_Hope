@@ -2,6 +2,11 @@
 import os.path
 from typing import Union
 import logging
+from pathlib import Path
+import inspect
+import types
+from typing import Dict, Generic, TypeVar
+from abc import ABC, abstractmethod
 
 # numpy
 import numpy
@@ -9,9 +14,10 @@ import numpy
 # gipmed
 from core import utils
 
-import inspect
-import types
+# tap
+from tap import Tap
 
+T = TypeVar("T")
 
 # https://github.com/dabeaz/python-cookbook/blob/master/src/9/multiple_dispatch_with_function_annotations/example1.py
 class MultiMethod:
@@ -114,6 +120,25 @@ class SeedableObject:
 
 
 class LoggerObject:
-    def __init__(self, log_file_base_dir: str, log_file_name: str, level: int = logging.DEBUG):
-        log_file_path = os.path.normpath(os.path.join(log_file_base_dir, log_file_name))
+    def __init__(self, log_file_path: Path, level: int = logging.DEBUG):
         self._logger = utils.create_logger(log_file_path=log_file_path, name=self.__class__.__name__, level=level)
+
+
+class FactoryObject(ABC):
+    @staticmethod
+    @abstractmethod
+    def from_tap():
+        pass
+
+
+class ArgumentsParser(ABC, Tap, Generic[T]):
+    @abstractmethod
+    def create(self) -> T:
+        pass
+
+
+class JSONDecoderObject(ABC, Generic[T]):
+    @staticmethod
+    @abstractmethod
+    def from_json(self) -> T:
+        pass

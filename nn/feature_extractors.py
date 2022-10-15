@@ -1,6 +1,7 @@
 # python peripherals
 import numpy
 import copy
+from abc import ABC, abstractmethod
 
 # torch
 import torch
@@ -15,15 +16,20 @@ from lightly.models.modules import BYOLProjectionHead, BYOLPredictionHead
 from lightly.models.utils import deactivate_requires_grad
 from lightly.models.utils import update_momentum
 
+# tap
+from tap import Tap
 
+
+# =================================================
+# FeatureExtractor Class
+# =================================================
 class FeatureExtractor(torch.nn.Module):
     pass
 
 
-class Classifier(torch.nn.Module):
-    pass
-
-
+# =================================================
+# BYOL Class
+# =================================================
 class BYOL(FeatureExtractor):
     def __init__(self, backbone):
         super().__init__()
@@ -51,6 +57,9 @@ class BYOL(FeatureExtractor):
         return z
 
 
+# =================================================
+# BYOL50 Class
+# =================================================
 class BYOL50(FeatureExtractor):
     def __init__(self):
         super().__init__()
@@ -80,8 +89,18 @@ class BYOL50(FeatureExtractor):
         return torch.stack((p0, z0, p1, z1))
 
 
-class CompoundClassifier(Classifier):
-    def __init__(self, FeatureExtractorClass, ClassifierClass):
-        super().__init__()
-        self._feature_extractor = FeatureExtractorClass()
-        self._classifier = ClassifierClass()
+# =================================================
+# FeatureExtractorArgumentsParser Class
+# =================================================
+class FeatureExtractorArgumentsParser(ABC, Tap):
+    @abstractmethod
+    def create_feature_extractor(self) -> torch.nn.Module:
+        pass
+
+
+# =================================================
+# BYOL50ArgumentsParser Class
+# =================================================
+class BYOL50ArgumentsParser(FeatureExtractorArgumentsParser):
+    def create_feature_extractor(self) -> torch.nn.Module:
+        return BYOL50()

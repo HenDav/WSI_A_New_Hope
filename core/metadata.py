@@ -5,6 +5,8 @@ import math
 import re
 import logging
 from typing import List, Dict, Union, Callable
+from pathlib import Path
+from abc import ABC, abstractmethod
 
 # pandas
 import pandas
@@ -24,80 +26,69 @@ else:
 # wsi
 import constants
 from core import utils
-from core.base import SeedableObject
+from core.base import SeedableObject, LoggerObject, ArgumentsParser
 from core.wsi import SlideContext, Slide
 from core.base import MultipleMeta
 
+# tap
+from tap import Tap
+
 
 # =================================================
-# MetadataManager Class
+# MetadataGenerator Class
 # =================================================
-class MetadataManager(metaclass=MultipleMeta, SeedableObject):
+class MetadataBase(ABC):
     def __init__(
             self,
+            datasets_base_dir_path: Path,
             tile_size: int,
-            desired_magnification: int,
-            datasets_base_dir_path: str,
-            dataset_ids: List[str],
-            minimal_tiles_count: int,
-            metadata_enhancement_dir_path: str):
-        self._logger = logging.getLogger(name=self.__class__.__name__)
+            desired_magnification: int):
+        self._datasets_base_dir_path = datasets_base_dir_path
         self._tile_size = tile_size
         self._desired_magnification = desired_magnification
-        self._datasets_base_dir_path = datasets_base_dir_path
-        self._dataset_ids = dataset_ids
-        self._dataset_paths_dict = self._create_dataset_paths_dict()
-        self._minimal_tiles_count = minimal_tiles_count
-        self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
+        self._dataset_paths = constants.get_dataset_paths(datasets_base_dir_path=datasets_base_dir_path)
         self._df = self._load_metadata()
-        super(SeedableObject, self).__init__()
-
-    def __init__(
-            self,
-            metadata_manager: MetadataManager,
-            folds: List[int]):
-        self._logger = metadata_manager._logger
-        self._tile_size = metadata_manager._tile_size
-        self._desired_magnification = metadata_manager._desired_magnification
-        self._datasets_base_dir_path = metadata_manager._datasets_base_dir_path
-        self._dataset_ids = metadata_manager._dataset_ids
-        self._dataset_paths_dict = metadata_manager._dataset_paths_dict
-        self._df = metadata_manager._df[metadata_manager._df[constants.fold_column_name].isin(folds)]
-        super(SeedableObject, self).__init__()
 
     @property
     def metadata(self) -> pandas.DataFrame:
         return self._df
 
-    def filter_folds(self, folds: List[int]) -> MetadataManager:
-        return MetadataManager(metadata_manager=self, folds=folds)
+    @abstractmethod
+    def _load_metadata(self) -> pandas.DataFrame:
+        pass
 
-    def get_random_slide(self) -> Slide:
-        index = self._rng.integers(low=0, high=self._df.shape[0])
-        slide_context = self._get_slide_context(index=index)
-        slide= Slide(slide_context=slide_context)
-        return slide
 
-    def _get_slide_context(self, index: int) -> SlideContext:
-        row = self._df.iloc[[index]]
-        dataset_path = self._dataset_paths_dict[row[constants.dataset_id_column_name]]
-        slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
-        return slide_context
+# =================================================
+# MetadataGenerator Class
+# =================================================
+class MetadataGenerator(MetadataBase, LoggerObject):
+    def __init__(
+            self,
+            datasets_base_dir_path: Path,
+            tile_size: int,
+            desired_magnification: int,
+            metadata_enhancement_dir_path: Path,
+            log_file_path: Path,
+            dataset_ids: List[str],
+            minimal_tiles_count: int):
+        self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
+        self._log_file_path = log_file_path
+        self._dataset_ids = dataset_ids
+        self._minimal_tiles_count = minimal_tiles_count
+        super(LoggerObject, self).__init__(log_file_path=log_file_path)
+        super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
 
-    def _create_dataset_paths_dict(self) -> Dict[str, str]:
-        dataset_paths_dict = {}
-        path_suffixes = constants.get_path_suffixes()
+    @property
+    def metadata(self) -> pandas.DataFrame:
+        return self._df
 
-        for k in path_suffixes.keys():
-            if k in self._dataset_ids:
-                path_suffix = path_suffixes[k]
-                dataset_paths_dict[k] = os.path.normpath(os.path.join(self._datasets_base_dir_path, path_suffix))
-
-        return dataset_paths_dict
+    def save_metadata(self, metadata_file_path: Path):
+        metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._df.to_csv(path_or_buf=metadata_file_path)
 
     def _build_column_names(self):
         column_names = {}
-        for dataset_id_prefix in constants.dataset_id_prefixes:
+        for dataset_id_prefix in constants.dataset_ids:
             column_names[dataset_id_prefix] = {}
             column_names[dataset_id_prefix][constants.file_column_name_shared] = constants.file_column_name
             column_names[dataset_id_prefix][constants.patient_barcode_column_name_shared] = constants.patient_barcode_column_name
@@ -137,11 +128,21 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
             return f'Slide tile usage [%] (for {self._tile_size}^2 Pix/Tile) @ X{self._desired_magnification}'
 
     def _load_metadata(self):
+        self._logger.info(msg=utils.generate_title_text(text=f'Metadata Generator'))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='datasets_base_dir_path', value=self._datasets_base_dir_path, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='metadata_enhancement_dir_path', value=self._metadata_enhancement_dir_path, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='log_file_path', value=self._log_file_path, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='tile_size', value=self._tile_size, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='desired_magnification', value=self._desired_magnification, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_ids', value=self._dataset_ids, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_paths_dict', value=self._dataset_paths, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='minimal_tiles_count', value=self._minimal_tiles_count, indentation=1, padding=30))
+
         df = None
-        for _, dataset_id in enumerate(self._dataset_paths):
-            self._logger.info(f'Processing metadata for {dataset_id}...')
-            slide_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataManager._get_slides_data_file_name(dataset_id=dataset_id))
-            grid_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataManager._get_grids_folder_name(desired_magnification=self._desired_magnification), constants.grid_data_file_name)
+        for _, dataset_id in enumerate(self._dataset_ids):
+            self._logger.info(msg=utils.generate_captioned_bullet_text(text='Processing Metadata', value=dataset_id, indentation=1, padding=30))
+            slide_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataGenerator._get_slides_data_file_name(dataset_id=dataset_id))
+            grid_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataGenerator._get_grids_folder_name(desired_magnification=self._desired_magnification), constants.grid_data_file_name)
             slide_df = pandas.read_excel(io=slide_metadata_file)
             grid_df = pandas.read_excel(io=grid_metadata_file)
             current_df = pandas.DataFrame({**slide_df.set_index(keys=constants.file_column_name).to_dict(), **grid_df.set_index(keys=constants.file_column_name).to_dict()})
@@ -153,16 +154,16 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
 
             current_df = self._rename_metadata(
                 df=current_df,
-                dataset_id_prefix=MetadataManager._get_dataset_id_prefix(dataset_id=dataset_id))
+                dataset_id_prefix=MetadataGenerator._get_dataset_id_prefix(dataset_id=dataset_id))
 
             current_df = self._enhance_metadata(
                 df=current_df,
                 dataset_id=dataset_id)
 
-            current_df = MetadataManager._select_metadata(
+            current_df = MetadataGenerator._select_metadata(
                 df=current_df)
 
-            current_df = MetadataManager._standardize_metadata(
+            current_df = MetadataGenerator._standardize_metadata(
                 df=current_df)
 
             current_df = self._postvalidate_metadata(
@@ -173,11 +174,10 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
             else:
                 df = pandas.concat((df, current_df))
 
-            self._logger.info(f'Processing metadata for {dataset_id}... Done.')
         return df
 
     def _enhance_metadata_tcga(self, df: pandas.DataFrame):
-        df = MetadataManager._add_slide_barcode_prefix(df=df)
+        df = MetadataGenerator._add_slide_barcode_prefix(df=df)
 
         brca_tcga_pan_can_atlas_2018_clinical_data_df = pandas.read_csv(
             filepath_or_buffer=os.path.normpath(os.path.join(self._metadata_enhancement_dir_path, 'TCGA', 'brca_tcga_pan_can_atlas_2018_clinical_data.tsv')),
@@ -201,19 +201,19 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
         cell_genomics_tcga_file2_df = pandas.read_excel(
             io=os.path.normpath(os.path.join(self._metadata_enhancement_dir_path, 'TCGA', '1-s2.0-S2666979X21000835-mmc3.xlsx')))
 
-        annotations_tcga = MetadataManager._extract_annotations(
+        annotations_tcga = MetadataGenerator._extract_annotations(
             df=cell_genomics_tcga_file2_df,
             patient_barcode_column_name=constants.patient_barcode_column_name_enhancement_tcga,
-            calculate_slide_barcode_prefix=MetadataManager._calculate_slide_barcode_prefix_tcga,
-            calculate_tumor_type=MetadataManager._calculate_tumor_type_tcga,
-            calculate_grade=MetadataManager._calculate_grade_tcga)
+            calculate_slide_barcode_prefix=MetadataGenerator._calculate_slide_barcode_prefix_tcga,
+            calculate_tumor_type=MetadataGenerator._calculate_tumor_type_tcga,
+            calculate_grade=MetadataGenerator._calculate_grade_tcga)
 
         enhanced_metadata = pandas.concat([annotations_tcga])
         df = pandas.merge(left=df, right=enhanced_metadata, on=[constants.patient_barcode_column_name, constants.slide_barcode_prefix_column_name])
         return df
 
     def _enhance_metadata_carmel(self, df):
-        df = MetadataManager._add_slide_barcode_prefix(df=df)
+        df = MetadataGenerator._add_slide_barcode_prefix(df=df)
 
         carmel_annotations_Batch11_26_10_21_df = pandas.read_excel(
             io=os.path.normpath(os.path.join(self._metadata_enhancement_dir_path, 'Carmel', 'Carmel_annotations_Batch11_26-10-21.xlsx')))
@@ -221,19 +221,19 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
         carmel_annotations_26_10_2021_df = pandas.read_excel(
             io=os.path.normpath(os.path.join(self._metadata_enhancement_dir_path, 'Carmel', 'Carmel_annotations_26-10-2021.xlsx')))
 
-        annotations1_carmel = MetadataManager._extract_annotations(
+        annotations1_carmel = MetadataGenerator._extract_annotations(
             df=carmel_annotations_Batch11_26_10_21_df,
             patient_barcode_column_name=constants.patient_barcode_column_name_enhancement_carmel,
-            calculate_slide_barcode_prefix=MetadataManager._calculate_slide_barcode_prefix_carmel,
-            calculate_tumor_type=MetadataManager._calculate_tumor_type_carmel,
-            calculate_grade=MetadataManager._calculate_grade_carmel)
+            calculate_slide_barcode_prefix=MetadataGenerator._calculate_slide_barcode_prefix_carmel,
+            calculate_tumor_type=MetadataGenerator._calculate_tumor_type_carmel,
+            calculate_grade=MetadataGenerator._calculate_grade_carmel)
 
-        annotations2_carmel = MetadataManager._extract_annotations(
+        annotations2_carmel = MetadataGenerator._extract_annotations(
             df=carmel_annotations_26_10_2021_df,
             patient_barcode_column_name=constants.patient_barcode_column_name_enhancement_carmel,
-            calculate_slide_barcode_prefix=MetadataManager._calculate_slide_barcode_prefix_carmel,
-            calculate_tumor_type=MetadataManager._calculate_tumor_type_carmel,
-            calculate_grade=MetadataManager._calculate_grade_carmel)
+            calculate_slide_barcode_prefix=MetadataGenerator._calculate_slide_barcode_prefix_carmel,
+            calculate_tumor_type=MetadataGenerator._calculate_tumor_type_carmel,
+            calculate_grade=MetadataGenerator._calculate_grade_carmel)
 
         enhanced_metadata = pandas.concat([annotations1_carmel, annotations2_carmel])
         # try:
@@ -243,17 +243,17 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
         return df
 
     def _enhance_metadata_abctb(self, df):
-        df = MetadataManager._add_slide_barcode_prefix(df=df)
+        df = MetadataGenerator._add_slide_barcode_prefix(df=df)
 
         abctb_path_data_df = pandas.read_excel(
             io=os.path.normpath(os.path.join(self._metadata_enhancement_dir_path, 'ABCTB', 'ABCTB_Path_Data.xlsx')))
 
-        annotations_abctb = MetadataManager._extract_annotations(
+        annotations_abctb = MetadataGenerator._extract_annotations(
             df=abctb_path_data_df,
             patient_barcode_column_name=constants.patient_barcode_column_name_enhancement_abctb,
-            calculate_slide_barcode_prefix=MetadataManager._calculate_slide_barcode_prefix_abctb,
-            calculate_tumor_type=MetadataManager._calculate_tumor_type_abctb,
-            calculate_grade=MetadataManager._calculate_grade_abctb)
+            calculate_slide_barcode_prefix=MetadataGenerator._calculate_slide_barcode_prefix_abctb,
+            calculate_tumor_type=MetadataGenerator._calculate_tumor_type_abctb,
+            calculate_grade=MetadataGenerator._calculate_grade_abctb)
 
         enhanced_metadata = pandas.concat([annotations_abctb])
         df = pandas.merge(left=df, right=enhanced_metadata, on=[constants.patient_barcode_column_name, constants.slide_barcode_prefix_column_name])
@@ -516,7 +516,7 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
 
     @staticmethod
     def _add_slide_barcode_prefix(df: pandas.DataFrame) -> pandas.DataFrame:
-        df[constants.slide_barcode_prefix_column_name] = df.apply(lambda row: MetadataManager._calculate_slide_barcode_prefix(row), axis=1)
+        df[constants.slide_barcode_prefix_column_name] = df.apply(lambda row: MetadataGenerator._calculate_slide_barcode_prefix(row), axis=1)
         return df
 
     @staticmethod
@@ -552,3 +552,86 @@ class MetadataManager(metaclass=MultipleMeta, SeedableObject):
         df = df.replace(constants.invalid_values, constants.invalid_value)
         df = df.dropna()
         return df
+
+
+# =================================================
+# MetadataManager Class
+# =================================================
+class MetadataManager(MetadataBase, SeedableObject):
+    def __init__(
+            self,
+            datasets_base_dir_path: Path,
+            tile_size: int,
+            desired_magnification: int,
+            metadata_file_path: Path):
+        self._metadata_file_path = metadata_file_path
+        self._tile_size = tile_size
+        self._desired_magnification = desired_magnification
+        super(SeedableObject, self).__init__()
+        super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+        self._current_df = self._df
+
+    @property
+    def metadata(self) -> pandas.DataFrame:
+        return self._current_df
+
+    def _load_metadata(self) -> pandas.DataFrame:
+        return pandas.read_csv(filepath_or_buffer=self._metadata_file_path)
+
+    def filter_folds(self, folds: List[int]):
+        self._current_df = self._df[self._df[constants.fold_column_name].isin(folds)]
+
+    def get_random_slide(self) -> Slide:
+        index = self._rng.integers(low=0, high=self._df.shape[0])
+        slide_context = self._get_slide_context(index=index)
+        slide = Slide(slide_context=slide_context)
+        return slide
+
+    def _get_slide_context(self, index: int) -> SlideContext:
+        row = self._df.iloc[[index]]
+        dataset_path = self._dataset_paths[row[constants.dataset_id_column_name]]
+        slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
+        return slide_context
+
+
+# =================================================
+# MetadataArgumentsParser Class
+# =================================================
+class MetadataArgumentsParser(Tap):
+    datasets_base_dir_path: Path
+    tile_size: int
+    desired_magnification: int
+
+
+# =================================================
+# MetadataGeneratorArgumentsParser Class
+# =================================================
+class MetadataGeneratorArgumentsParser(ArgumentsParser[MetadataGenerator], MetadataArgumentsParser):
+    metadata_enhancement_dir_path: Path
+    log_file_path: Path
+    dataset_ids: List[str]
+    minimal_tiles_count: int
+
+    def create(self) -> MetadataGenerator:
+        return MetadataGenerator(
+            datasets_base_dir_path=self.datasets_base_dir_path,
+            tile_size=self.tile_size,
+            desired_magnification=self.desired_magnification,
+            metadata_enhancement_dir_path=self.metadata_enhancement_dir_path,
+            log_file_path=self.log_file_path,
+            dataset_ids=self.dataset_ids,
+            minimal_tiles_count=self.minimal_tiles_count)
+
+
+# =================================================
+# MetadataGeneratorArgumentsParser Class
+# =================================================
+class MetadataManagerArgumentsParser(ArgumentsParser[MetadataManager], MetadataArgumentsParser):
+    metadata_file_path: Path
+
+    def create(self) -> MetadataManager:
+        return MetadataManager(
+            datasets_base_dir_path=self.datasets_base_dir_path,
+            tile_size=self.tile_size,
+            desired_magnification=self.desired_magnification,
+            metadata_file_path=self.metadata_file_path)

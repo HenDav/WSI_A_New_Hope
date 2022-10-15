@@ -1,4 +1,7 @@
+# python peripherals
+import os
 from typing import Dict, List, Tuple
+from pathlib import Path
 
 # General parameters
 test_fold_id = 'test'
@@ -16,7 +19,7 @@ dataset_id_abctb = 'ABCTB'
 dataset_id_sheba = 'SHEBA'
 dataset_id_carmel = 'CARMEL'
 dataset_id_tcga = 'TCGA'
-dataset_id_prefixes = [dataset_id_abctb, dataset_id_sheba, dataset_id_carmel, dataset_id_tcga]
+dataset_ids = [dataset_id_abctb, dataset_id_sheba, dataset_id_carmel, dataset_id_tcga]
 
 # Grid data
 bad_segmentation_column_name = 'bad segmentation'
@@ -80,16 +83,28 @@ total_tiles_column_name = 'total_tiles'
 tile_usage_column_name = 'tile_usage'
 
 
-def get_path_suffixes() -> Dict[str, str]:
+def get_path_suffixes() -> Dict[str, Path]:
     path_suffixes = {
         dataset_id_tcga: f'Breast/{dataset_id_tcga}',
         dataset_id_abctb: f'Breast/{dataset_id_abctb}_TIF',
     }
 
     for i in range(1, 12):
-        path_suffixes[f'{dataset_id_carmel}{i}'] = f'Breast/{dataset_id_carmel.capitalize()}/Batch_{i}/{dataset_id_carmel}{i}'
+        path_suffixes[f'{dataset_id_carmel}{i}'] = Path(f'Breast/{dataset_id_carmel.capitalize()}/Batch_{i}/{dataset_id_carmel}{i}')
 
     for i in range(2, 7):
-        path_suffixes[f'{dataset_id_sheba}{i}'] = f'Breast/{dataset_id_sheba.capitalize()}/Batch_{i}/{dataset_id_sheba}{i}'
+        path_suffixes[f'{dataset_id_sheba}{i}'] = Path(f'Breast/{dataset_id_sheba.capitalize()}/Batch_{i}/{dataset_id_sheba}{i}')
 
     return path_suffixes
+
+
+def get_dataset_paths(datasets_base_dir_path: Path) -> Dict[str, Path]:
+    dataset_paths = {}
+    path_suffixes = get_path_suffixes()
+
+    for k in path_suffixes.keys():
+        if k in dataset_ids:
+            path_suffix = path_suffixes[k]
+            dataset_paths[k] = Path(os.path.normpath(os.path.join(datasets_base_dir_path, path_suffix)))
+
+    return dataset_paths

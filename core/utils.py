@@ -1,14 +1,21 @@
 # python peripherals
 import logging
-from typing import List
+from typing import List, TypeVar, Generic, cast, Type
 import os
 import multiprocessing
+from pathlib import Path
 
 # torch
 import torch
 
 # numpy
 import numpy
+
+# tap
+from tap import Tap
+
+
+T = TypeVar('T')
 
 
 #################################
@@ -19,11 +26,12 @@ def create_log_file_path(file_name: str, results_dir_path: str) -> str:
 
 
 # https://stackoverflow.com/questions/22934616/multi-line-logging-in-python
-def create_logger(log_file_path: str, name: str, level: int) -> logging.Logger:
+def create_logger(log_file_path: Path, name: str, level: int) -> logging.Logger:
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
     fmt = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     datefmt = '%m-%d %H:%M'
     formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
-    handler = logging.FileHandler(filename=log_file_path)
+    handler = logging.FileHandler(filename=str(log_file_path))
     handler.setFormatter(fmt=formatter)
 
     console = logging.StreamHandler()
@@ -131,3 +139,9 @@ def save_object_dict(obj: object, file_path: str):
     with open(file_path, "w") as text_file:
         for key, value in object_dict.items():
             text_file.write(f'{key}: {value}\n')
+
+
+def argument_parser_type_cast(instance_type: Type[T], arguments_parser_name: str) -> T:
+    argument_parser_class = globals()[arguments_parser_name]
+    argument_parser = cast(Tap, argument_parser_class())
+    return cast(instance_type, argument_parser.parse_args())

@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import logging
 import sys
-from typing import List
+from typing import List, TypeVar, Generic, cast
 
 # git
 import git
@@ -17,21 +17,27 @@ from torch.utils.data import Dataset
 
 # gipmed
 from core import utils
-from core.base import LoggerObject
+from core.base import LoggerObject, ArgumentsParser
+from core.base import FactoryObject
 from core.metadata import MetadataManager
-from nn.datasets import WSIDataset
-from nn.trainers import ModelTrainer
-from nn.networks import *
+from nn.datasets import WSIDataset, SSLDataset
+from nn.trainers import ModelTrainer, SSLModelTrainer
+from nn.feature_extractors import *
+
+# tap
+from tap import Tap
 
 
-class Experiment(ABC, LoggerObject):
+# =================================================
+# Experiment Class
+# =================================================
+class Experiment(LoggerObject):
     def __init__(self, name: str, results_base_dir_path: str, model_trainers: List[ModelTrainer]):
         self._name = name
         self._results_base_dir_path = results_base_dir_path
         self._results_dir_path = self._create_results_dir_path()
         self._model_trainers = model_trainers
         self._log_file_path = utils.create_log_file_path(file_name=self.__class__.__name__, results_dir_path=self._results_dir_path)
-        super(ABC, self).__init__()
         super(LoggerObject, self).__init__(log_file_path=self._log_file_path)
 
     def _create_results_dir_path(self) -> str:
@@ -52,3 +58,88 @@ class Experiment(ABC, LoggerObject):
 
         for model_trainer in self._model_trainers:
             model_trainer.train()
+
+
+# =================================================
+# ExperimentArgumentsParser Class
+# =================================================
+class ExperimentArgumentsParser(ABC, ArgumentsParser[Experiment]):
+    name: str
+    results_base_dir_path: str
+
+    @abstractmethod
+    def create_experiment(self) -> Experiment:
+        pass
+
+
+# =================================================
+# ExperimentArgumentsParser Class
+# =================================================
+class SSLExperimentArgumentsParser(ExperimentArgumentsParser):
+    T = TypeVar('T')
+
+    feature_extractor_epochs: int
+    feature_extractor_batch_size: int
+    feature_extractor_num_workers: int
+    feature_extractor_checkpoint_rate: int
+    feature_extractor_folds: List[int]
+
+    classifier_epochs: int
+    classifier_batch_size: int
+    classifier_num_workers: int
+    classifier_checkpoint_rate: int
+    classifier_folds: List[int]
+
+    feature_extractor_train_dataset_json: str
+    feature_extractor_validation_dataset_json: str
+
+    classifier_train_dataset_json: str
+    classifier_validation_dataset_json: str
+
+    feature_extractor_loss_json: str
+    feature_extractor_optimizer_json: str
+    feature_extractor_model_json: str
+
+    classifier_loss_json: str
+    classifier_optimizer_json: str
+    classifier_model_json: str
+
+    feature_extractor_train_dataset_arguments_parser_json: str
+    feature_extractor_validation_dataset_arguments_parser_name: str
+
+    classifier_train_dataset_arguments_parser_name: str
+    classifier_validation_dataset_arguments_parser_name: str
+
+    feature_extractor_loss_arguments_parser_name: str
+    feature_extractor_optimizer_arguments_parser_name: str
+    feature_extractor_model_arguments_parser_name: str
+
+    classifier_loss_arguments_parser_name: str
+    classifier_optimizer_arguments_parser_name: str
+    classifier_model_arguments_parser_name: str
+
+    def create(self) -> Experiment:
+        train_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
+        validation_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
+        feature_extractor_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_loss_arguments_parser_name)
+        # classifier_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_loss_arguments_parser_name)
+        optimizer = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.optimizer_arguments_parser_name)
+        feature_extractor = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_arguments_parser_name)
+        # classifier = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_arguments_parser_name)
+
+        feature_extractor_trainer = SSLModelTrainer(
+            name='Feature Extractor Trainer',
+            model=feature_extractor,
+            loss=feature_extractor_loss,
+            optimizer=optimizer,
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            epochs=self.classifier_epochs,
+            batch_size=self.feature_extractor_batch_size,
+            folds=self.feature_extractor_folds,
+            num_workers=self.feature_extractor_num_workers,
+            checkpoint_rate=self.feature_extractor_checkpoint_rate,
+            results_base_dir_path=self.results_base_dir_path,
+            device=torch.device('cuda'))
+
+        return Experiment(name=self.name, results_base_dir_path=self.results_base_dir_path, model_trainers=[feature_extractor_trainer])

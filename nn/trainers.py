@@ -65,16 +65,21 @@ class ModelTrainer(LoggerObject):
         super(LoggerObject, self).__init__(log_file_base_dir=results_base_dir_path, log_file_name=self._name)
 
     def train(self):
-        self._logger.info(msg=utils.generate_title_text(text='Train Parameters'))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Epochs', value=self._epochs, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Batch Size', value=self._batch_size, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Training Dataset Size', value=self._train_dataset_size, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Validation Dataset Size', value=self._validation_dataset_size, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Training Batches per Epoch', value=self._train_batches_per_epoch, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Validation Batches per Epoch', value=self._validation_batches_per_epoch, indentation=1, padding=30))
+        self._logger.info(msg=utils.generate_title_text(text=f'Model Trainer: {self._name}'))
+
+        self._logger.info(msg=utils.generate_bullet_text(text='Train Parameters', indentation=1))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Epochs', value=self._epochs, indentation=2, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Batch Size', value=self._batch_size, indentation=2, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Training Dataset Size', value=self._train_dataset_size, indentation=2, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Validation Dataset Size', value=self._validation_dataset_size, indentation=2, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Training Batches per Epoch', value=self._train_batches_per_epoch, indentation=2, padding=30))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='Validation Batches per Epoch', value=self._validation_batches_per_epoch, indentation=2, padding=30))
+
+        self._logger.info(msg=utils.generate_bullet_text(text='Train Objects', indentation=1))
         self._logger.info(msg=utils.generate_serialized_object_text(text='Model', obj=self._model))
         self._logger.info(msg=utils.generate_serialized_object_text(text='Optimizer', obj=self._optimizer))
         self._logger.info(msg=utils.generate_serialized_object_text(text='Loss', obj=self._loss))
+
         self._train()
 
     def _train(self):

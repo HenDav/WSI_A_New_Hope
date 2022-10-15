@@ -1,6 +1,6 @@
 # python core
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 
 # pandas
 import pandas
@@ -12,20 +12,23 @@ import numpy
 from torch.utils.data import Dataset
 
 # gipmed
-from core.metadata import MetadataManager
-from core.base import SeedableObject
+from core.metadata import MetadataManager, MetadataManagerArgumentsParser
+from core import constants
+from core.base import SeedableObject, ArgumentsParser
 from core.wsi import SlideContext, Slide, Patch, PatchExtractor
+
+# tap
+from tap import Tap
 
 
 # =================================================
 # TupletsDataset Class
 # =================================================
 class WSIDataset(ABC, Dataset, SeedableObject):
-    def __init__(self, dataset_size: int, metadata_manager: MetadataManager):
+    def __init__(self, metadata_manager: MetadataManager, dataset_size: int):
         super(Dataset, self).__init__()
         super(SeedableObject, self).__init__()
         self._dataset_size = dataset_size
-        self._full_metadata_manager = metadata_manager
         self._metadata_manager = metadata_manager
 
     def __len__(self):
@@ -36,18 +39,18 @@ class WSIDataset(ABC, Dataset, SeedableObject):
         pass
 
     def set_folds(self, folds: List[int]):
-        self._metadata_manager = self._full_metadata_manager.filter_folds(folds=folds)
+        self._metadata_manager.filter_folds(folds=folds)
 
 
 # =================================================
-# SSLTupletsDataset Class
+# SSLDataset Class
 # =================================================
-class SSLTupletsDataset(WSIDataset):
+class SSLDataset(WSIDataset):
     _white_ratio_threshold = 0.5
     _white_intensity_threshold = 170
 
-    def __init__(self, dataset_size: int, metadata: pandas.DataFrame, inner_radius_mm: float, negative_examples_count: int):
-        super(WSIDataset, self).__init__(dataset_size=dataset_size, metadata=metadata)
+    def __init__(self, metadata_manager: MetadataManager, dataset_size: int, inner_radius_mm: float, negative_examples_count: int):
+        super(WSIDataset, self).__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
         self._inner_radius_mm = inner_radius_mm
         self._negative_examples_count = negative_examples_count
 
@@ -60,7 +63,7 @@ class SSLTupletsDataset(WSIDataset):
         slide = self._metadata_manager.get_random_slide()
         patch_extractor = PatchExtractor(slide=slide, inner_radius_mm=self._inner_radius_mm)
 
-        anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLTupletsDataset._validate_histogram])
+        anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLDataset._validate_histogram])
         patches.append(numpy.array(anchor_patch.image))
 
         positive_patch = patch_extractor.extract_patch(patch_validators=[], reference_patch=anchor_patch)
@@ -76,7 +79,28 @@ class SSLTupletsDataset(WSIDataset):
     def _validate_histogram(patch: Patch) -> bool:
         patch_grayscale = patch.image.convert('L')
         hist, _ = numpy.histogram(a=patch_grayscale, bins=patch.slide_context.tile_size)
-        white_ratio = numpy.sum(hist[SSLTupletsDataset._white_intensity_threshold:]) / (patch.slide_context.tile_size * patch.slide_context.tile_size)
-        if white_ratio > SSLTupletsDataset._white_ratio_threshold:
+        white_ratio = numpy.sum(hist[SSLDataset._white_intensity_threshold:]) / (patch.slide_context.tile_size * patch.slide_context.tile_size)
+        if white_ratio > SSLDataset._white_ratio_threshold:
             return False
         return True
+
+
+# =================================================
+# DatasetArgumentsParser Class
+# =================================================
+class DatasetArgumentsParser(ABC, Tap):
+    dataset_size: int
+
+
+# =================================================
+# SSLDatasetArgumentsParser Class
+# =================================================
+class SSLDatasetArgumentsParser(DatasetArgumentsParser, ArgumentsParser[SSLDataset]):
+    inner_radius_mm: float
+    negative_examples_count: int
+
+    def create(self) -> SSLDataset:
+        metadata_manager_arguments_parser = MetadataManagerArgumentsParser()
+        metadata_manager = metadata_manager_arguments_parser.create()
+        return SSLDataset(metadata_manager=metadata_manager, dataset_size=self.dataset_size, inner_radius_mm=self.inner_radius_mm, negative_examples_count=self.negative_examples_count)
+
