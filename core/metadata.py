@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import math
 import re
-import logging
 from typing import List, Dict, Union, Callable
 from pathlib import Path
 from abc import ABC, abstractmethod
+import json
 
 # pandas
 import pandas
@@ -24,11 +24,10 @@ else:
     pass
 
 # wsi
-import constants
+from core import constants
 from core import utils
-from core.base import SeedableObject, LoggerObject, ArgumentsParser
+from core.base import SeedableObject, LoggerObject
 from core.wsi import SlideContext, Slide
-from core.base import MultipleMeta
 
 # tap
 from tap import Tap
@@ -42,7 +41,9 @@ class MetadataBase(ABC):
             self,
             datasets_base_dir_path: Path,
             tile_size: int,
-            desired_magnification: int):
+            desired_magnification: int,
+            **kw):
+        super(MetadataBase, self).__init__(**kw)
         self._datasets_base_dir_path = datasets_base_dir_path
         self._tile_size = tile_size
         self._desired_magnification = desired_magnification
@@ -61,30 +62,36 @@ class MetadataBase(ABC):
 # =================================================
 # MetadataGenerator Class
 # =================================================
-class MetadataGenerator(MetadataBase, LoggerObject):
+class MetadataGenerator(LoggerObject, MetadataBase):
     def __init__(
             self,
             datasets_base_dir_path: Path,
             tile_size: int,
             desired_magnification: int,
+            metadata_file_path: Path,
             metadata_enhancement_dir_path: Path,
             log_file_path: Path,
             dataset_ids: List[str],
             minimal_tiles_count: int):
+        self._metadata_file_path = metadata_file_path
         self._metadata_enhancement_dir_path = metadata_enhancement_dir_path
         self._log_file_path = log_file_path
         self._dataset_ids = dataset_ids
         self._minimal_tiles_count = minimal_tiles_count
-        super(LoggerObject, self).__init__(log_file_path=log_file_path)
-        super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+        super(MetadataGenerator, self).__init__(log_file_path=log_file_path, datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+        # super(MetadataGenerator, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+        # super(LoggerObject, self).__init__(log_file_path=log_file_path)
+        # super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+
+
 
     @property
     def metadata(self) -> pandas.DataFrame:
         return self._df
 
-    def save_metadata(self, metadata_file_path: Path):
-        metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
-        self._df.to_csv(path_or_buf=metadata_file_path)
+    def save_metadata(self):
+        self._metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._df.to_csv(path_or_buf=self._metadata_file_path)
 
     def _build_column_names(self):
         column_names = {}
@@ -128,19 +135,26 @@ class MetadataGenerator(MetadataBase, LoggerObject):
             return f'Slide tile usage [%] (for {self._tile_size}^2 Pix/Tile) @ X{self._desired_magnification}'
 
     def _load_metadata(self):
-        self._logger.info(msg=utils.generate_title_text(text=f'Metadata Generator'))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='datasets_base_dir_path', value=self._datasets_base_dir_path, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='metadata_enhancement_dir_path', value=self._metadata_enhancement_dir_path, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='log_file_path', value=self._log_file_path, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='tile_size', value=self._tile_size, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='desired_magnification', value=self._desired_magnification, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_ids', value=self._dataset_ids, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_paths_dict', value=self._dataset_paths, indentation=1, padding=30))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='minimal_tiles_count', value=self._minimal_tiles_count, indentation=1, padding=30))
+        padding = 40
+        self._logger.info(msg=utils.generate_title_text(text=f'Metadata Generator Configuration'))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='datasets_base_dir_path', value=self._datasets_base_dir_path, indentation=1, padding=padding))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='metadata_enhancement_dir_path', value=self._metadata_enhancement_dir_path, indentation=1, padding=padding))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='log_file_path', value=self._log_file_path, indentation=1, padding=padding))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='tile_size', value=self._tile_size, indentation=1, padding=padding))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='desired_magnification', value=self._desired_magnification, indentation=1, padding=padding))
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_ids', value=self._dataset_ids, indentation=1, padding=padding))
 
+        dataset_paths_str = (f := lambda d: {k: f(v) for k, v in d.items()} if type(d) == dict else str(d))(self._dataset_paths)
+        dataset_paths_str_dump = json.dumps(dataset_paths_str, indent=8)
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='dataset_paths', value=dataset_paths_str_dump, indentation=1, padding=padding, newline=True))
+
+        self._logger.info(msg=utils.generate_captioned_bullet_text(text='minimal_tiles_count', value=self._minimal_tiles_count, indentation=1, padding=padding))
+
+        self._logger.info(msg='')
+        self._logger.info(msg=utils.generate_title_text(text=f'Metadata Processing'))
         df = None
         for _, dataset_id in enumerate(self._dataset_ids):
-            self._logger.info(msg=utils.generate_captioned_bullet_text(text='Processing Metadata', value=dataset_id, indentation=1, padding=30))
+            self._logger.info(msg=utils.generate_captioned_bullet_text(text='Processing Metadata For', value=dataset_id, indentation=1, padding=padding))
             slide_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataGenerator._get_slides_data_file_name(dataset_id=dataset_id))
             grid_metadata_file = os.path.join(self._dataset_paths[dataset_id], MetadataGenerator._get_grids_folder_name(desired_magnification=self._desired_magnification), constants.grid_data_file_name)
             slide_df = pandas.read_excel(io=slide_metadata_file)
@@ -565,10 +579,7 @@ class MetadataManager(MetadataBase, SeedableObject):
             desired_magnification: int,
             metadata_file_path: Path):
         self._metadata_file_path = metadata_file_path
-        self._tile_size = tile_size
-        self._desired_magnification = desired_magnification
-        super(SeedableObject, self).__init__()
-        super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
+        super().__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
         self._current_df = self._df
 
     @property
@@ -595,43 +606,14 @@ class MetadataManager(MetadataBase, SeedableObject):
 
 
 # =================================================
-# MetadataArgumentsParser Class
+# MetadataGeneratorArgumentsParser Class
 # =================================================
-class MetadataArgumentsParser(Tap):
+class MetadataGeneratorArgumentsParser(Tap):
     datasets_base_dir_path: Path
     tile_size: int
     desired_magnification: int
-
-
-# =================================================
-# MetadataGeneratorArgumentsParser Class
-# =================================================
-class MetadataGeneratorArgumentsParser(ArgumentsParser[MetadataGenerator], MetadataArgumentsParser):
+    metadata_file_path: Path
     metadata_enhancement_dir_path: Path
     log_file_path: Path
     dataset_ids: List[str]
     minimal_tiles_count: int
-
-    def create(self) -> MetadataGenerator:
-        return MetadataGenerator(
-            datasets_base_dir_path=self.datasets_base_dir_path,
-            tile_size=self.tile_size,
-            desired_magnification=self.desired_magnification,
-            metadata_enhancement_dir_path=self.metadata_enhancement_dir_path,
-            log_file_path=self.log_file_path,
-            dataset_ids=self.dataset_ids,
-            minimal_tiles_count=self.minimal_tiles_count)
-
-
-# =================================================
-# MetadataGeneratorArgumentsParser Class
-# =================================================
-class MetadataManagerArgumentsParser(ArgumentsParser[MetadataManager], MetadataArgumentsParser):
-    metadata_file_path: Path
-
-    def create(self) -> MetadataManager:
-        return MetadataManager(
-            datasets_base_dir_path=self.datasets_base_dir_path,
-            tile_size=self.tile_size,
-            desired_magnification=self.desired_magnification,
-            metadata_file_path=self.metadata_file_path)

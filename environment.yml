@@ -50,3 +50,4 @@ dependencies:
       - wandb
       - gitpython
       - typed-argument-parser
+      - jsonpath-ng

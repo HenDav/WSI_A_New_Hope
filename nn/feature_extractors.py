@@ -16,6 +16,9 @@ from lightly.models.modules import BYOLProjectionHead, BYOLPredictionHead
 from lightly.models.utils import deactivate_requires_grad
 from lightly.models.utils import update_momentum
 
+# gipmed
+from core.base import JSONDecoderObject
+
 # tap
 from tap import Tap
 
@@ -89,18 +92,18 @@ class BYOL50(FeatureExtractor):
         return torch.stack((p0, z0, p1, z1))
 
 
-# =================================================
-# FeatureExtractorArgumentsParser Class
-# =================================================
-class FeatureExtractorArgumentsParser(ABC, Tap):
-    @abstractmethod
-    def create_feature_extractor(self) -> torch.nn.Module:
-        pass
-
-
-# =================================================
-# BYOL50ArgumentsParser Class
-# =================================================
-class BYOL50ArgumentsParser(FeatureExtractorArgumentsParser):
-    def create_feature_extractor(self) -> torch.nn.Module:
-        return BYOL50()
+# # =================================================
+# # FeatureExtractorArgumentsParser Class
+# # =================================================
+# class FeatureExtractorArgumentsParser(ABC, Tap):
+#     @abstractmethod
+#     def create_feature_extractor(self) -> torch.nn.Module:
+#         pass
+#
+#
+# # =================================================
+# # BYOL50ArgumentsParser Class
+# # =================================================
+# class BYOL50ArgumentsParser(FeatureExtractorArgumentsParser):
+#     def create_feature_extractor(self) -> torch.nn.Module:
+#         return BYOL50()

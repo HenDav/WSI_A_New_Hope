@@ -1,6 +1,6 @@
 # python core
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List
 
 # pandas
 import pandas
@@ -12,13 +12,9 @@ import numpy
 from torch.utils.data import Dataset
 
 # gipmed
-from core.metadata import MetadataManager, MetadataManagerArgumentsParser
-from core import constants
-from core.base import SeedableObject, ArgumentsParser
+from core.metadata import MetadataManager
+from core.base import SeedableObject
 from core.wsi import SlideContext, Slide, Patch, PatchExtractor
-
-# tap
-from tap import Tap
 
 
 # =================================================
@@ -85,22 +81,22 @@ class SSLDataset(WSIDataset):
         return True
 
 
-# =================================================
-# DatasetArgumentsParser Class
-# =================================================
-class DatasetArgumentsParser(ABC, Tap):
-    dataset_size: int
 
-
-# =================================================
-# SSLDatasetArgumentsParser Class
-# =================================================
-class SSLDatasetArgumentsParser(DatasetArgumentsParser, ArgumentsParser[SSLDataset]):
-    inner_radius_mm: float
-    negative_examples_count: int
-
-    def create(self) -> SSLDataset:
-        metadata_manager_arguments_parser = MetadataManagerArgumentsParser()
-        metadata_manager = metadata_manager_arguments_parser.create()
-        return SSLDataset(metadata_manager=metadata_manager, dataset_size=self.dataset_size, inner_radius_mm=self.inner_radius_mm, negative_examples_count=self.negative_examples_count)
-
+# # =================================================
+# # DatasetArgumentsParser Class
+# # =================================================
+# class DatasetArgumentsParser(ABC, Tap):
+#     dataset_size: int
+#
+#
+# # =================================================
+# # SSLDatasetArgumentsParser Class
+# # =================================================
+# class SSLDatasetArgumentsParser(DatasetArgumentsParser, ArgumentsParser[SSLDataset]):
+#     inner_radius_mm: float
+#     negative_examples_count: int
+#
+#     def create(self) -> SSLDataset:
+#         metadata_manager_arguments_parser = MetadataManagerArgumentsParser()
+#         metadata_manager = metadata_manager_arguments_parser.create()
+#         return SSLDataset(metadata_manager=metadata_manager, dataset_size=self.dataset_size, inner_radius_mm=self.inner_radius_mm, negative_examples_count=self.negative_examples_count)

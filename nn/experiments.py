@@ -1,28 +1,20 @@
 # python core
-from abc import ABC, abstractmethod
+from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
 import shutil
-import logging
 import sys
-from typing import List, TypeVar, Generic, cast
+from typing import List
+import json
 
 # git
 import git
 
-# pytorch
-import torch
-from torch.utils.data import Dataset
-
 # gipmed
 from core import utils
-from core.base import LoggerObject, ArgumentsParser
-from core.base import FactoryObject
-from core.metadata import MetadataManager
-from nn.datasets import WSIDataset, SSLDataset
-from nn.trainers import ModelTrainer, SSLModelTrainer
-from nn.feature_extractors import *
+from core.base import LoggerObject
+from nn.trainers import ModelTrainer
 
 # tap
 from tap import Tap
@@ -59,87 +51,87 @@ class Experiment(LoggerObject):
         for model_trainer in self._model_trainers:
             model_trainer.train()
 
-
-# =================================================
-# ExperimentArgumentsParser Class
-# =================================================
-class ExperimentArgumentsParser(ABC, ArgumentsParser[Experiment]):
-    name: str
-    results_base_dir_path: str
-
-    @abstractmethod
-    def create_experiment(self) -> Experiment:
-        pass
+    def from_json(self, json_file_path: Path) -> Experiment:
+        json_file = open(file=json_file_path)
+        json_str = json_file.read()
+        json_data = json.loads(json_str)[0]
 
 
 # =================================================
 # ExperimentArgumentsParser Class
 # =================================================
-class SSLExperimentArgumentsParser(ExperimentArgumentsParser):
-    T = TypeVar('T')
+class ExperimentArgumentsParser(Tap):
+    json_file_path: Path
 
-    feature_extractor_epochs: int
-    feature_extractor_batch_size: int
-    feature_extractor_num_workers: int
-    feature_extractor_checkpoint_rate: int
-    feature_extractor_folds: List[int]
 
-    classifier_epochs: int
-    classifier_batch_size: int
-    classifier_num_workers: int
-    classifier_checkpoint_rate: int
-    classifier_folds: List[int]
-
-    feature_extractor_train_dataset_json: str
-    feature_extractor_validation_dataset_json: str
-
-    classifier_train_dataset_json: str
-    classifier_validation_dataset_json: str
-
-    feature_extractor_loss_json: str
-    feature_extractor_optimizer_json: str
-    feature_extractor_model_json: str
-
-    classifier_loss_json: str
-    classifier_optimizer_json: str
-    classifier_model_json: str
-
-    feature_extractor_train_dataset_arguments_parser_json: str
-    feature_extractor_validation_dataset_arguments_parser_name: str
-
-    classifier_train_dataset_arguments_parser_name: str
-    classifier_validation_dataset_arguments_parser_name: str
-
-    feature_extractor_loss_arguments_parser_name: str
-    feature_extractor_optimizer_arguments_parser_name: str
-    feature_extractor_model_arguments_parser_name: str
-
-    classifier_loss_arguments_parser_name: str
-    classifier_optimizer_arguments_parser_name: str
-    classifier_model_arguments_parser_name: str
-
-    def create(self) -> Experiment:
-        train_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
-        validation_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
-        feature_extractor_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_loss_arguments_parser_name)
-        # classifier_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_loss_arguments_parser_name)
-        optimizer = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.optimizer_arguments_parser_name)
-        feature_extractor = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_arguments_parser_name)
-        # classifier = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_arguments_parser_name)
-
-        feature_extractor_trainer = SSLModelTrainer(
-            name='Feature Extractor Trainer',
-            model=feature_extractor,
-            loss=feature_extractor_loss,
-            optimizer=optimizer,
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            epochs=self.classifier_epochs,
-            batch_size=self.feature_extractor_batch_size,
-            folds=self.feature_extractor_folds,
-            num_workers=self.feature_extractor_num_workers,
-            checkpoint_rate=self.feature_extractor_checkpoint_rate,
-            results_base_dir_path=self.results_base_dir_path,
-            device=torch.device('cuda'))
-
-        return Experiment(name=self.name, results_base_dir_path=self.results_base_dir_path, model_trainers=[feature_extractor_trainer])
+# =================================================
+# ExperimentArgumentsParser Class
+# =================================================
+# class SSLExperimentArgumentsParser(ExperimentArgumentsParser):
+#     T = TypeVar('T')
+#
+#     feature_extractor_epochs: int
+#     feature_extractor_batch_size: int
+#     feature_extractor_num_workers: int
+#     feature_extractor_checkpoint_rate: int
+#     feature_extractor_folds: List[int]
+#
+#     classifier_epochs: int
+#     classifier_batch_size: int
+#     classifier_num_workers: int
+#     classifier_checkpoint_rate: int
+#     classifier_folds: List[int]
+#
+#     feature_extractor_train_dataset_json: str
+#     feature_extractor_validation_dataset_json: str
+#
+#     classifier_train_dataset_json: str
+#     classifier_validation_dataset_json: str
+#
+#     feature_extractor_loss_json: str
+#     feature_extractor_optimizer_json: str
+#     feature_extractor_model_json: str
+#
+#     classifier_loss_json: str
+#     classifier_optimizer_json: str
+#     classifier_model_json: str
+#
+#     feature_extractor_train_dataset_arguments_parser_json: str
+#     feature_extractor_validation_dataset_arguments_parser_name: str
+#
+#     classifier_train_dataset_arguments_parser_name: str
+#     classifier_validation_dataset_arguments_parser_name: str
+#
+#     feature_extractor_loss_arguments_parser_name: str
+#     feature_extractor_optimizer_arguments_parser_name: str
+#     feature_extractor_model_arguments_parser_name: str
+#
+#     classifier_loss_arguments_parser_name: str
+#     classifier_optimizer_arguments_parser_name: str
+#     classifier_model_arguments_parser_name: str
+#
+#     def create(self) -> Experiment:
+#         train_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
+#         validation_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
+#         feature_extractor_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_loss_arguments_parser_name)
+#         # classifier_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_loss_arguments_parser_name)
+#         optimizer = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.optimizer_arguments_parser_name)
+#         feature_extractor = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_arguments_parser_name)
+#         # classifier = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_arguments_parser_name)
+#
+#         feature_extractor_trainer = SSLModelTrainer(
+#             name='Feature Extractor Trainer',
+#             model=feature_extractor,
+#             loss=feature_extractor_loss,
+#             optimizer=optimizer,
+#             train_dataset=train_dataset,
+#             validation_dataset=validation_dataset,
+#             epochs=self.classifier_epochs,
+#             batch_size=self.feature_extractor_batch_size,
+#             folds=self.feature_extractor_folds,
+#             num_workers=self.feature_extractor_num_workers,
+#             checkpoint_rate=self.feature_extractor_checkpoint_rate,
+#             results_base_dir_path=self.results_base_dir_path,
+#             device=torch.device('cuda'))
+#
+#         return Experiment(name=self.name, results_base_dir_path=self.results_base_dir_path, model_trainers=[feature_extractor_trainer])

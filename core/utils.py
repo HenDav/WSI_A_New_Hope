@@ -25,12 +25,27 @@ def create_log_file_path(file_name: str, results_dir_path: str) -> str:
     return os.path.normpath(os.path.join(results_dir_path, f'{file_name}.log'))
 
 
+class NewLineFormatter(logging.Formatter):
+    def __init__(self, fmt: str, datefmt: str):
+        logging.Formatter.__init__(self, fmt=fmt, datefmt=datefmt)
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = logging.Formatter.format(self, record)
+
+        if record.message != "":
+            parts = msg.split(record.message)
+            msg = msg.replace('\n', '\n' + parts[0])
+
+        return msg
+
+
 # https://stackoverflow.com/questions/22934616/multi-line-logging-in-python
 def create_logger(log_file_path: Path, name: str, level: int) -> logging.Logger:
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
+
     fmt = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     datefmt = '%m-%d %H:%M'
-    formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
+    formatter = NewLineFormatter(fmt=fmt, datefmt=datefmt)
     handler = logging.FileHandler(filename=str(log_file_path))
     handler.setFormatter(fmt=formatter)
 
@@ -76,8 +91,8 @@ def generate_title_text(text: str) -> str:
         space_len = space_len + 1
 
     half_space_len = space_len // 2
-    title = '#' * decoration_len
-    title = title + f"{'#'}{' ' * half_space_len}{text.capitalize()}{' ' * half_space_len}{'#'}"
+    title = '#' * decoration_len + '\n'
+    title = title + f"{'#'}{' ' * half_space_len}{text.upper()}{' ' * half_space_len}{'#'}" + '\n'
     title = title + '#' * decoration_len
     return title
 
@@ -87,10 +102,19 @@ def generate_bullet_text(text: str, indentation: int) -> str:
     return f"{tab * indentation} - {text}"
 
 
-def generate_captioned_bullet_text(text: str, value: object, indentation: int, padding: int) -> str:
+def generate_captioned_bullet_text(text: str, value: object, indentation: int, padding: int, newline: bool = False) -> str:
     tab = '\t'
+    nl = '\n'
     text = text + ':'
-    return f'{tab * indentation} - {text.capitalize():{" "}{"<"}{padding}}{value}'
+    value_str = str(value)
+
+    if newline:
+        inner_indentation = indentation + 1
+        white_space = tab * inner_indentation
+        value_str = value_str.replace('\n', f'\n{white_space}')
+        value_str = f'{white_space}' + value_str
+
+    return f'{tab * indentation} - {text:{" "}{"<"}{padding}}{nl if newline else ""}{value_str}'
 
 
 def generate_serialized_object_text(text: str, obj: object) -> str:

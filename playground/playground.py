@@ -1,5 +1,6 @@
 # python peripherals
 from __future__ import annotations
+from datetime import datetime
 import os.path
 from typing import Union
 import logging
@@ -8,6 +9,7 @@ import inspect
 import types
 from typing import Dict, Generic, TypeVar
 from abc import ABC, abstractmethod
+
 
 # numpy
 import numpy
@@ -18,27 +20,50 @@ from core import utils
 # tap
 from tap import Tap
 
-T = TypeVar('T')
+# T = TypeVar('T')
+#
+#
+# class FactoryObject(ABC, Generic[T]):
+#     # T = TypeVar('T', bound=Tap)
+#
+#     @staticmethod
+#     @abstractmethod
+#     def from_tap() -> int:
+#         pass
+#
+#
+# class TestClass(FactoryObject):
+#     @staticmethod
+#     def from_tap():
+#         return TestClass()
+
+import json
+from jsonpath_ng import jsonpath, parse
 
 
-class FactoryObject(ABC, Generic[T]):
-    # T = TypeVar('T', bound=Tap)
-
-    @staticmethod
-    @abstractmethod
-    def from_tap() -> int:
-        pass
-
-
-class TestClass(FactoryObject):
-    @staticmethod
-    def from_tap():
-        return TestClass()
 
 
 if __name__ == '__main__':
-    bla = TestClass()
-    bla2 = TestClass.from_tap()
+    # print(datetime.now().strftime('hello!! %Y-%m-%d-%H-%M-%S'))
+
+    with open("C:/GitHub/WSI/configs/test.json", 'r') as json_file:
+        json_data = json.load(json_file)
+
+    print(json_data)
+
+    jsonpath_expression = parse('Globals.tile_size')
+    # jsonpath_expression2 = parse('6')
+
+    for match in jsonpath_expression.find(json_data):
+        print(f'Employee id: {match.value}')
+
+
+
+
+
+
+    # bla = TestClass()
+    # bla2 = TestClass.from_tap()
 
     # print('asdfy' * 10)
     # title = 'Hello'

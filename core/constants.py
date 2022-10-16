@@ -103,8 +103,7 @@ def get_dataset_paths(datasets_base_dir_path: Path) -> Dict[str, Path]:
     path_suffixes = get_path_suffixes()
 
     for k in path_suffixes.keys():
-        if k in dataset_ids:
-            path_suffix = path_suffixes[k]
-            dataset_paths[k] = Path(os.path.normpath(os.path.join(datasets_base_dir_path, path_suffix)))
+        path_suffix = path_suffixes[k]
+        dataset_paths[k] = Path(os.path.normpath(os.path.join(datasets_base_dir_path, path_suffix)))
 
     return dataset_paths

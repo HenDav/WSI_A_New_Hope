@@ -1,0 +1,20 @@
+{
+    "Globals": {
+        "inner_radius_mm": 2,
+        "tile_size": 256,
+        "desired_magnification": 10,
+        "metadata_file_path": "",
+        "datasets_base_dir_path": "D:/Pathology"
+    },
+    "employees": [{
+            "id": 1,
+            "name": "Pankaj",
+            "salary": "10000"
+        },
+        {
+            "name": "David",
+            "salary": "5000",
+            "id": 2
+        }
+    ]
+}
