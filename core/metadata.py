@@ -595,7 +595,7 @@ class MetadataManager(MetadataBase, SeedableObject):
 
     def _get_slide_context(self, index: int) -> SlideContext:
         row = self._df.iloc[[index]]
-        dataset_path = self._dataset_paths[row[constants.dataset_id_column_name]]
+        dataset_path = self._dataset_paths[row[constants.dataset_id_column_name].item()]
         slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
         return slide_context
 

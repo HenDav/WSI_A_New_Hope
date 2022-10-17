@@ -9,13 +9,13 @@
     },
     "Experiments": [
         {
-            "name": "SSL ER Prediction",
+            "name": "er_prediction_ssl",
             "results_dir_path": ["C:/ssl_test", "%Y-%m-%d-%H-%M-%S"],
             "model_trainers": [
                 {
                     "class_name": "SSLModelTrainer",
                     "class_args": {
-                        "name": "feature_extractor",
+                        "name": "feature_extractor_trainer",
                         "model": {
                             "class_name": "BYOL50",
                             "class_args": {}

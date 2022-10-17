@@ -38,6 +38,10 @@ class Experiment(LoggerObject):
         self._model_trainers = model_trainers
         super().__init__(name=name, results_dir_path=results_dir_path)
 
+    @property
+    def model_trainers(self) -> List[ModelTrainer]:
+        return self._model_trainers
+
     def _backup_codebase(self):
         repo = git.Repo('.', search_parent_directories=True)
         codebase_source_dir_path = repo.working_tree_dir

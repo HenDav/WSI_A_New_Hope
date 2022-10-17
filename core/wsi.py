@@ -4,7 +4,7 @@ import pickle
 from pathlib import Path
 import math
 import itertools
-from typing import List, Dict, Union, Callable
+from typing import List, Dict, Union, Callable, Optional
 
 # pandas
 import pandas
@@ -39,20 +39,20 @@ from core import constants, utils
 # SlideContext Class
 # =================================================
 class SlideContext:
-    def __init__(self, row: pandas.Series, dataset_path: Path, desired_magnification: int, tile_size: int):
+    def __init__(self, row: pandas.DataFrame, dataset_path: Path, desired_magnification: int, tile_size: int):
         self._row = row
         self._dataset_path = dataset_path
         self._desired_magnification = desired_magnification
         self._tile_size = tile_size
-        self._image_file_name = self._row[constants.file_column_name]
-        self._image_file_path = Path(os.path.join(dataset_path, self._image_file_name))
-        self._dataset_id = self._row[constants.dataset_id_column_name]
+        self._image_file_name = self._row[constants.file_column_name].item()
+        self._image_file_path = dataset_path / self._image_file_name
+        self._dataset_id = self._row[constants.dataset_id_column_name].item()
         self._image_file_name_stem = self._image_file_path.stem
         self._image_file_name_suffix = self._image_file_path.suffix
-        self._magnification = row[constants.magnification_column_name]
+        self._magnification = row[constants.magnification_column_name].item()
         self._mpp = utils.magnification_to_mpp(magnification=self._magnification)
-        self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name]
-        self._fold = row[constants.fold_column_name]
+        self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name].item()
+        self._fold = row[constants.fold_column_name].item()
         self._desired_downsample = self._magnification / self._desired_magnification
         self._slide = openslide.open_slide(self._image_file_path)
         self._level, self._level_downsample = self._get_best_level_for_downsample()
@@ -162,7 +162,7 @@ class Tile(SlideElement):
     def __init__(self, slide_context: SlideContext, tile_location: numpy.ndarray):
         super().__init__(slide_context=slide_context)
         self._slide_context = slide_context
-        self._tile_location = tile_location
+        self._tile_location = tile_location.astype(numpy.int64)
 
     @property
     def tile_location(self) -> numpy.ndarray:
@@ -238,13 +238,13 @@ class ConnectedComponent(SlideElement):
                 if not self.is_valid_tile_location(tile_location=current_tile_location):
                     return False
 
-                bit = self._bitmap[current_tile_location]
+                bit = self._bitmap[tuple(current_tile_location)]
                 if bit == 0:
                     return False
         return True
 
     def get_tile_at_pixel(self, pixel: numpy.ndarray) -> Union[Tile, None]:
-        tile_location = (pixel / self._slide_context.zero_level_tile_size).astype(int)
+        tile_location = (pixel / self._slide_context.zero_level_tile_size).astype(numpy.int64)
         if self.is_valid_tile_location(tile_location=tile_location):
             return self._tiles_dict[tile_location.tobytes()]
         return None
@@ -346,9 +346,9 @@ class Slide(SlideElement):
 
         for component_id in range(1, components_count):
             component_bitmap = (components_labels == component_id).astype(int)
-            components.append(ConnectedComponent(bitmap=component_bitmap))
+            components.append(ConnectedComponent(slide_context=self._slide_context, bitmap=component_bitmap))
 
-        components_sorted = sorted(components, key=lambda item: item.component_size, reverse=True)
+        components_sorted = sorted(components, key=lambda item: item.valid_tiles_count, reverse=True)
         largest_component = components_sorted[0]
         largest_component_aspect_ratio = largest_component.calculate_bounding_box_aspect_ratio()
         largest_component_size = largest_component.valid_tiles_count
@@ -373,7 +373,7 @@ class PatchExtractor:
         self._inner_radius_mm = inner_radius_mm
         self._inner_radius_pixels = self._slide.slide_context.mm_to_pixels(mm=inner_radius_mm)
 
-    def extract_patch(self, patch_validators: List[Callable[[Patch], bool]], reference_patch: Patch = None) -> Patch:
+    def extract_patch(self, patch_validators: List[Callable[[Patch], bool]], reference_patch: Patch = None) -> Optional[Patch]:
         attempts = 0
         while True:
             if attempts == PatchExtractor._max_attempts:
@@ -407,6 +407,7 @@ class PatchExtractor:
                 continue
 
             return patch
+        return None
 
 
 # =================================================

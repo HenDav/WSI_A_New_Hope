@@ -51,25 +51,29 @@ class SSLDataset(WSIDataset):
         self._negative_examples_count = negative_examples_count
 
     def __getitem__(self, index):
-        patches = []
+        while True:
+            patches = []
 
-        # index = self._rng.integers(low=0, high=len(self._slide_contexts))
-        # slide_context = self._slide_contexts[index]
-        # slide = Slide(slide_context=slide_context)
-        slide = self._metadata_manager.get_random_slide()
-        patch_extractor = PatchExtractor(slide=slide, inner_radius_mm=self._inner_radius_mm)
+            slide = self._metadata_manager.get_random_slide()
+            patch_extractor = PatchExtractor(slide=slide, inner_radius_mm=self._inner_radius_mm)
 
-        anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLDataset._validate_histogram])
-        patches.append(numpy.array(anchor_patch.image))
+            anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLDataset._validate_histogram])
+            if anchor_patch is None:
+                continue
 
-        positive_patch = patch_extractor.extract_patch(patch_validators=[], reference_patch=anchor_patch)
-        patches.append(numpy.array(positive_patch.image))
+            patches.append(numpy.array(anchor_patch.image))
 
-        # for i in range(negative_examples_count):
-        #     pass
+            positive_patch = patch_extractor.extract_patch(patch_validators=[], reference_patch=anchor_patch)
+            if positive_patch is None:
+                continue
 
-        patches_tuplet = numpy.transpose(numpy.stack(patches), (0, 3, 1, 2))
-        return patches_tuplet
+            patches.append(numpy.array(positive_patch.image))
+
+            # for i in range(negative_examples_count):
+            #     pass
+
+            patches_tuplet = numpy.transpose(numpy.stack(patches), (0, 3, 1, 2))
+            return patches_tuplet
 
     @staticmethod
     def _validate_histogram(patch: Patch) -> bool:

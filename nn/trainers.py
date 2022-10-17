@@ -7,7 +7,8 @@ from pathlib import Path
 from timeit import default_timer as timer
 import logging
 import typing
-from typing import Union, List
+from typing import Union, List, Tuple
+from abc import ABC, abstractmethod
 
 # torch
 import torch
@@ -57,6 +58,8 @@ class ModelTrainer(LoggerObject):
         self._model_file_path = self._create_model_file_path(epoch_index=None)
         self._train_dataset_size = len(self._train_dataset)
         self._validation_dataset_size = len(self._validation_dataset)
+        self._train_indices = list(range(self._train_dataset_size))
+        self._validation_indices = list(range(self._validation_dataset_size))
         self._train_batches_per_epoch = utils.calculate_batches_per_epoch(dataset_size=self._train_dataset_size, batch_size=self._batch_size)
         self._validation_batches_per_epoch = utils.calculate_batches_per_epoch(dataset_size=self._validation_dataset_size, batch_size=self._batch_size)
         self._device = device
@@ -80,6 +83,32 @@ class ModelTrainer(LoggerObject):
 
         self._train()
 
+    def plot_train_samples(self, batch_size: int, figsize: Tuple[int, int], fontsize: int):
+        self._plot_samples(dataset=self._train_dataset, indices=self._train_indices, batch_size=batch_size, figsize=figsize, fontsize=fontsize)
+
+    def plot_validation_samples(self, batch_size: int, figsize: Tuple[int, int], fontsize: int):
+        self._plot_samples(dataset=self._validation_dataset, indices=self._validation_indices, batch_size=batch_size, figsize=figsize, fontsize=fontsize)
+
+    def _plot_samples(self, dataset: Dataset, indices: List[int], batch_size: int, figsize: Tuple[int, int], fontsize: int):
+        sampler = SequentialSampler(indices)
+        data_loader = DataLoader(dataset=dataset, batch_size=batch_size, sampler=sampler)
+
+        for batch_index, batch_data in enumerate(data_loader, 0):
+            batch_data_aug = self._preprocess_batch(batch_data)
+            for sample_index in range(batch_size):
+                image_count = batch_data_aug.shape[1]
+                fig, axes = plt.subplots(nrows=1, ncols=image_count, figsize=figsize)
+                for image_index in range(image_count):
+                    x = batch_data_aug[sample_index, image_index, :, :, :]
+                    image = transforms.ToPILImage()(x)
+                    axes[image_index].imshow(X=image)
+                    axes[image_index].axis('off')
+                    axes[image_index].set_title(f'Image #{image_index}', fontsize=fontsize)
+                plt.show()
+
+            if batch_index == 0:
+                break
+
     def _train(self):
         trainer_results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, self._name))
         Path(trainer_results_dir_path).mkdir(parents=True, exist_ok=True)
@@ -89,10 +118,8 @@ class ModelTrainer(LoggerObject):
         best_validation_average_loss = None
         train_loss_array = numpy.array([])
         validation_loss_array = numpy.array([])
-        train_indices = list(range(self._train_dataset_size))
-        validation_indices = list(range(self._validation_dataset_size))
-        train_sampler = SubsetRandomSampler(train_indices)
-        validation_sampler = SubsetRandomSampler(validation_indices)
+        train_sampler = SubsetRandomSampler(self._train_indices)
+        validation_sampler = SubsetRandomSampler(self._validation_indices)
         train_data_loader = DataLoader(self._train_dataset, batch_size=self._batch_size, sampler=train_sampler, pin_memory=True, drop_last=False, num_workers=self._num_workers)
         validation_data_loader = DataLoader(self._validation_dataset, batch_size=self._batch_size, sampler=validation_sampler, pin_memory=True, drop_last=False, num_workers=self._num_workers)
         loss_file_path = os.path.normpath(os.path.join(results_dir_path, 'loss.npy'))
@@ -300,38 +327,5 @@ class SSLModelTrainer(CrossValidationModelTrainer):
         x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
         return torch.stack((x0_aug, x1_aug), dim=1)
 
-    def plot_samples(self, train_dataset, validation_dataset, batch_size):
-        train_dataset_size = len(train_dataset)
-        validation_dataset_size = len(validation_dataset)
-        train_indices = list(range(train_dataset_size))
-        validation_indices = list(range(validation_dataset_size))
-
-        train_sampler = SequentialSampler(train_indices)
-        validation_sampler = SequentialSampler(validation_indices)
-
-        train_data_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True, drop_last=False, num_workers=0)
-        validation_data_loader = DataLoader(validation_dataset, batch_size=batch_size, sampler=validation_sampler, pin_memory=True, drop_last=False, num_workers=0)
-
-        for batch_index, batch_data in enumerate(train_data_loader, 0):
-            batch_data_aug = self._preprocess_batch(batch_data)
-            for i in range(batch_size):
-                x0 = batch_data_aug[i, 0, :, :, :]
-                x1 = batch_data_aug[i, 1, :, :, :]
-                fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 20))
-
-                anchor_pic = transforms.ToPILImage()(x0)
-                positive_pic = transforms.ToPILImage()(x1)
-
-                axes[0].imshow(anchor_pic)
-                axes[0].axis('off')
-                axes[0].set_title('Anchor Tile')
-                axes[1].imshow(positive_pic)
-                axes[1].axis('off')
-                axes[1].set_title('Positive Tile')
-
-                plt.show()
-
-            if batch_index == 0:
-                break
 
 
