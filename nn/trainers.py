@@ -32,6 +32,7 @@ class ModelTrainer(LoggerObject):
     def __init__(
             self,
             name: str,
+            results_dir_path: Path,
             model: torch.nn.Module,
             loss: torch.nn.Module,
             optimizer: torch.nn.Module,
@@ -41,9 +42,8 @@ class ModelTrainer(LoggerObject):
             batch_size: int,
             num_workers: int,
             checkpoint_rate: int,
-            results_base_dir_path: str,
             device: torch.device):
-        self._name = name
+        super().__init__(name=name, results_dir_path=results_dir_path)
         self._model = model
         self._loss = loss
         self._optimizer = optimizer
@@ -53,8 +53,7 @@ class ModelTrainer(LoggerObject):
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._checkpoint_rate = checkpoint_rate
-        self._results_base_dir_path = results_base_dir_path
-        self._results_dir_path = self._create_results_dir_path()
+        # self._results_dir_path = self._create_results_dir_path()
         self._model_file_path = self._create_model_file_path(epoch_index=None)
         self._train_dataset_size = len(self._train_dataset)
         self._validation_dataset_size = len(self._validation_dataset)
@@ -62,7 +61,6 @@ class ModelTrainer(LoggerObject):
         self._validation_batches_per_epoch = utils.calculate_batches_per_epoch(dataset_size=self._validation_dataset_size, batch_size=self._batch_size)
         self._device = device
         self._model.to(device)
-        super(LoggerObject, self).__init__(log_file_base_dir=results_base_dir_path, log_file_name=self._name)
 
     def train(self):
         self._logger.info(msg=utils.generate_title_text(text=f'Model Trainer: {self._name}'))
@@ -83,9 +81,9 @@ class ModelTrainer(LoggerObject):
         self._train()
 
     def _train(self):
-        results_dir_path = os.path.normpath(os.path.join(self._results_base_dir_path, self._name))
-        Path(results_dir_path).mkdir(parents=True, exist_ok=True)
-        self._train_epochs(results_dir_path=results_dir_path)
+        trainer_results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, self._name))
+        Path(trainer_results_dir_path).mkdir(parents=True, exist_ok=True)
+        self._train_epochs(results_dir_path=trainer_results_dir_path)
 
     def _train_epochs(self, results_dir_path: str):
         best_validation_average_loss = None
@@ -196,7 +194,7 @@ class ModelTrainer(LoggerObject):
         return os.path.normpath(os.path.join(self._results_dir_path, model_file_name))
 
     def _create_results_dir_path(self) -> str:
-        results_dir_path = os.path.normpath(os.path.join(self._results_base_dir_path, self._name))
+        results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, self._name))
         Path(results_dir_path).mkdir(parents=True, exist_ok=True)
         return results_dir_path
 
@@ -205,6 +203,7 @@ class CrossValidationModelTrainer(ModelTrainer):
     def __init__(
             self,
             name: str,
+            results_dir_path: Path,
             model: torch.nn.Module,
             loss: torch.nn.Module,
             optimizer: torch.nn.Module,
@@ -215,7 +214,6 @@ class CrossValidationModelTrainer(ModelTrainer):
             folds: List[int],
             num_workers: int,
             checkpoint_rate: int,
-            results_base_dir_path: str,
             device: torch.device):
         super().__init__(
             name=name,
@@ -228,7 +226,7 @@ class CrossValidationModelTrainer(ModelTrainer):
             batch_size=batch_size,
             num_workers=num_workers,
             checkpoint_rate=checkpoint_rate,
-            results_base_dir_path=results_base_dir_path,
+            results_dir_path=results_dir_path,
             device=device)
         self._folds = folds
 
@@ -261,6 +259,7 @@ class SSLModelTrainer(CrossValidationModelTrainer):
     def __init__(
             self,
             name: str,
+            results_dir_path: Path,
             model: torch.nn.Module,
             loss: torch.nn.Module,
             optimizer: torch.nn.Module,
@@ -271,11 +270,10 @@ class SSLModelTrainer(CrossValidationModelTrainer):
             folds: List[int],
             num_workers: int,
             checkpoint_rate: int,
-            results_base_dir_path: str,
             device: torch.device):
-
         super().__init__(
             name=name,
+            results_dir_path=results_dir_path,
             model=model,
             loss=loss,
             optimizer=optimizer,
@@ -286,7 +284,6 @@ class SSLModelTrainer(CrossValidationModelTrainer):
             folds=folds,
             num_workers=num_workers,
             checkpoint_rate=checkpoint_rate,
-            results_base_dir_path=results_base_dir_path,
             device=device)
 
         self._transform = torch.nn.Sequential(

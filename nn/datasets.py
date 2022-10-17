@@ -46,7 +46,7 @@ class SSLDataset(WSIDataset):
     _white_intensity_threshold = 170
 
     def __init__(self, metadata_manager: MetadataManager, dataset_size: int, inner_radius_mm: float, negative_examples_count: int):
-        super(WSIDataset, self).__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
+        super().__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
         self._inner_radius_mm = inner_radius_mm
         self._negative_examples_count = negative_examples_count
 

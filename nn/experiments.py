@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import sys
-from typing import List
+from typing import List, Dict, Optional, Union, cast
 import json
 
 # git
@@ -14,28 +14,29 @@ import git
 # gipmed
 from core import utils
 from core.base import LoggerObject
-from nn.trainers import ModelTrainer
+from nn.feature_extractors import *
+from nn.losses import *
+from nn.datasets import *
+from nn.trainers import *
+
+# torch
+from torch.nn import *
+from torch.optim import *
 
 # tap
 from tap import Tap
+
+# jsonpath
+from jsonpath_ng import jsonpath, parse
 
 
 # =================================================
 # Experiment Class
 # =================================================
 class Experiment(LoggerObject):
-    def __init__(self, name: str, results_base_dir_path: str, model_trainers: List[ModelTrainer]):
-        self._name = name
-        self._results_base_dir_path = results_base_dir_path
-        self._results_dir_path = self._create_results_dir_path()
+    def __init__(self, name: str, results_dir_path: Path, model_trainers: List[ModelTrainer]):
         self._model_trainers = model_trainers
-        self._log_file_path = utils.create_log_file_path(file_name=self.__class__.__name__, results_dir_path=self._results_dir_path)
-        super(LoggerObject, self).__init__(log_file_path=self._log_file_path)
-
-    def _create_results_dir_path(self) -> str:
-        results_dir_path = os.path.normpath(os.path.join(self._results_base_dir_path, self._name, datetime.now().strftime('%Y-%m-%d-%H-%M-%S')))
-        Path(results_dir_path).mkdir(parents=True, exist_ok=True)
-        return results_dir_path
+        super().__init__(name=name, results_dir_path=results_dir_path)
 
     def _backup_codebase(self):
         repo = git.Repo('.', search_parent_directories=True)
@@ -45,16 +46,68 @@ class Experiment(LoggerObject):
 
     def run(self):
         self._logger.info(msg=utils.generate_title_text(text=f'Running Experiment: {self._name}'))
-        self._logger.info(msg=utils.generate_captioned_bullet_text(text='sys.argv', value=sys.argv, indentation=1, padding=30))
         self._backup_codebase()
 
         for model_trainer in self._model_trainers:
             model_trainer.train()
 
-    def from_json(self, json_file_path: Path) -> Experiment:
+    @staticmethod
+    def from_json(json_file_path: Path) -> List[Experiment]:
         json_file = open(file=json_file_path)
         json_str = json_file.read()
-        json_data = json.loads(json_str)[0]
+        json_data = json.loads(json_str)
+        experiments = []
+        for experiment_dict in json_data['Experiments']:
+            model_trainers = []
+            experiment_dict['results_dir_path'] = Experiment._parse_path_list(path_list=experiment_dict['results_dir_path'], root=json_data)
+            for model_trainer_dict in experiment_dict["model_trainers"]:
+                model_trainer = cast(typ=ModelTrainer, val=Experiment._parse_model_trainer(obj_dict=model_trainer_dict, root=json_data))
+                model_trainers.append(model_trainer)
+
+            results_dir_path = Path(experiment_dict["results_dir_path"])
+            shutil.copy(src=json_file_path, dst=results_dir_path / json_file_path.name)
+            experiment = Experiment(name=experiment_dict["name"], results_dir_path=experiment_dict["results_dir_path"], model_trainers=model_trainers)
+            experiments.append(experiment)
+
+        return experiments
+
+    @staticmethod
+    def _parse_model_trainer(obj_dict: Dict, root: Dict, level_up_key: Optional[str] = None, model_trainer_root: Optional[Dict] = None) -> object:
+        for key, value in obj_dict.items():
+            if type(value) is not dict:
+                if type(obj_dict[key]) is str:
+                    obj_dict[key] = datetime.now().strftime(obj_dict[key])
+                if type(obj_dict[key]) is list and key == 'results_dir_path':
+                    obj_dict[key] = Experiment._parse_path_list(path_list=obj_dict[key], root=root)
+                else:
+                    obj_dict[key] = Experiment._try_parse_jsonpath(expression=value, data=root)
+
+        for key, value in obj_dict.items():
+            if type(value) is dict:
+                obj_dict[key] = Experiment._parse_model_trainer(obj_dict=value, root=root, level_up_key=key, model_trainer_root=obj_dict if model_trainer_root is None else model_trainer_root)
+
+        if "class_name" in obj_dict:
+            if level_up_key == "optimizer":
+                model = cast(torch.nn.Module, model_trainer_root["class_args"]["model"])
+                obj_dict["class_args"]["params"] = model.parameters()
+
+            return globals()[obj_dict["class_name"]](**obj_dict["class_args"])
+
+        return obj_dict
+
+    @staticmethod
+    def _try_parse_jsonpath(expression: str, data: Dict) -> str:
+        try:
+            match = parse(expression).find(data)
+            return match[0].value
+        except:
+            return expression
+
+    @staticmethod
+    def _parse_path_list(path_list: Union[str, list], root: Dict) -> Path:
+        parsed_path_list = [Experiment._try_parse_jsonpath(expression=path_item, data=root) for path_item in path_list]
+        parsed_path = Path(datetime.now().strftime(os.path.normpath(os.path.join(*parsed_path_list))))
+        return parsed_path
 
 
 # =================================================
@@ -62,76 +115,3 @@ class Experiment(LoggerObject):
 # =================================================
 class ExperimentArgumentsParser(Tap):
     json_file_path: Path
-
-
-# =================================================
-# ExperimentArgumentsParser Class
-# =================================================
-# class SSLExperimentArgumentsParser(ExperimentArgumentsParser):
-#     T = TypeVar('T')
-#
-#     feature_extractor_epochs: int
-#     feature_extractor_batch_size: int
-#     feature_extractor_num_workers: int
-#     feature_extractor_checkpoint_rate: int
-#     feature_extractor_folds: List[int]
-#
-#     classifier_epochs: int
-#     classifier_batch_size: int
-#     classifier_num_workers: int
-#     classifier_checkpoint_rate: int
-#     classifier_folds: List[int]
-#
-#     feature_extractor_train_dataset_json: str
-#     feature_extractor_validation_dataset_json: str
-#
-#     classifier_train_dataset_json: str
-#     classifier_validation_dataset_json: str
-#
-#     feature_extractor_loss_json: str
-#     feature_extractor_optimizer_json: str
-#     feature_extractor_model_json: str
-#
-#     classifier_loss_json: str
-#     classifier_optimizer_json: str
-#     classifier_model_json: str
-#
-#     feature_extractor_train_dataset_arguments_parser_json: str
-#     feature_extractor_validation_dataset_arguments_parser_name: str
-#
-#     classifier_train_dataset_arguments_parser_name: str
-#     classifier_validation_dataset_arguments_parser_name: str
-#
-#     feature_extractor_loss_arguments_parser_name: str
-#     feature_extractor_optimizer_arguments_parser_name: str
-#     feature_extractor_model_arguments_parser_name: str
-#
-#     classifier_loss_arguments_parser_name: str
-#     classifier_optimizer_arguments_parser_name: str
-#     classifier_model_arguments_parser_name: str
-#
-#     def create(self) -> Experiment:
-#         train_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
-#         validation_dataset = utils.argument_parser_type_cast(instance_type=SSLDataset, arguments_parser_name=self.dataset_arguments_parser_name)
-#         feature_extractor_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_loss_arguments_parser_name)
-#         # classifier_loss = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_loss_arguments_parser_name)
-#         optimizer = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.optimizer_arguments_parser_name)
-#         feature_extractor = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.feature_extractor_arguments_parser_name)
-#         # classifier = utils.argument_parser_type_cast(instance_type=torch.nn.Module, arguments_parser_name=self.classifier_arguments_parser_name)
-#
-#         feature_extractor_trainer = SSLModelTrainer(
-#             name='Feature Extractor Trainer',
-#             model=feature_extractor,
-#             loss=feature_extractor_loss,
-#             optimizer=optimizer,
-#             train_dataset=train_dataset,
-#             validation_dataset=validation_dataset,
-#             epochs=self.classifier_epochs,
-#             batch_size=self.feature_extractor_batch_size,
-#             folds=self.feature_extractor_folds,
-#             num_workers=self.feature_extractor_num_workers,
-#             checkpoint_rate=self.feature_extractor_checkpoint_rate,
-#             results_base_dir_path=self.results_base_dir_path,
-#             device=torch.device('cuda'))
-#
-#         return Experiment(name=self.name, results_base_dir_path=self.results_base_dir_path, model_trainers=[feature_extractor_trainer])

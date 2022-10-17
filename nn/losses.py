@@ -9,9 +9,6 @@ import torch
 # lightly
 from lightly.loss import NegativeCosineSimilarity
 
-# gipmed
-from core.base import JSONDecoderObject
-
 # tap
 from tap import Tap
 

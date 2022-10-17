@@ -16,9 +16,6 @@ from lightly.models.modules import BYOLProjectionHead, BYOLPredictionHead
 from lightly.models.utils import deactivate_requires_grad
 from lightly.models.utils import update_momentum
 
-# gipmed
-from core.base import JSONDecoderObject
-
 # tap
 from tap import Tap
 
@@ -69,13 +66,13 @@ class BYOL50(FeatureExtractor):
         self._resnet = torchvision.models.resnet50()
         self._backbone = torch.nn.Sequential(*list(self._resnet.children())[:-1])
 
-        print('============== RESNET50 ==============')
-        print('======================================')
-        print(self._resnet)
-
-        print('============== BACKBONE ==============')
-        print('======================================')
-        print(self._backbone)
+        # print('============== RESNET50 ==============')
+        # print('======================================')
+        # print(self._resnet)
+        #
+        # print('============== BACKBONE ==============')
+        # print('======================================')
+        # print(self._backbone)
 
         self._model = BYOL(self._backbone)
 

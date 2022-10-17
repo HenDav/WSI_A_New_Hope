@@ -79,11 +79,6 @@ class MetadataGenerator(LoggerObject, MetadataBase):
         self._dataset_ids = dataset_ids
         self._minimal_tiles_count = minimal_tiles_count
         super(MetadataGenerator, self).__init__(log_file_path=log_file_path, datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
-        # super(MetadataGenerator, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
-        # super(LoggerObject, self).__init__(log_file_path=log_file_path)
-        # super(MetadataBase, self).__init__(datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
-
-
 
     @property
     def metadata(self) -> pandas.DataFrame:

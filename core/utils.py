@@ -41,8 +41,6 @@ class NewLineFormatter(logging.Formatter):
 
 # https://stackoverflow.com/questions/22934616/multi-line-logging-in-python
 def create_logger(log_file_path: Path, name: str, level: int) -> logging.Logger:
-    log_file_path.parent.mkdir(parents=True, exist_ok=True)
-
     fmt = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     datefmt = '%m-%d %H:%M'
     formatter = NewLineFormatter(fmt=fmt, datefmt=datefmt)
