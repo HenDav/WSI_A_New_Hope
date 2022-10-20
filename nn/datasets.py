@@ -1,6 +1,7 @@
 # python core
 from abc import ABC, abstractmethod
 from typing import List
+from enum import Enum
 
 # pandas
 import pandas
@@ -14,7 +15,7 @@ from torch.utils.data import Dataset
 # gipmed
 from core.metadata import MetadataManager
 from core.base import SeedableObject
-from core.wsi import SlideContext, Slide, Patch, PatchExtractor
+from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor
 
 
 # =================================================
@@ -41,6 +42,22 @@ class WSIDataset(ABC, Dataset, SeedableObject):
 # =================================================
 # SSLDataset Class
 # =================================================
+class SingleTargetDataset(WSIDataset):
+    def __init__(self, metadata_manager: MetadataManager, dataset_size: int, target: Target):
+        super().__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
+        self._target = target
+
+    def __getitem__(self, index):
+        slide = self._metadata_manager.get_random_slide()
+        patch_extractor = RandomPatchExtractor(slide=slide)
+        patch = patch_extractor.extract_patch(patch_validators=[])
+        label = slide.slide_context.get_target(target=self._target)
+        return patch, label
+
+
+# =================================================
+# SSLDataset Class
+# =================================================
 class SSLDataset(WSIDataset):
     _white_ratio_threshold = 0.5
     _white_intensity_threshold = 170
@@ -55,15 +72,15 @@ class SSLDataset(WSIDataset):
             patches = []
 
             slide = self._metadata_manager.get_random_slide()
-            patch_extractor = PatchExtractor(slide=slide, inner_radius_mm=self._inner_radius_mm)
-
+            patch_extractor = RandomPatchExtractor(slide=slide)
             anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLDataset._validate_histogram])
             if anchor_patch is None:
                 continue
 
             patches.append(numpy.array(anchor_patch.image))
 
-            positive_patch = patch_extractor.extract_patch(patch_validators=[], reference_patch=anchor_patch)
+            patch_extractor = ProximatePatchExtractor(slide=slide, reference_patch=anchor_patch, inner_radius_mm=self._inner_radius_mm)
+            positive_patch = patch_extractor.extract_patch(patch_validators=[])
             if positive_patch is None:
                 continue
 
