@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 # gipmed
 from core.metadata import MetadataManager
 from core.base import SeedableObject
-from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor
+from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, Target
 
 
 # =================================================
@@ -40,11 +40,29 @@ class WSIDataset(ABC, Dataset, SeedableObject):
 
 
 # =================================================
-# SSLDataset Class
+# SingleTargetTrainingDataset Class
 # =================================================
-class SingleTargetDataset(WSIDataset):
+class SingleTargetTrainingDataset(WSIDataset):
     def __init__(self, metadata_manager: MetadataManager, dataset_size: int, target: Target):
         super().__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
+        self._target = target
+
+    def __getitem__(self, index):
+        slide = self._metadata_manager.get_random_slide()
+        patch_extractor = RandomPatchExtractor(slide=slide)
+        patch = patch_extractor.extract_patch(patch_validators=[])
+        label = slide.slide_context.get_target(target=self._target)
+        return patch, label
+
+
+# =================================================
+# SingleTargetValidationDataset Class
+# =================================================
+class SingleTargetValidationDataset(WSIDataset):
+    def __init__(self, metadata_manager: MetadataManager, slides_delta: int, tiles_delta: int, target: Target):
+        super().__init__(metadata_manager=metadata_manager)
+        self._slides_delta = slides_delta
+        self._tiles_delta = tiles_delta
         self._target = target
 
     def __getitem__(self, index):

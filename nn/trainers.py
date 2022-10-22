@@ -7,8 +7,9 @@ from pathlib import Path
 from timeit import default_timer as timer
 import logging
 import typing
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Dict, Optional, Callable
 from abc import ABC, abstractmethod
+from typing import Protocol
 
 # torch
 import torch
@@ -25,15 +26,20 @@ import matplotlib.lines
 
 # gipmed
 from nn.datasets import WSIDataset
-from core.base import LoggerObject
+from core.base import OutputObject
 from core import utils
 
 
-class ModelTrainer(LoggerObject):
+class EpochProcessor(Protocol):
+    def __call__(self, epoch_index: int, data_loader: DataLoader) -> Dict[str, torch.Tensor]:
+        ...
+
+
+class ModelTrainer(OutputObject):
     def __init__(
             self,
             name: str,
-            results_dir_path: Path,
+            output_dir_path: Path,
             model: torch.nn.Module,
             loss: torch.nn.Module,
             optimizer: torch.nn.Module,
@@ -44,7 +50,7 @@ class ModelTrainer(LoggerObject):
             num_workers: int,
             checkpoint_rate: int,
             device: torch.device):
-        super().__init__(name=name, results_dir_path=results_dir_path)
+        super().__init__(name=name, output_dir_path=output_dir_path)
         self._model = model
         self._loss = loss
         self._optimizer = optimizer
@@ -110,9 +116,13 @@ class ModelTrainer(LoggerObject):
                 break
 
     def _train(self):
-        trainer_results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, self._name))
+        trainer_results_dir_path = os.path.normpath(os.path.join(self._output_dir_path, self._name))
         Path(trainer_results_dir_path).mkdir(parents=True, exist_ok=True)
         self._train_epochs(results_dir_path=trainer_results_dir_path)
+
+    def _process_epoch(self, epoch_index: int, data_loader: DataLoader, epoch_name: str, epoch_processor: EpochProcessor):
+        self._logger.info(msg=utils.generate_bullet_text(text=f'{epoch_name} Epoch #{epoch_index}', indentation=1))
+        epoch_processor(epoch_index=epoch_index, data_loader=data_loader)
 
     def _train_epochs(self, results_dir_path: str):
         best_validation_average_loss = None
@@ -125,42 +135,45 @@ class ModelTrainer(LoggerObject):
         loss_file_path = os.path.normpath(os.path.join(results_dir_path, 'loss.npy'))
         for epoch_index in range(1, self._epochs + 1):
 
-            self._logger.info(msg=utils.generate_bullet_text(text=f'Training Epoch #{epoch_index}', indentation=1))
-            train_loss = self._train_epoch(epoch_index=epoch_index, data_loader=train_data_loader)
-            train_loss_array = numpy.append(train_loss_array, [numpy.mean(train_loss)])
+            self._process_epoch(epoch_index=epoch_index, data_loader=train_data_loader, epoch_name='Train', epoch_processor=self._train_epoch)
+            self._process_epoch(epoch_index=epoch_index, data_loader=validation_data_loader, epoch_name='Validation', epoch_processor=self._validation_epoch)
 
-            self._logger.info(msg=utils.generate_bullet_text(text=f'Validation Epoch #{epoch_index}', indentation=1))
-            validation_loss = self._validation_epoch(epoch_index=epoch_index, data_loader=validation_data_loader)
-            validation_loss_array = numpy.append(validation_loss_array, [numpy.mean(validation_loss)])
-
-            if best_validation_average_loss is None:
-                torch.save(self._model.state_dict(), self._model_file_path)
-                best_validation_average_loss = numpy.mean(validation_loss)
-            else:
-                validation_average_loss = numpy.mean(validation_loss)
-                if validation_average_loss < best_validation_average_loss:
-                    torch.save(self._model.state_dict(), self._model_file_path)
-                    best_validation_average_loss = validation_average_loss
-
-            if epoch_index % self._checkpoint_rate == 0:
-                lastest_model_path = self._create_model_file_path(epoch_index=epoch_index)
-                torch.save(self._model.state_dict(), lastest_model_path)
-
-            loss_data = {
-                'train_loss': train_loss_array,
-                'validation_loss': validation_loss_array,
-            }
-
-            numpy.save(file=loss_file_path, arr=loss_data, allow_pickle=True)
-
-            if (self._epochs is not None) and (epoch_index + 1 == self._epochs):
-                break
+            # self._logger.info(msg=utils.generate_bullet_text(text=f'Training Epoch #{epoch_index}', indentation=1))
+            # train_loss = self._train_epoch(epoch_index=epoch_index, data_loader=train_data_loader)
+            # train_loss_array = numpy.append(train_loss_array, [numpy.mean(train_loss)])
+            #
+            # self._logger.info(msg=utils.generate_bullet_text(text=f'Validation Epoch #{epoch_index}', indentation=1))
+            # validation_loss = self._validation_epoch(epoch_index=epoch_index, data_loader=validation_data_loader)
+            # validation_loss_array = numpy.append(validation_loss_array, [numpy.mean(validation_loss)])
+            #
+            # if best_validation_average_loss is None:
+            #     torch.save(self._model.state_dict(), self._model_file_path)
+            #     best_validation_average_loss = numpy.mean(validation_loss)
+            # else:
+            #     validation_average_loss = numpy.mean(validation_loss)
+            #     if validation_average_loss < best_validation_average_loss:
+            #         torch.save(self._model.state_dict(), self._model_file_path)
+            #         best_validation_average_loss = validation_average_loss
+            #
+            # if epoch_index % self._checkpoint_rate == 0:
+            #     lastest_model_path = self._create_model_file_path(epoch_index=epoch_index)
+            #     torch.save(self._model.state_dict(), lastest_model_path)
+            #
+            # loss_data = {
+            #     'train_loss': train_loss_array,
+            #     'validation_loss': validation_loss_array,
+            # }
+            #
+            # numpy.save(file=loss_file_path, arr=loss_data, allow_pickle=True)
+            #
+            # if (self._epochs is not None) and (epoch_index + 1 == self._epochs):
+            #     break
 
     def _train_epoch(self, epoch_index, data_loader):
         self._model.train()
         return self._epoch(epoch_index=epoch_index, data_loader=data_loader, process_batch_fn=self._train_batch)
 
-    def _validation_epoch(self, epoch_index, data_loader):
+    def _validation_epoch(self, epoch_index, data_loader) -> float:
         self._model.eval()
         with torch.no_grad():
             return self._epoch(epoch_index=epoch_index, data_loader=data_loader, process_batch_fn=self._validation_batch)
@@ -218,19 +231,19 @@ class ModelTrainer(LoggerObject):
         else:
             model_file_name = f'model.pt'
 
-        return os.path.normpath(os.path.join(self._results_dir_path, model_file_name))
+        return os.path.normpath(os.path.join(self._output_dir_path, model_file_name))
 
     def _create_results_dir_path(self) -> str:
-        results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, self._name))
+        results_dir_path = os.path.normpath(os.path.join(self._output_dir_path, self._name))
         Path(results_dir_path).mkdir(parents=True, exist_ok=True)
         return results_dir_path
 
 
-class CrossValidationModelTrainer(ModelTrainer):
+class WSIModelTrainer(ModelTrainer):
     def __init__(
             self,
             name: str,
-            results_dir_path: Path,
+            output_dir_path: Path,
             model: torch.nn.Module,
             loss: torch.nn.Module,
             optimizer: torch.nn.Module,
@@ -238,10 +251,11 @@ class CrossValidationModelTrainer(ModelTrainer):
             validation_dataset: WSIDataset,
             epochs: int,
             batch_size: int,
-            folds: List[int],
             num_workers: int,
             checkpoint_rate: int,
-            device: torch.device):
+            device: torch.device,
+            folds: Optional[List[int]],
+            augmentations: Optional[torch.nn.Sequential]):
         super().__init__(
             name=name,
             model=model,
@@ -253,9 +267,16 @@ class CrossValidationModelTrainer(ModelTrainer):
             batch_size=batch_size,
             num_workers=num_workers,
             checkpoint_rate=checkpoint_rate,
-            results_dir_path=results_dir_path,
+            output_dir_path=output_dir_path,
             device=device)
         self._folds = folds
+        # self._augmentations = augmentations
+        self._augmentations = torch.nn.Sequential(
+            transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
+            transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomHorizontalFlip())
+            # transforms.CenterCrop(tile_size)
 
     @property
     def _wsi_train_dataset(self) -> WSIDataset:
@@ -266,66 +287,29 @@ class CrossValidationModelTrainer(ModelTrainer):
         return typing.cast(WSIDataset, self._validation_dataset)
 
     def _train(self):
-        for i, validation_fold in enumerate(self._folds):
-            self._logger.info(msg=utils.generate_title_text(text=f'Cross Validation #{i+1}'))
-            train_folds = [train_fold for train_fold in self._folds if train_fold != validation_fold]
-            validation_folds = [validation_fold]
-            self._wsi_train_dataset.set_folds(folds=train_folds)
-            self._wsi_validation_dataset.set_folds(folds=validation_folds)
-            cross_val_results_dir_path = self._create_cross_val_results_dir_path(train_folds=train_folds)
-            self._train_epochs(results_dir_path=cross_val_results_dir_path)
+        if self._folds is not None:
+            for i, validation_fold in enumerate(self._folds):
+                self._logger.info(msg=utils.generate_title_text(text=f'Cross Validation #{i+1}'))
+                train_folds = [train_fold for train_fold in self._folds if train_fold != validation_fold]
+                validation_folds = [validation_fold]
+                self._wsi_train_dataset.set_folds(folds=train_folds)
+                self._wsi_validation_dataset.set_folds(folds=validation_folds)
+                cross_val_results_dir_path = self._create_cross_val_results_dir_path(train_folds=train_folds)
+                self._train_epochs(results_dir_path=cross_val_results_dir_path)
+        else:
+            super()._train()
+
+    def _preprocess_batch(self, batch_data: torch.Tensor):
+        augmented_dims = []
+        for i in range(batch_data.shape[1]):
+            dim = (batch_data[:, i, :, :, :] / 255).to(self._device)
+            dim_aug = transforms.Lambda(lambda items: torch.stack([self._augmentations(item) for item in items]))(dim)
+            augmented_dims.append(dim_aug)
+
+        return torch.stack(tensors=augmented_dims, dim=1)
 
     def _create_cross_val_results_dir_path(self, train_folds: List[int]) -> str:
         folds_dir_name = f"folds_{''.join(map(str, train_folds))}"
-        cross_val_results_dir_path = os.path.normpath(os.path.join(self._results_dir_path, folds_dir_name))
+        cross_val_results_dir_path = os.path.normpath(os.path.join(self._output_dir_path, folds_dir_name))
         Path(cross_val_results_dir_path).mkdir(parents=True, exist_ok=True)
         return cross_val_results_dir_path
-
-
-class SSLModelTrainer(CrossValidationModelTrainer):
-    def __init__(
-            self,
-            name: str,
-            results_dir_path: Path,
-            model: torch.nn.Module,
-            loss: torch.nn.Module,
-            optimizer: torch.nn.Module,
-            train_dataset: WSIDataset,
-            validation_dataset: WSIDataset,
-            epochs: int,
-            batch_size: int,
-            folds: List[int],
-            num_workers: int,
-            checkpoint_rate: int,
-            device: torch.device):
-        super().__init__(
-            name=name,
-            results_dir_path=results_dir_path,
-            model=model,
-            loss=loss,
-            optimizer=optimizer,
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            epochs=epochs,
-            batch_size=batch_size,
-            folds=folds,
-            num_workers=num_workers,
-            checkpoint_rate=checkpoint_rate,
-            device=device)
-
-        self._transform = torch.nn.Sequential(
-            transforms.ColorJitter(brightness=(0.85, 1.15), contrast=(0.75, 1.25), saturation=0.1, hue=(-0.1, 0.1)),
-            transforms.GaussianBlur(3, sigma=(1e-7, 1e-1)),
-            transforms.RandomVerticalFlip(),
-            transforms.RandomHorizontalFlip())
-            # transforms.CenterCrop(tile_size)
-
-    def _preprocess_batch(self, batch_data):
-        x0 = (batch_data[:, 0, :, :, :] / 255).to(self._device)
-        x1 = (batch_data[:, 1, :, :, :] / 255).to(self._device)
-        x0_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x0)
-        x1_aug = transforms.Lambda(lambda x: torch.stack([self._transform(x_) for x_ in x]))(x1)
-        return torch.stack((x0_aug, x1_aug), dim=1)
-
-
-

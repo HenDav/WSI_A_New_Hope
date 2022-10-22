@@ -40,22 +40,54 @@ from tap import Tap
 import json
 from jsonpath_ng import jsonpath, parse
 
+from typing import Protocol
+
+class MyCallable(Protocol):
+    def __call__(self, a: int, b: int) -> int:
+        ...
+
+class MyClass:
+    def __init__(self, a: int, b: int, c: int):
+        self._a = a
+        self._b = b
+        self._c = c
+
+    def print(self, fn: MyCallable):
+        print(fn(a=self._a, b=self._b))
+
+
+def f(a: int, b: int) -> int:
+    return a + b
+
 
 
 
 if __name__ == '__main__':
+
+    bla = MyClass(1,2,3)
+    bla.print(fn=f)
+
+
+
+
+
+
+
+
+
+
     # print(datetime.now().strftime('hello!! %Y-%m-%d-%H-%M-%S'))
 
-    with open("C:/GitHub/WSI/configs/test.json", 'r') as json_file:
-        json_data = json.load(json_file)
-
-    print(json_data)
-
-    jsonpath_expression = parse('Globals.tile_size')
-    # jsonpath_expression2 = parse('6')
-
-    for match in jsonpath_expression.find(json_data):
-        print(f'Employee id: {match.value}')
+    # with open("C:/GitHub/WSI/configs/test.json", 'r') as json_file:
+    #     json_data = json.load(json_file)
+    #
+    # print(json_data)
+    #
+    # jsonpath_expression = parse('Globals.tile_size')
+    # # jsonpath_expression2 = parse('6')
+    #
+    # for match in jsonpath_expression.find(json_data):
+    #     print(f'Employee id: {match.value}')
 
 
 

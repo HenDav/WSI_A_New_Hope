@@ -9,6 +9,9 @@ from typing import List, Union
 # numpy
 import numpy
 
+# gipmed
+from core.base import OutputObject
+
 
 class ParallelProcessorTask(ABC):
     @abstractmethod
@@ -20,8 +23,9 @@ class ParallelProcessorTask(ABC):
         pass
 
 
-class ParallelProcessor(ABC):
-    def __init__(self):
+class ParallelProcessor(ABC, OutputObject):
+    def __init__(self, name: str, output_dir_path: Path, **kw: object):
+        super().__init__(name=name, output_dir_path=output_dir_path)
         self._tasks_queue = Queue()
         self._completed_tasks_queue = Queue()
         self._tasks = self._generate_tasks()

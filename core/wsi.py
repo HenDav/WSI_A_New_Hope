@@ -483,136 +483,82 @@ class ProximatePatchExtractor(PatchExtractor):
         return None
 
 
-# =================================================
-# SlideContextsGeneratorTask Class
-# =================================================
-class SlideContextsGeneratorTask(ParallelProcessorTask):
-    def __init__(self, row_index: int, metadata: pandas.Series, dataset_paths_dict: Dict[str, Path], desired_magnification: int, tile_size: int):
-        super().__init__()
-        self._row_index = row_index
-        self._metadata = metadata
-        self._dataset_paths = dataset_paths_dict
-        self._desired_magnification = desired_magnification
-        self._tile_size = tile_size
-        self._slide_context = None
-
-    @property
-    def slide_context(self) -> Union[None, SlideContext]:
-        return self._slide_context
-
-    def process(self):
-        row = self._metadata.iloc[self._row_index]
-        dataset_id = row[constants.dataset_id_column_name]
-        dataset_path = self._dataset_paths[dataset_id]
-        self._slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
-
-    def post_process(self):
-        pass
-
-
-# =================================================
-# SlideContextsGenerator Class
-# =================================================
-class SlideContextsGenerator(ParallelProcessor):
-    def __init__(
-            self,
-            metadata: pandas.Series,
-            datasets_base_dir_path: str,
-            dataset_ids: List[str],
-            desired_magnification: int,
-            tile_size: int):
-        self._metadata = metadata
-        self._datasets_base_dir_path = datasets_base_dir_path
-        self._dataset_ids = dataset_ids
-        self._desired_magnification = desired_magnification
-        self._tile_size = tile_size
-        self._dataset_paths_dict = self._create_dataset_paths_dict()
-        self._slide_contexts = []
-        self._file_name_to_slide_context = {}
-        super().__init__()
-
-    @property
-    def slide_contexts(self) -> List[SlideContext]:
-        return self._slide_contexts
-
-    @property
-    def file_name_to_slide_context(self) -> Dict[str, SlideContext]:
-        return self._file_name_to_slide_context
-
-
-    def _post_process(self):
-        for completed_task in self._completed_tasks:
-            self._slide_contexts.append(completed_task.slide_context)
-            self._file_name_to_slide_context[completed_task.slide_context.image_file_name] = completed_task.slide_context
-
-    def _generate_tasks(self) -> List[ParallelProcessorTask]:
-        tasks = []
-        row_indices = list(range(self._metadata.shape[0]))
-        combinations = list(itertools.product(*[
-            row_indices,
-            [self._metadata],
-            [self._dataset_paths_dict],
-            [self._tile_size],
-            [self._desired_magnification]]))
-
-        for combination in combinations:
-            tasks.append(SlideContextsGeneratorTask(
-                row_index=combination[0],
-                metadata=combination[1],
-                dataset_paths_dict=combination[2],
-                tile_size=combination[3],
-                desired_magnification=combination[4],
-            ))
-
-        return tasks
-
-    def _create_dataset_paths_dict(self) -> Dict[str, str]:
-        dataset_paths_dict = {}
-        path_suffixes = constants.get_path_suffixes()
-
-        for k in path_suffixes.keys():
-            if k in self._dataset_ids:
-                path_suffix = path_suffixes[k]
-                dataset_paths_dict[k] = os.path.normpath(os.path.join(self._datasets_base_dir_path, path_suffix))
-
-        return dataset_paths_dict
-
-
-# =================================================
-# SlideContextsManager Class
-# =================================================
-class SlideContextsManager:
-    def __init__(
-            self,
-            metadata: pandas.Series,
-            datasets_base_dir_path: str,
-            dataset_ids: List[str],
-            desired_magnification: int,
-            tile_size: int):
-        self._metadata = metadata
-        self._datasets_base_dir_path = datasets_base_dir_path
-        self._dataset_ids = dataset_ids
-        self._desired_magnification = desired_magnification
-        self._tile_size = tile_size
-        self._dataset_paths_dict = self._create_dataset_paths_dict()
-        super().__init__()
-
-    def get_slide_contexts_by_folds(self, folds: List[int]) -> List[SlideContext]:
-        slide_contexts = []
-        metadata = self._metadata[self._metadata[constants.fold_column_name].isin(folds)]
-        for index, row in metadata.iterrows():
-            dataset_path = self._dataset_paths_dict[row[constants.dataset_id_column_name]]
-            slide_contexts.append(SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size))
-
-        return slide_contexts
-
-    def _create_dataset_paths_dict(self) -> Dict[str, str]:
-        dataset_paths_dict = {}
-        path_suffixes = constants.get_path_suffixes()
-
-        for k in path_suffixes.keys():
-            if k in self._dataset_ids:
-                path_suffix = path_suffixes[k]
-                dataset_paths_dict[k] = os.path.normpath(os.path.join(self._datasets_base_dir_path, path_suffix))
-
-        return dataset_paths_dict
+# # =================================================
+# # SlideContextsGeneratorTask Class
+# # =================================================
+# class SlideContextsGeneratorTask(ParallelProcessorTask):
+#     def __init__(self, row_index: int, metadata: pandas.DataFrame, dataset_paths: Dict[str, Path], desired_magnification: int, tile_size: int):
+#         super().__init__()
+#         self._row_index = row_index
+#         self._metadata = metadata
+#         self._dataset_paths = dataset_paths
+#         self._desired_magnification = desired_magnification
+#         self._tile_size = tile_size
+#         self._slide_context = None
+#
+#     @property
+#     def slide_context(self) -> Union[None, SlideContext]:
+#         return self._slide_context
+#
+#     def process(self):
+#         row = self._metadata.iloc[self._row_index]
+#         dataset_id = row[constants.dataset_id_column_name]
+#         dataset_path = self._dataset_paths[dataset_id]
+#         self._slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
+#
+#     def post_process(self):
+#         pass
+#
+#
+# # =================================================
+# # SlideContextsGenerator Class
+# # =================================================
+# class SlideContextsGenerator(ParallelProcessor):
+#     def __init__(
+#             self,
+#             metadata: pandas.DataFrame,
+#             datasets_base_dir_path: Path,
+#             desired_magnification: int,
+#             tile_size: int):
+#         self._metadata = metadata
+#         self._datasets_base_dir_path = datasets_base_dir_path
+#         self._desired_magnification = desired_magnification
+#         self._tile_size = tile_size
+#         self._dataset_paths = constants.get_dataset_paths(datasets_base_dir_path=datasets_base_dir_path)
+#         self._slide_contexts = []
+#         self._file_name_to_slide_context = {}
+#         super().__init__()
+#
+#     @property
+#     def slide_contexts(self) -> List[SlideContext]:
+#         return self._slide_contexts
+#
+#     @property
+#     def file_name_to_slide_context(self) -> Dict[str, SlideContext]:
+#         return self._file_name_to_slide_context
+#
+#     def _post_process(self):
+#         for completed_task in self._completed_tasks:
+#             self._slide_contexts.append(completed_task.slide_context)
+#             self._file_name_to_slide_context[completed_task.slide_context.image_file_name] = completed_task.slide_context
+#
+#     def _generate_tasks(self) -> List[ParallelProcessorTask]:
+#         tasks = []
+#         row_indices = list(range(self._metadata.shape[0]))
+#         combinations = list(itertools.product(*[
+#             row_indices,
+#             [self._metadata],
+#             [self._dataset_paths],
+#             [self._tile_size],
+#             [self._desired_magnification]]))
+#
+#         for combination in combinations:
+#             tasks.append(SlideContextsGeneratorTask(
+#                 row_index=combination[0],
+#                 metadata=combination[1],
+#                 dataset_paths=combination[2],
+#                 tile_size=combination[3],
+#                 desired_magnification=combination[4],
+#             ))
+#
+#         return tasks

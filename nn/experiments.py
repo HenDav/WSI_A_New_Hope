@@ -13,7 +13,7 @@ import git
 
 # gipmed
 from core import utils
-from core.base import LoggerObject
+from core.base import OutputObject
 from nn.feature_extractors import *
 from nn.losses import *
 from nn.datasets import *
@@ -22,6 +22,7 @@ from nn.trainers import *
 # torch
 from torch.nn import *
 from torch.optim import *
+from torchvision.models import *
 
 # tap
 from tap import Tap
@@ -33,10 +34,10 @@ from jsonpath_ng import jsonpath, parse
 # =================================================
 # Experiment Class
 # =================================================
-class Experiment(LoggerObject):
-    def __init__(self, name: str, results_dir_path: Path, model_trainers: List[ModelTrainer]):
+class Experiment(OutputObject):
+    def __init__(self, name: str, output_dir_path: Path, model_trainers: List[ModelTrainer]):
         self._model_trainers = model_trainers
-        super().__init__(name=name, results_dir_path=results_dir_path)
+        super().__init__(name=name, output_dir_path=output_dir_path)
 
     @property
     def model_trainers(self) -> List[ModelTrainer]:
@@ -45,7 +46,7 @@ class Experiment(LoggerObject):
     def _backup_codebase(self):
         repo = git.Repo('.', search_parent_directories=True)
         codebase_source_dir_path = repo.working_tree_dir
-        codebase_destination_dir_path = os.path.normpath(os.path.join(self._results_dir_path, 'code'))
+        codebase_destination_dir_path = os.path.normpath(os.path.join(self._output_dir_path, 'code'))
         shutil.copytree(src=codebase_source_dir_path, dst=codebase_destination_dir_path, ignore=shutil.ignore_patterns('.git', '.idea', '__pycache__'))
 
     def run(self):
@@ -70,7 +71,7 @@ class Experiment(LoggerObject):
 
             results_dir_path = Path(experiment_dict["results_dir_path"])
             shutil.copy(src=json_file_path, dst=results_dir_path / json_file_path.name)
-            experiment = Experiment(name=experiment_dict["name"], results_dir_path=experiment_dict["results_dir_path"], model_trainers=model_trainers)
+            experiment = Experiment(name=experiment_dict["name"], output_dir_path=experiment_dict["results_dir_path"], model_trainers=model_trainers)
             experiments.append(experiment)
 
         return experiments
