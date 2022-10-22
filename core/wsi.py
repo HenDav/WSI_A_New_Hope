@@ -55,15 +55,15 @@ class SlideContext:
         self._dataset_path = dataset_path
         self._desired_magnification = desired_magnification
         self._tile_size = tile_size
-        self._image_file_name = self._row[constants.file_column_name].item()
+        self._image_file_name = self._row[constants.file_column_name]
         self._image_file_path = dataset_path / self._image_file_name
-        self._dataset_id = self._row[constants.dataset_id_column_name].item()
+        self._dataset_id = self._row[constants.dataset_id_column_name]
         self._image_file_name_stem = self._image_file_path.stem
         self._image_file_name_suffix = self._image_file_path.suffix
-        self._magnification = row[constants.magnification_column_name].item()
+        self._magnification = row[constants.magnification_column_name]
         self._mpp = utils.magnification_to_mpp(magnification=self._magnification)
-        self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name].item()
-        self._fold = row[constants.fold_column_name].item()
+        self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name]
+        self._fold = row[constants.fold_column_name]
         self._desired_downsample = self._magnification / self._desired_magnification
         self._slide = openslide.open_slide(self._image_file_path)
         self._level, self._level_downsample = self._get_best_level_for_downsample()

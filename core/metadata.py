@@ -602,6 +602,7 @@ class MetadataManager(ParallelProcessor, MetadataBase, SeedableObject):
             self,
             name: str,
             output_dir_path: Path,
+            workers_count: int,
             datasets_base_dir_path: Path,
             tile_size: int,
             desired_magnification: int,
@@ -611,7 +612,7 @@ class MetadataManager(ParallelProcessor, MetadataBase, SeedableObject):
         self._current_df = self._df
         self._slide_contexts = []
         self._file_name_to_slide_context = {}
-        # self._slide_context_generator = SlideContextsGenerator(metadata=self._current_df, datasets_base_dir_path=self._datasets_base_dir_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
+        self.process(workers_count=workers_count)
 
     @property
     def metadata(self) -> pandas.DataFrame:

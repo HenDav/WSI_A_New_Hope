@@ -25,7 +25,7 @@ class ParallelProcessorTask(ABC):
 
 class ParallelProcessor(ABC, OutputObject):
     def __init__(self, name: str, output_dir_path: Path, **kw: object):
-        super().__init__(name=name, output_dir_path=output_dir_path)
+        super().__init__(name=name, output_dir_path=output_dir_path, **kw)
         self._tasks_queue = Queue()
         self._completed_tasks_queue = Queue()
         self._tasks = self._generate_tasks()

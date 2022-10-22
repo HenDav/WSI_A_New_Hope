@@ -61,35 +61,37 @@ class Experiment(OutputObject):
         json_file = open(file=json_file_path)
         json_str = json_file.read()
         json_data = json.loads(json_str)
+        json_data['Globals'] = Experiment._parse(obj_dict=json_data['Globals'], root=json_data)
+
         experiments = []
         for experiment_dict in json_data['Experiments']:
             model_trainers = []
-            experiment_dict['results_dir_path'] = Experiment._parse_path_list(path_list=experiment_dict['results_dir_path'], root=json_data)
+            experiment_dict['output_dir_path'] = Experiment._parse_path_list(path_list=experiment_dict['output_dir_path'], root=json_data)
             for model_trainer_dict in experiment_dict["model_trainers"]:
-                model_trainer = cast(typ=ModelTrainer, val=Experiment._parse_model_trainer(obj_dict=model_trainer_dict, root=json_data))
+                model_trainer = cast(typ=ModelTrainer, val=Experiment._parse(obj_dict=model_trainer_dict, root=json_data))
                 model_trainers.append(model_trainer)
 
-            results_dir_path = Path(experiment_dict["results_dir_path"])
-            shutil.copy(src=json_file_path, dst=results_dir_path / json_file_path.name)
-            experiment = Experiment(name=experiment_dict["name"], output_dir_path=experiment_dict["results_dir_path"], model_trainers=model_trainers)
+            output_dir_path = Path(experiment_dict["output_dir_path"])
+            shutil.copy(src=json_file_path, dst=output_dir_path / json_file_path.name)
+            experiment = Experiment(name=experiment_dict["name"], output_dir_path=experiment_dict["output_dir_path"], model_trainers=model_trainers)
             experiments.append(experiment)
 
         return experiments
 
     @staticmethod
-    def _parse_model_trainer(obj_dict: Dict, root: Dict, level_up_key: Optional[str] = None, model_trainer_root: Optional[Dict] = None) -> object:
+    def _parse(obj_dict: Dict, root: Dict, level_up_key: Optional[str] = None, model_trainer_root: Optional[Dict] = None) -> object:
         for key, value in obj_dict.items():
             if type(value) is not dict:
                 if type(obj_dict[key]) is str:
                     obj_dict[key] = datetime.now().strftime(obj_dict[key])
-                if type(obj_dict[key]) is list and key == 'results_dir_path':
+                if type(obj_dict[key]) is list and key == 'output_dir_path':
                     obj_dict[key] = Experiment._parse_path_list(path_list=obj_dict[key], root=root)
                 else:
                     obj_dict[key] = Experiment._try_parse_jsonpath(expression=value, data=root)
 
         for key, value in obj_dict.items():
             if type(value) is dict:
-                obj_dict[key] = Experiment._parse_model_trainer(obj_dict=value, root=root, level_up_key=key, model_trainer_root=obj_dict if model_trainer_root is None else model_trainer_root)
+                obj_dict[key] = Experiment._parse(obj_dict=value, root=root, level_up_key=key, model_trainer_root=obj_dict if model_trainer_root is None else model_trainer_root)
 
         if "class_name" in obj_dict:
             if level_up_key == "optimizer":
