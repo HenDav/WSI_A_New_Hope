@@ -46,7 +46,7 @@ class MetadataBase(ABC):
             datasets_base_dir_path: Path,
             tile_size: int,
             desired_magnification: int,
-            **kw):
+            **kw: object):
         super(MetadataBase, self).__init__(**kw)
         self._datasets_base_dir_path = datasets_base_dir_path
         self._tile_size = tile_size
@@ -61,6 +61,21 @@ class MetadataBase(ABC):
     @abstractmethod
     def _load_metadata(self) -> pandas.DataFrame:
         pass
+
+
+# =================================================
+# MetadataReader Class
+# =================================================
+# class MetadataReader:
+#     def __init__(
+#             self,
+#             metadata_file_path: Path,
+#             **kw: object):
+#         self._metadata_file_path = metadata_file_path
+#         super(MetadataReader, self).__init__(**kw)
+#
+#     def _load_metadata(self) -> pandas.DataFrame:
+#         return pandas.read_csv(filepath_or_buffer=self._metadata_file_path)
 
 
 # =================================================
@@ -570,108 +585,144 @@ class MetadataGenerator(OutputObject, MetadataBase):
 # =================================================
 # MetadataManagerTask Class
 # =================================================
-class MetadataManagerTask(ParallelProcessorTask):
-    def __init__(self, row_index: int, metadata: pandas.DataFrame, dataset_paths: Dict[str, Path], desired_magnification: int, tile_size: int):
-        super().__init__()
-        self._row_index = row_index
-        self._metadata = metadata
-        self._dataset_paths = dataset_paths
-        self._desired_magnification = desired_magnification
-        self._tile_size = tile_size
-        self._slide_context = None
-
-    @property
-    def slide_context(self) -> Union[None, SlideContext]:
-        return self._slide_context
-
-    def process(self):
-        row = self._metadata.iloc[self._row_index]
-        dataset_id = row[constants.dataset_id_column_name]
-        dataset_path = self._dataset_paths[dataset_id]
-        self._slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
-
-    def post_process(self):
-        pass
+# class MetadataManagerTask(ParallelProcessorTask):
+#     def __init__(self, row_index: int, metadata: pandas.DataFrame, dataset_paths: Dict[str, Path], desired_magnification: int, tile_size: int):
+#         super().__init__()
+#         self._row_index = row_index
+#         self._metadata = metadata
+#         self._dataset_paths = dataset_paths
+#         self._desired_magnification = desired_magnification
+#         self._tile_size = tile_size
+#         self._slide_context = None
+#
+#     @property
+#     def slide_context(self) -> Union[None, SlideContext]:
+#         return self._slide_context
+#
+#     def process(self):
+#         row = self._metadata.iloc[self._row_index]
+#         dataset_id = row[constants.dataset_id_column_name]
+#         dataset_path = self._dataset_paths[dataset_id]
+#         self._slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
+#
+#     def post_process(self):
+#         pass
 
 
 # =================================================
-# MetadataManager Class
+# SlideContextsManager Class
 # =================================================
-class MetadataManager(ParallelProcessor, MetadataBase, SeedableObject):
+class SlideContextsManager(OutputObject, SeedableObject, MetadataBase):
     def __init__(
             self,
             name: str,
             output_dir_path: Path,
-            workers_count: int,
             datasets_base_dir_path: Path,
             tile_size: int,
             desired_magnification: int,
             metadata_file_path: Path):
         self._metadata_file_path = metadata_file_path
         super().__init__(name=name, output_dir_path=output_dir_path, datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
-        self._current_df = self._df
-        self._slide_contexts = []
-        self._file_name_to_slide_context = {}
-        self.process(workers_count=workers_count)
+        self._slide_contexts = self._create_slide_contexts()
+        self._file_name_to_slide_context = self._create_file_name_to_slide_context()
 
     @property
-    def metadata(self) -> pandas.DataFrame:
-        return self._current_df
-
-    @property
-    def slides_count(self) -> int:
-        return self._current_df.shape[0]
+    def slide_contexts_count(self) -> int:
+        return len(self._slide_contexts)
 
     @property
     def file_name_to_slide_context(self) -> Dict[str, SlideContext]:
         return self._file_name_to_slide_context
 
-    def filter_folds(self, folds: List[int]):
-        self._current_df = self._df[self._df[constants.fold_column_name].isin(folds)]
+    def get_slide_context(self, index: int) -> SlideContext:
+        return self._slide_contexts[index]
 
-    def get_slide(self, index: int) -> Slide:
-        slide_context = self._get_slide_context(index=index)
-        slide = Slide(slide_context=slide_context)
-        return slide
+    def get_slide_context_by_file_name(self, file_name: str) -> SlideContext:
+        return self._file_name_to_slide_context[file_name]
 
-    def get_random_slide(self) -> Slide:
-        index = self._rng.integers(low=0, high=self._df.shape[0])
-        return self.get_slide(index=index)
-
-    def _post_process(self):
-        for completed_task in self._completed_tasks:
-            self._slide_contexts.append(completed_task.slide_context)
-            self._file_name_to_slide_context[completed_task.slide_context.image_file_name] = completed_task.slide_context
-
-    def _generate_tasks(self) -> List[ParallelProcessorTask]:
-        tasks = []
-        row_indices = list(range(self._df.shape[0]))
-        combinations = list(itertools.product(*[
-            row_indices,
-            [self._df],
-            [self._dataset_paths],
-            [self._tile_size],
-            [self._desired_magnification]]))
-
-        for combination in combinations:
-            tasks.append(MetadataManagerTask(
-                row_index=combination[0],
-                metadata=combination[1],
-                dataset_paths=combination[2],
-                tile_size=combination[3],
-                desired_magnification=combination[4],
-            ))
-
-        return tasks
+    def get_random_slide_context(self) -> SlideContext:
+        index = self._rng.integers(low=0, high=len(self._slide_contexts))
+        return self.get_slide_context(index=index)
 
     def _load_metadata(self) -> pandas.DataFrame:
         return pandas.read_csv(filepath_or_buffer=self._metadata_file_path)
 
-    def _get_slide_context(self, index: int) -> SlideContext:
-        row = self._df.iloc[[index]]
-        dataset_path = self._dataset_paths[row[constants.dataset_id_column_name].item()]
-        slide_context = SlideContext(row=row, dataset_path=dataset_path, desired_magnification=self._desired_magnification, tile_size=self._tile_size)
-        return slide_context
+    def _create_slide_contexts(self) -> List[SlideContext]:
+        self._logger.info(msg=utils.generate_title_text(text=f'SlideContexts Creation'))
+        slide_contexts = []
+        for row_index in range(self._df.shape[0]):
+            slide_context = SlideContext(row_index=row_index, metadata=self._df, dataset_paths=self._dataset_paths, tile_size=self._tile_size, desired_magnification=self._desired_magnification)
+            slide_contexts.append(slide_context)
+            self._logger.info(msg=utils.generate_captioned_bullet_text(text='Creating SlideContext', value=slide_context.image_file_name, indentation=1, padding=30))
+        return slide_contexts
+
+    def _create_file_name_to_slide_context(self) -> Dict[str, SlideContext]:
+        file_name_to_slide_context = {}
+        for slide_context in self._slide_contexts:
+            file_name_to_slide_context[slide_context.image_file_name] = slide_context
+
+        return file_name_to_slide_context
+
+
+# =================================================
+# SlidesManager Class
+# =================================================
+class SlidesManager(SeedableObject):
+    def __init__(
+            self,
+            slide_contexts_manager: SlideContextsManager):
+        super().__init__()
+        self._slide_contexts_manager = slide_contexts_manager
+        self._df = self._slide_contexts_manager.metadata
+        self._current_df = self._slide_contexts_manager.metadata
+        self._slides = self._create_slides()
+        self._slides_with_interior = self._get_slides_with_interior_tiles()
+
+    @property
+    def metadata(self) -> pandas.DataFrame:
+        return self._df
+
+    @property
+    def slides_count(self) -> int:
+        return self._current_df.shape[0]
+
+    def filter_folds(self, folds: List[int]):
+        self._current_df = self._df[self._df[constants.fold_column_name].isin(folds)]
+        self._slides = self._create_slides()
+        self._slides_with_interior = self._get_slides_with_interior_tiles()
+
+    def get_slide(self, index: int) -> Slide:
+        return self._slides[index]
+
+    def get_random_slide(self) -> Slide:
+        index = self._rng.integers(low=0, high=self._current_df.shape[0])
+        return self.get_slide(index=index)
+
+    def get_slide_with_interior(self, index: int) -> Slide:
+        return self._slides_with_interior[index]
+
+    def get_random_slide_with_interior(self) -> Slide:
+        index = self._rng.integers(low=0, high=len(self._slides_with_interior))
+        return self.get_slide_with_interior(index=index)
+
+    def _create_slides(self) -> List[Slide]:
+        slides = []
+        for index in range(self._current_df.shape[0]):
+            row = self._current_df.iloc[[index]]
+            file_name = row[constants.file_column_name].item()
+            slide_context = self._slide_contexts_manager.get_slide_context_by_file_name(file_name=file_name)
+            slide = Slide(slide_context=slide_context)
+            slides.append(slide)
+
+        return slides
+
+    def _get_slides_with_interior_tiles(self) -> List[Slide]:
+        slides = []
+        for slide in self._slides:
+            if slide.interior_tiles_count > 0:
+                slides.append(slide)
+
+        return slides
 
 
 # =================================================

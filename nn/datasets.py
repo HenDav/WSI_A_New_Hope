@@ -13,7 +13,7 @@ import numpy
 from torch.utils.data import Dataset
 
 # gipmed
-from core.metadata import MetadataManager
+from core.metadata import SlidesManager
 from core.base import SeedableObject
 from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, Target
 
@@ -22,11 +22,11 @@ from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtr
 # TupletsDataset Class
 # =================================================
 class WSIDataset(ABC, Dataset, SeedableObject):
-    def __init__(self, metadata_manager: MetadataManager, dataset_size: int):
+    def __init__(self, slides_manager: SlidesManager, dataset_size: int):
         super(Dataset, self).__init__()
         super(SeedableObject, self).__init__()
         self._dataset_size = dataset_size
-        self._metadata_manager = metadata_manager
+        self._slides_manager = slides_manager
 
     def __len__(self):
         return self._dataset_size
@@ -36,19 +36,19 @@ class WSIDataset(ABC, Dataset, SeedableObject):
         pass
 
     def set_folds(self, folds: List[int]):
-        self._metadata_manager.filter_folds(folds=folds)
+        self._slides_manager.filter_folds(folds=folds)
 
 
 # =================================================
 # SingleTargetTrainingDataset Class
 # =================================================
 class SingleTargetTrainingDataset(WSIDataset):
-    def __init__(self, metadata_manager: MetadataManager, dataset_size: int, target: Target):
-        super().__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
+    def __init__(self, slides_manager: SlidesManager, dataset_size: int, target: Target):
+        super().__init__(dataset_size=dataset_size, slides_manager=slides_manager)
         self._target = target
 
     def __getitem__(self, index):
-        slide = self._metadata_manager.get_random_slide()
+        slide = self._slides_manager.get_random_slide()
         patch_extractor = RandomPatchExtractor(slide=slide)
         patch = patch_extractor.extract_patch(patch_validators=[])
         label = slide.slide_context.get_target(target=self._target)
@@ -59,14 +59,14 @@ class SingleTargetTrainingDataset(WSIDataset):
 # SingleTargetValidationDataset Class
 # =================================================
 class SingleTargetValidationDataset(WSIDataset):
-    def __init__(self, metadata_manager: MetadataManager, slides_delta: int, tiles_delta: int, target: Target):
-        super().__init__(metadata_manager=metadata_manager)
+    def __init__(self, slides_manager: SlidesManager, slides_delta: int, tiles_delta: int, target: Target):
+        super().__init__(slides_manager=slides_manager)
         self._slides_delta = slides_delta
         self._tiles_delta = tiles_delta
         self._target = target
 
     def __getitem__(self, index):
-        slide = self._metadata_manager.get_random_slide()
+        slide = self._slides_manager.get_random_slide()
         patch_extractor = RandomPatchExtractor(slide=slide)
         patch = patch_extractor.extract_patch(patch_validators=[])
         label = slide.slide_context.get_target(target=self._target)
@@ -80,8 +80,8 @@ class SSLDataset(WSIDataset):
     _white_ratio_threshold = 0.5
     _white_intensity_threshold = 170
 
-    def __init__(self, metadata_manager: MetadataManager, dataset_size: int, inner_radius_mm: float, negative_examples_count: int):
-        super().__init__(dataset_size=dataset_size, metadata_manager=metadata_manager)
+    def __init__(self, slides_manager: SlidesManager, dataset_size: int, inner_radius_mm: float, negative_examples_count: int):
+        super().__init__(dataset_size=dataset_size, slides_manager=slides_manager)
         self._inner_radius_mm = inner_radius_mm
         self._negative_examples_count = negative_examples_count
 
@@ -89,7 +89,7 @@ class SSLDataset(WSIDataset):
         while True:
             patches = []
 
-            slide = self._metadata_manager.get_random_slide()
+            slide = self._slides_manager.get_random_slide_with_interior()
             patch_extractor = RandomPatchExtractor(slide=slide)
             anchor_patch = patch_extractor.extract_patch(patch_validators=[SSLDataset._validate_histogram])
             if anchor_patch is None:

@@ -43,7 +43,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     np.random.seed(30)
 
-    train_tuples_generator = datasets.MetadataManager(
+    train_tuples_generator = datasets.SlidesManager(
         inner_radius_mm=args.inner_radius,
         outer_radius_mm=args.outer_radius,
         tile_size=args.tile_size,

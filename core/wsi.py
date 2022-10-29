@@ -35,6 +35,7 @@ from matplotlib import pyplot as plt
 # wsi
 from core.parallel_processing import ParallelProcessor, ParallelProcessorTask
 from core import constants, utils
+from core.base import SeedableObject
 
 
 # =================================================
@@ -50,28 +51,28 @@ class Target(Enum):
 # SlideContext Class
 # =================================================
 class SlideContext:
-    def __init__(self, row: pandas.DataFrame, dataset_path: Path, desired_magnification: int, tile_size: int):
-        self._row = row
-        self._dataset_path = dataset_path
+    def __init__(self, row_index: int, metadata: pandas.DataFrame, dataset_paths: Dict[str, Path], desired_magnification: int, tile_size: int):
+        self._row = metadata.iloc[[row_index]]
+        self._dataset_path = dataset_paths[self._row[constants.dataset_id_column_name].item()]
         self._desired_magnification = desired_magnification
         self._tile_size = tile_size
-        self._image_file_name = self._row[constants.file_column_name]
-        self._image_file_path = dataset_path / self._image_file_name
-        self._dataset_id = self._row[constants.dataset_id_column_name]
+        self._image_file_name = self._row[constants.file_column_name].item()
+        self._image_file_path = self._dataset_path / self._image_file_name
+        self._dataset_id = self._row[constants.dataset_id_column_name].item()
         self._image_file_name_stem = self._image_file_path.stem
         self._image_file_name_suffix = self._image_file_path.suffix
-        self._magnification = row[constants.magnification_column_name]
+        self._magnification = self._row[constants.magnification_column_name].item()
         self._mpp = utils.magnification_to_mpp(magnification=self._magnification)
-        self._legitimate_tiles_count = row[constants.legitimate_tiles_column_name]
-        self._fold = row[constants.fold_column_name]
+        self._legitimate_tiles_count = self._row[constants.legitimate_tiles_column_name].item()
+        self._fold = self._row[constants.fold_column_name].item()
         self._desired_downsample = self._magnification / self._desired_magnification
         self._slide = openslide.open_slide(self._image_file_path)
         self._level, self._level_downsample = self._get_best_level_for_downsample()
         self._selected_level_tile_size = self._tile_size * self._level_downsample
         self._zero_level_tile_size = self._tile_size * self._desired_downsample
-        self._er = self._row[constants.er_status_column_name]
-        self._pr = self._row[constants.pr_status_column_name]
-        self._her2 = self._row[constants.her2_status_column_name]
+        self._er = self._row[constants.er_status_column_name].item()
+        self._pr = self._row[constants.pr_status_column_name].item()
+        self._her2 = self._row[constants.her2_status_column_name].item()
 
     @property
     def dataset_path(self) -> Path:
@@ -181,7 +182,8 @@ class SlideContext:
 # SlideElement Class
 # =================================================
 class SlideElement:
-    def __init__(self, slide_context: SlideContext):
+    def __init__(self, slide_context: SlideContext, **kw: object):
+        super(SlideElement, self).__init__(**kw)
         self._slide_context = slide_context
 
     @property
@@ -212,15 +214,16 @@ class Tile(SlideElement):
 # =================================================
 # TilesManager Class
 # =================================================
-class TilesManager(ABC, SlideElement):
-    def __init__(self, slide_context: SlideContext, locations: Optional[numpy.array]):
+class TilesManager(ABC, SlideElement, SeedableObject):
+    def __init__(self, slide_context: SlideContext, pixels: Optional[numpy.array]):
         super().__init__(slide_context=slide_context)
 
-        if locations is None:
-            self._locations = self._create_tile_locations()
+        if pixels is None:
+            self._pixels = self._load_pixels()
         else:
-            self._locations = locations
+            self._pixels = pixels
 
+        self._locations = self._pixels_to_locations(pixels=self._pixels)
         self._tiles = self._create_tiles_list()
         self._location_to_tile = self._create_tiles_dict()
         self._interior_tiles = self._create_interior_tiles_list()
@@ -229,12 +232,16 @@ class TilesManager(ABC, SlideElement):
     def tiles_count(self) -> int:
         return len(self._tiles)
 
+    @property
+    def interior_tiles_count(self) -> int:
+        return len(self._interior_tiles)
+
     def get_random_tile(self) -> Tile:
-        tile_index = int(numpy.random.randint(len(self._tiles), size=1))
+        tile_index = self._rng.integers(low=0, high=len(self._tiles))
         return self._tiles[tile_index]
 
     def get_random_interior_tile(self) -> Tile:
-        tile_index = int(numpy.random.randint(len(self._interior_tiles), size=1))
+        tile_index = self._rng.integers(low=0, high=len(self._interior_tiles))
         return self._interior_tiles[tile_index]
 
     def get_random_pixel(self) -> numpy.ndarray:
@@ -246,8 +253,8 @@ class TilesManager(ABC, SlideElement):
         return tile.get_random_pixel()
 
     def get_tile_at_pixel(self, pixel: numpy.ndarray) -> Optional[Tile]:
-        tile_location = (pixel / self._slide_context.zero_level_tile_size).astype(numpy.int64)
-        return self._location_to_tile.get(tile_location.tobytes())
+        location = self._pixels_to_locations(pixels=pixel)
+        return self._location_to_tile.get(location.tobytes())
 
     def is_interior_tile(self, tile: Tile) -> bool:
         for i in range(3):
@@ -257,13 +264,13 @@ class TilesManager(ABC, SlideElement):
                     return False
         return True
 
-    def _create_tile_locations(self) -> numpy.ndarray:
+    def _load_pixels(self) -> numpy.ndarray:
         grid_file_path = os.path.normpath(os.path.join(self._slide_context.dataset_path, f'Grids_{self._slide_context.desired_magnification}', f'{self._slide_context.image_file_name_stem}--tlsz{self._slide_context.tile_size}.data'))
         with open(grid_file_path, 'rb') as file_handle:
-            locations = numpy.array(pickle.load(file_handle))
-            locations[:, 0], locations[:, 1] = locations[:, 1], locations[:, 0].copy()
+            pixels = numpy.array(pickle.load(file_handle))
+            pixels[:, 0], pixels[:, 1] = pixels[:, 1], pixels[:, 0].copy()
 
-        return locations
+        return pixels
 
     def _create_tiles_list(self) -> List[Tile]:
         tiles = []
@@ -291,15 +298,21 @@ class TilesManager(ABC, SlideElement):
             return True
         return False
 
+    def _pixels_to_locations(self, pixels: numpy.ndarray) -> numpy.ndarray:
+        return (pixels / self._slide_context.zero_level_tile_size).astype(numpy.int64)
+
+    def _locations_to_pixels(self, locations: numpy.ndarray) -> numpy.ndarray:
+        return (locations * self._slide_context.zero_level_tile_size).astype(numpy.int64)
+
 
 # =================================================
 # ConnectedComponent Class
 # =================================================
 class ConnectedComponent(TilesManager):
-    def __init__(self, slide_context: SlideContext, locations: numpy.ndarray):
-        super().__init__(slide_context=slide_context, locations=locations)
-        self._top_left_tile_location = numpy.array([numpy.min(self._locations[0, :]), numpy.min(self._locations[1, :])])
-        self._bottom_right_tile_location = numpy.array([numpy.max(self._locations[0, :]), numpy.max(self._locations[1, :])])
+    def __init__(self, slide_context: SlideContext, pixels: numpy.ndarray):
+        super().__init__(slide_context=slide_context, pixels=pixels)
+        self._top_left_tile_location = numpy.array([numpy.min(self._locations[:, 0]), numpy.min(self._locations[:, 1])])
+        self._bottom_right_tile_location = numpy.array([numpy.max(self._locations[:, 0]), numpy.max(self._locations[:, 1])])
 
     @property
     def top_left_tile_location(self) -> numpy.ndarray:
@@ -343,10 +356,10 @@ class Patch(SlideElement):
 # =================================================
 class Slide(TilesManager):
     def __init__(self, slide_context: SlideContext, min_component_ratio: float = 0.92, max_aspect_ratio_diff: float = 0.02):
-        super().__init__(slide_context=slide_context, locations=None)
+        super().__init__(slide_context=slide_context, pixels=None)
         self._min_component_ratio = min_component_ratio
         self._max_aspect_ratio_diff = max_aspect_ratio_diff
-        self._bitmap = self._create_tile_bitmap(plot_bitmap=False)
+        self._bitmap = self._create_bitmap(plot_bitmap=False)
         self._components = self._create_connected_components()
 
     @property
@@ -364,27 +377,28 @@ class Slide(TilesManager):
         tile_location = (pixel / self._slide_context.zero_level_tile_size).astype(numpy.int64)
         return self._location_to_tile.get(tile_location.tobytes())
 
-    def _create_tile_bitmap(self, plot_bitmap: bool = False) -> Image:
-        indices = (numpy.array(self._locations) / self._slide_context.zero_level_tile_size).astype(int)
-        dim1_size = indices[:, 0].max() + 1
-        dim2_size = indices[:, 1].max() + 1
+    def _create_bitmap(self, plot_bitmap: bool = False) -> Image:
+        # indices = (numpy.array(self._locations) / self._slide_context.zero_level_tile_size).astype(int)
+        dim1_size = self._locations[:, 0].max() + 1
+        dim2_size = self._locations[:, 1].max() + 1
         bitmap = numpy.zeros([dim1_size, dim2_size]).astype(int)
 
-        for (x, y) in indices:
+        for (x, y) in self._locations:
             bitmap[x, y] = 1
 
-        tile_bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
+        bitmap = numpy.uint8(Image.fromarray((bitmap * 255).astype(numpy.uint8)))
 
         if plot_bitmap is True:
-            plt.imshow(tile_bitmap, cmap='gray')
+            plt.imshow(bitmap, cmap='gray')
             plt.show()
 
-        return tile_bitmap
+        return bitmap
 
     def _create_connected_component_from_bitmap(self, bitmap: numpy.ndarray) -> ConnectedComponent:
         valid_tile_indices = numpy.where(bitmap)
         locations = numpy.array([valid_tile_indices[0], valid_tile_indices[1]]).transpose()
-        return ConnectedComponent(slide_context=self._slide_context, locations=locations)
+        pixels = self._locations_to_pixels(locations=locations)
+        return ConnectedComponent(slide_context=self._slide_context, pixels=pixels)
 
     def _create_connected_components(self) -> List[ConnectedComponent]:
         components_count, components_labels, components_stats, _ = cv2.connectedComponentsWithStats(self._bitmap)
@@ -395,7 +409,7 @@ class Slide(TilesManager):
             connected_component = self._create_connected_component_from_bitmap(bitmap=bitmap)
             components.append(connected_component)
 
-        components_sorted = sorted(components, key=lambda item: item.valid_tiles_count, reverse=True)
+        components_sorted = sorted(components, key=lambda item: item.tiles_count, reverse=True)
         largest_component = components_sorted[0]
         largest_component_aspect_ratio = largest_component.calculate_bounding_box_aspect_ratio()
         largest_component_size = largest_component.tiles_count
@@ -477,7 +491,7 @@ class ProximatePatchExtractor(PatchExtractor):
         direction = numpy.array([numpy.cos(angle), numpy.sin(angle)])
         proximate_pixel = (pixel + self._inner_radius_pixels * direction).astype(int)
         tile = self._slide.get_tile_at_pixel(pixel=proximate_pixel)
-        if (tile is None) and self._slide.is_interior_tile(tile=cast(Tile, tile)):
+        if (tile is not None) and self._slide.is_interior_tile(tile=cast(Tile, tile)):
             return proximate_pixel
 
         return None

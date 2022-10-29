@@ -16,7 +16,7 @@ from core import utils
 
 
 class SeedableObject:
-    seed: Union[None, int] = None
+    seed: Union[None, int] = 10
 
     def __init__(self, **kw: object):
         self._rng = numpy.random.default_rng(seed=SeedableObject.seed)

@@ -255,7 +255,7 @@ class WSIModelTrainer(ModelTrainer):
             checkpoint_rate: int,
             device: torch.device,
             folds: Optional[List[int]],
-            augmentations: Optional[torch.nn.Sequential]):
+            augmentations: Optional[torch.nn.Sequential] = None):
         super().__init__(
             name=name,
             model=model,

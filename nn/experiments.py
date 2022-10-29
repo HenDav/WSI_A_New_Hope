@@ -14,6 +14,7 @@ import git
 # gipmed
 from core import utils
 from core.base import OutputObject
+from core.metadata import *
 from nn.feature_extractors import *
 from nn.losses import *
 from nn.datasets import *
