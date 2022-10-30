@@ -31,24 +31,24 @@ class ParallelProcessor(ABC, OutputObject):
         self._tasks = self._generate_tasks()
         self._completed_tasks = []
 
-    def process(self, workers_count: int):
+    def process(self, num_workers: int):
         for task in self._tasks:
             self._tasks_queue.put(obj=task)
 
-        for _ in range(workers_count):
+        for _ in range(num_workers):
             self._tasks_queue.put(obj=None)
 
-        workers = [Process(target=self._worker_func, args=tuple([worker_id],)) for worker_id in range(workers_count)]
+        workers = [Process(target=self._worker_func, args=tuple([worker_id],)) for worker_id in range(num_workers)]
 
         print('')
 
         for i, worker in enumerate(workers):
             worker.start()
-            print(f'\rWorker Started {i+1} / {workers_count}', end='')
+            print(f'\rWorker Started {i+1} / {num_workers}', end='')
 
         print('')
 
-        total_tasks_count = self.tasks_count + workers_count
+        total_tasks_count = self.tasks_count + num_workers
         while True:
             remaining_tasks_count = self._tasks_queue.qsize()
             print(f'\rRemaining Tasks {remaining_tasks_count} / {total_tasks_count}', end='')
@@ -66,7 +66,7 @@ class ParallelProcessor(ABC, OutputObject):
             else:
                 self._completed_tasks.append(completed_task)
 
-            if sentinels_count == workers_count:
+            if sentinels_count == num_workers:
                 break
 
         print('Joining processes')

@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 # gipmed
 from core.metadata import SlidesManager
 from core.base import SeedableObject
-from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, Target
+from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, BioMarker
 
 
 # =================================================
@@ -43,7 +43,7 @@ class WSIDataset(ABC, Dataset, SeedableObject):
 # SingleTargetTrainingDataset Class
 # =================================================
 class SingleTargetTrainingDataset(WSIDataset):
-    def __init__(self, slides_manager: SlidesManager, dataset_size: int, target: Target):
+    def __init__(self, slides_manager: SlidesManager, dataset_size: int, target: BioMarker):
         super().__init__(dataset_size=dataset_size, slides_manager=slides_manager)
         self._target = target
 
@@ -51,7 +51,7 @@ class SingleTargetTrainingDataset(WSIDataset):
         slide = self._slides_manager.get_random_slide()
         patch_extractor = RandomPatchExtractor(slide=slide)
         patch = patch_extractor.extract_patch(patch_validators=[])
-        label = slide.slide_context.get_target(target=self._target)
+        label = slide.slide_context.get_biomarker_value(bio_marker=self._target)
         return patch, label
 
 
@@ -59,7 +59,7 @@ class SingleTargetTrainingDataset(WSIDataset):
 # SingleTargetValidationDataset Class
 # =================================================
 class SingleTargetValidationDataset(WSIDataset):
-    def __init__(self, slides_manager: SlidesManager, slides_delta: int, tiles_delta: int, target: Target):
+    def __init__(self, slides_manager: SlidesManager, slides_delta: int, tiles_delta: int, target: BioMarker):
         super().__init__(slides_manager=slides_manager)
         self._slides_delta = slides_delta
         self._tiles_delta = tiles_delta
@@ -69,7 +69,7 @@ class SingleTargetValidationDataset(WSIDataset):
         slide = self._slides_manager.get_random_slide()
         patch_extractor = RandomPatchExtractor(slide=slide)
         patch = patch_extractor.extract_patch(patch_validators=[])
-        label = slide.slide_context.get_target(target=self._target)
+        label = slide.slide_context.get_biomarker_value(bio_marker=self._target)
         return patch, label
 
 

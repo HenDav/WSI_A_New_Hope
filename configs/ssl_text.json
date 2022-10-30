@@ -5,12 +5,24 @@
         "desired_magnification": 10,
         "metadata_file_path": "D:/metadata/metadata.csv",
         "datasets_base_dir_path": "D:/Pathology",
-        "negative_examples_count": 0
+        "negative_examples_count": 0,
+        "output_dir_path": ["C:/ssl_test", "%Y-%m-%d-%H-%M-%S"],
+        "slide_contexts_manager": {
+            "class_name": "SlideContextsManager",
+            "class_args": {
+                "name": "slide_contexts_manager",
+                "output_dir_path": "Globals.output_dir_path",
+                "datasets_base_dir_path": "Globals.datasets_base_dir_path",
+                "tile_size": "Globals.tile_size",
+                "desired_magnification": "Globals.desired_magnification",
+                "metadata_file_path": "Globals.metadata_file_path"
+            }
+        }
     },
     "Experiments": [
         {
             "name": "er_prediction_ssl",
-            "results_dir_path": ["C:/ssl_test", "%Y-%m-%d-%H-%M-%S"],
+            "output_dir_path": "Globals.output_dir_path",
             "model_trainers": [
                 {
                     "class_name": "WSIModelTrainer",
@@ -33,14 +45,11 @@
                         "train_dataset": {
                             "class_name": "SSLDataset",
                             "class_args": {
-                                "metadata_manager": {
-                                    "class_name": "MetadataManager",
+                                "slides_manager": {
+                                    "class_name": "SlidesManager",
                                     "class_args": {
-                                        "datasets_base_dir_path": "Globals.datasets_base_dir_path",
-                                        "tile_size": "Globals.tile_size",
-                                        "desired_magnification": "Globals.desired_magnification",
-                                        "metadata_file_path": "Globals.metadata_file_path"
-                                    }
+                                        "slide_contexts_manager": "Globals.slide_contexts_manager"
+                                    }     
                                 },
                                 "dataset_size": 30000,
                                 "inner_radius_mm": "Globals.inner_radius_mm",
@@ -50,14 +59,11 @@
                         "validation_dataset": {
                             "class_name": "SSLDataset",
                             "class_args": {
-                                "metadata_manager": {
-                                    "class_name": "MetadataManager",
+                                "slides_manager": {
+                                    "class_name": "SlidesManager",
                                     "class_args": {
-                                        "datasets_base_dir_path": "Globals.datasets_base_dir_path",
-                                        "tile_size": "Globals.tile_size",
-                                        "desired_magnification": "Globals.desired_magnification",
-                                        "metadata_file_path": "Globals.metadata_file_path"
-                                    }
+                                        "slide_contexts_manager": "Globals.slide_contexts_manager"
+                                    }     
                                 },
                                 "dataset_size": 30000,
                                 "inner_radius_mm": "Globals.inner_radius_mm",
@@ -69,70 +75,7 @@
                         "folds": [2, 3, 4, 5],
                         "num_workers": 10,
                         "checkpoint_rate": 10,
-                        "results_dir_path": ["Experiments[0].results_dir_path", "Experiments[0].model_trainers[0].class_args.name"],
-                        "device": "cuda"
-                    }
-                },
-                {
-                    "class_name": "WSIModelTrainer",
-                    "class_args": {
-                        "name": "classifier_trainer",
-                        "model": {
-                            "class_name": "resnet50",
-                            "class_args": {
-                                "num_classes": 2
-                            }
-                        },
-                        "loss": {
-                            "class_name": "CrossEntropyLoss",
-                            "class_args": {}
-                        },
-                        "optimizer": {
-                            "class_name": "AdamW",
-                            "class_args": {
-                                "lr": 0.001
-                            }
-                        },
-                        "train_dataset": {
-                            "class_name": "SSLDataset",
-                            "class_args": {
-                                "metadata_manager": {
-                                    "class_name": "MetadataManager",
-                                    "class_args": {
-                                        "datasets_base_dir_path": "Globals.datasets_base_dir_path",
-                                        "tile_size": "Globals.tile_size",
-                                        "desired_magnification": "Globals.desired_magnification",
-                                        "metadata_file_path": "Globals.metadata_file_path"
-                                    }
-                                },
-                                "dataset_size": 30000,
-                                "inner_radius_mm": "Globals.inner_radius_mm",
-                                "negative_examples_count": "Globals.negative_examples_count"
-                            }
-                        },
-                        "validation_dataset": {
-                            "class_name": "SSLDataset",
-                            "class_args": {
-                                "metadata_manager": {
-                                    "class_name": "MetadataManager",
-                                    "class_args": {
-                                        "datasets_base_dir_path": "Globals.datasets_base_dir_path",
-                                        "tile_size": "Globals.tile_size",
-                                        "desired_magnification": "Globals.desired_magnification",
-                                        "metadata_file_path": "Globals.metadata_file_path"
-                                    }
-                                },
-                                "dataset_size": 30000,
-                                "inner_radius_mm": "Globals.inner_radius_mm",
-                                "negative_examples_count": "Globals.negative_examples_count"
-                            }
-                        },
-                        "epochs": 100,
-                        "batch_size": 32,
-                        "folds": [2, 3, 4, 5],
-                        "num_workers": 10,
-                        "checkpoint_rate": 10,
-                        "results_dir_path": ["Experiments[0].results_dir_path", "Experiments[0].model_trainers[0].class_args.name"],
+                        "output_dir_path": ["Experiments[0].output_dir_path", "Experiments[0].model_trainers[0].class_args.name"],
                         "device": "cuda"
                     }
                 }

@@ -41,7 +41,7 @@ from core.base import SeedableObject
 # =================================================
 # Targets Class
 # =================================================
-class Target(Enum):
+class BioMarker(Enum):
     ER = auto()
     PR = auto()
     HER2 = auto()
@@ -66,9 +66,9 @@ class SlideContext:
         self._legitimate_tiles_count = self._row[constants.legitimate_tiles_column_name].item()
         self._fold = self._row[constants.fold_column_name].item()
         self._desired_downsample = self._magnification / self._desired_magnification
-        self._slide = openslide.open_slide(self._image_file_path)
-        self._level, self._level_downsample = self._get_best_level_for_downsample()
-        self._selected_level_tile_size = self._tile_size * self._level_downsample
+        # self._slide = openslide.open_slide(self._image_file_path)
+        # self._level, self._level_downsample = self._get_best_level_for_downsample()
+        # self._selected_level_tile_size = self._tile_size * self._level_downsample
         self._zero_level_tile_size = self._tile_size * self._desired_downsample
         self._er = self._row[constants.er_status_column_name].item()
         self._pr = self._row[constants.pr_status_column_name].item()
@@ -98,25 +98,25 @@ class SlideContext:
     def dataset_id(self) -> str:
         return self._dataset_id
 
-    @property
-    def slide(self) -> openslide.OpenSlide:
-        return self._slide
+    # @property
+    # def slide(self) -> openslide.OpenSlide:
+    #     return self._slide
 
-    @property
-    def level(self) -> int:
-        return self._level
+    # @property
+    # def level(self) -> int:
+    #     return self._level
 
     @property
     def tile_size(self) -> int:
         return self._tile_size
 
-    @property
-    def selected_level_tile_size(self) -> int:
-        return self._selected_level_tile_size
-
-    @property
-    def selected_level_half_tile_size(self) -> int:
-        return self._selected_level_tile_size // 2
+    # @property
+    # def selected_level_tile_size(self) -> int:
+    #     return self._selected_level_tile_size
+    #
+    # @property
+    # def selected_level_half_tile_size(self) -> int:
+    #     return self._selected_level_tile_size // 2
 
     @property
     def zero_level_tile_size(self) -> int:
@@ -147,32 +147,35 @@ class SlideContext:
         return pixels
 
     def read_region_around_pixel(self, pixel: numpy.ndarray) -> Image:
+        slide = openslide.open_slide(self._image_file_path)
+        level, level_downsample = self._get_best_level_for_downsample(slide=slide)
+        selected_level_tile_size = self._tile_size * level_downsample
         top_left_pixel = (pixel - self.selected_level_tile_size / 2).astype(int)
-        region = self.slide.read_region(top_left_pixel, self.level, (self.selected_level_tile_size, self.selected_level_tile_size)).convert('RGB')
+        region = slide.read_region(top_left_pixel, self.level, (selected_level_tile_size, selected_level_tile_size)).convert('RGB')
         if self.selected_level_tile_size != self.tile_size:
             region = region.resize((self.tile_size, self.tile_size))
         return region
 
-    def get_target(self, target: Target) -> bool:
-        if target is Target.ER:
+    def get_biomarker_value(self, bio_marker: BioMarker) -> bool:
+        if bio_marker is BioMarker.ER:
             return self._er
-        elif target is Target.PR:
+        elif bio_marker is BioMarker.PR:
             return self._pr
-        elif target is Target.HER2:
+        elif bio_marker is BioMarker.HER2:
             return self._her2
 
-    def _get_best_level_for_downsample(self):
+    def _get_best_level_for_downsample(self, slide: openslide.OpenSlide):
         level = 0
         level_downsample = self._desired_downsample
         if self._desired_downsample > 1:
-            for i, downsample in enumerate(self._slide.level_downsamples):
+            for i, downsample in enumerate(slide.level_downsamples):
                 if math.isclose(self._desired_downsample, downsample, rel_tol=1e-3):
                     level = i
                     level_downsample = 1
                     break
                 elif downsample < self._desired_downsample:
                     level = i
-                    level_downsample = int(self._desired_downsample / self._slide.level_downsamples[level])
+                    level_downsample = int(self._desired_downsample / slide.level_downsamples[level])
 
         # A tile of size (tile_size, tile_size) in an image downsampled by 'level_downsample', will cover the same image portion of a tile of size (adjusted_tile_size, adjusted_tile_size) in the original image
         return level, level_downsample
