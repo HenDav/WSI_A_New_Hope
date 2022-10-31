@@ -2,12 +2,14 @@
 from abc import ABC, abstractmethod
 from typing import List
 from enum import Enum
+from pathlib import Path
 
 # pandas
 import pandas
 
 # numpy
 import numpy
+import torch
 
 # torch
 from torch.utils.data import Dataset
@@ -16,7 +18,7 @@ from torch.utils.data import Dataset
 from core.metadata import SlidesManager
 from core.base import SeedableObject
 from core.wsi import SlideContext, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, BioMarker
-
+from core.parallel_processing import BufferedParallelProcessor
 
 # =================================================
 # TupletsDataset Class
@@ -40,14 +42,29 @@ class WSIDataset(ABC, Dataset, SeedableObject):
 
 
 # =================================================
-# SingleTargetTrainingDataset Class
+# TupletsDataset Class
 # =================================================
-class SingleTargetTrainingDataset(WSIDataset):
-    def __init__(self, slides_manager: SlidesManager, dataset_size: int, target: BioMarker):
-        super().__init__(dataset_size=dataset_size, slides_manager=slides_manager)
-        self._target = target
+class WSITrainingDataset(BufferedParallelProcessor, WSIDataset):
+    def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, slides_manager: SlidesManager, dataset_size: int):
+        super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, queue_maxsize=queue_maxsize, buffer_size=buffer_size, slides_manager=slides_manager, dataset_size=dataset_size)
+
+    @abstractmethod
+    def _generate_item(self) -> object:
+        pass
 
     def __getitem__(self, index):
+        return self.get_item(index=index)
+
+
+# =================================================
+# SingleTargetTrainingDataset Class
+# =================================================
+class SingleTargetTrainingDataset(WSITrainingDataset):
+    def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, slides_manager: SlidesManager, dataset_size: int, target: BioMarker):
+        super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, queue_maxsize=queue_maxsize, buffer_size=buffer_size, slides_manager=slides_manager, dataset_size=dataset_size)
+        self._target = target
+
+    def _generate_item(self) -> object:
         slide = self._slides_manager.get_random_slide()
         patch_extractor = RandomPatchExtractor(slide=slide)
         patch = patch_extractor.extract_patch(patch_validators=[])
