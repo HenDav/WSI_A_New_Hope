@@ -76,11 +76,18 @@ class SingleTargetTrainingDataset(WSITrainingDataset):
 # SingleTargetValidationDataset Class
 # =================================================
 class SingleTargetValidationDataset(WSIDataset):
-    def __init__(self, slides_manager: SlidesManager, slides_delta: int, tiles_delta: int, target: BioMarker):
-        super().__init__(slides_manager=slides_manager)
+    def __init__(
+            self,
+            slides_manager: SlidesManager,
+            slides_delta: int,
+            tiles_delta: int,
+            target: BioMarker):
         self._slides_delta = slides_delta
         self._tiles_delta = tiles_delta
         self._target = target
+
+
+        super().__init__(slides_manager=slides_manager)
 
     def __getitem__(self, index):
         slide = self._slides_manager.get_random_slide()
@@ -88,6 +95,15 @@ class SingleTargetValidationDataset(WSIDataset):
         patch = patch_extractor.extract_patch(patch_validators=[])
         label = slide.slide_context.get_biomarker_value(bio_marker=self._target)
         return patch, label
+
+    def _calculate_tile_ids(self) ->:
+        file_name_to_tiles = {}
+        for slide_index in range(0, self._slides_manager.slides_count, self._slides_delta):
+            slide = self._slides_manager.get_slide(index=slide_index)
+            for tile_index in range(0, slide.tiles_count, self._tiles_delta):
+
+    def _calculate_dataset_size(self):
+
 
 
 # =================================================

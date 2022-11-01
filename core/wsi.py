@@ -239,9 +239,14 @@ class TilesManager(ABC, SlideElement, SeedableObject):
     def interior_tiles_count(self) -> int:
         return len(self._interior_tiles)
 
+    def get_tiles_modulo(self):
+
+    def get_tile(self, tile_index: int) -> Tile:
+        return self._tiles[tile_index]
+
     def get_random_tile(self) -> Tile:
         tile_index = self._rng.integers(low=0, high=len(self._tiles))
-        return self._tiles[tile_index]
+        return self.get_tile(tile_index=tile_index)
 
     def get_random_interior_tile(self) -> Tile:
         tile_index = self._rng.integers(low=0, high=len(self._interior_tiles))
