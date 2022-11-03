@@ -28,7 +28,7 @@ else:
 from core import constants
 from core import utils
 from core.base import SeedableObject, OutputObject
-from core.wsi import SlideContext, Slide
+from core.wsi import SlideContext, Slide, Tile
 
 # tap
 from tap import Tap
@@ -707,6 +707,7 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
         self._slides = []
         self._current_slides = []
         self._slides_with_interior = []
+        self._tile_to_slide_dict = self._create_tile_to_slide_dict()
         self._current_df = self._df
         self.process(num_workers=num_workers)
 
@@ -717,6 +718,16 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
     @property
     def slides_count(self) -> int:
         return self._current_df.shape[0]
+
+    def get_slide_by_tile(self, tile: Tile) -> Slide:
+        return self._tile_to_slide_dict[tile]
+
+    def get_slides_ratio(self, ratio: float) -> List[Slide]:
+        modulo = int(1 / ratio)
+        return self.get_slides_modulo(modulo=modulo)
+
+    def get_slides_modulo(self, modulo: int) -> List[Slide]:
+        return self._slides[::modulo]
 
     def filter_folds(self, folds: Optional[List[int]]):
         if folds is not None:
@@ -774,6 +785,14 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
             file_name_to_slide[slide.slide_context.image_file_name] = slide
 
         return file_name_to_slide
+
+    def _create_tile_to_slide_dict(self) -> Dict[Tile, Slide]:
+        tile_to_slide = {}
+        for slide in self._slides:
+            for tile in slide.tiles:
+                tile_to_slide[tile] = slide
+
+        return tile_to_slide
 
     def _get_slides(self) -> List[Slide]:
         return [self._file_name_to_slide[x] for x in self._current_df[constants.file_column_name]]
