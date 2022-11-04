@@ -18,7 +18,8 @@ from torch.utils.data import Dataset
 from core.metadata import SlidesManager
 from core.base import SeedableObject
 from core.wsi import SlideContext, Tile, Slide, Patch, PatchExtractor, RandomPatchExtractor, ProximatePatchExtractor, BioMarker
-from core.parallel_processing import BufferedParallelProcessor
+from core.parallel_processing import TaskParallelProcessor, BufferedParallelProcessor, GetItemPolicy
+
 
 # =================================================
 # TupletsDataset Class
@@ -42,24 +43,26 @@ class WSIDataset(ABC, Dataset, SeedableObject):
 
 
 # =================================================
-# TupletsDataset Class
+# WSIMultiProcessingDataset Class
 # =================================================
-class WSITrainingDataset(BufferedParallelProcessor, WSIDataset):
-    def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, slides_manager: SlidesManager, dataset_size: int):
+class WSIMultiProcessingDataset(BufferedParallelProcessor, WSIDataset):
+    def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, slides_manager: SlidesManager, dataset_size: int, get_item_policy: GetItemPolicy):
         super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, queue_maxsize=queue_maxsize, buffer_size=buffer_size, slides_manager=slides_manager, dataset_size=dataset_size)
+        self._get_item_policy = get_item_policy
+        self.process()
 
     @abstractmethod
     def _generate_item(self) -> object:
         pass
 
     def __getitem__(self, index):
-        return self.get_item(index=index)
+        return self.get_item(index=index, get_item_policy=self._get_item_policy)
 
 
 # =================================================
 # SingleTargetTrainingDataset Class
 # =================================================
-class SingleTargetTrainingDataset(WSITrainingDataset):
+class SingleTargetTrainingDataset(WSIMultiProcessingDataset):
     def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, slides_manager: SlidesManager, dataset_size: int, target: BioMarker):
         super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, queue_maxsize=queue_maxsize, buffer_size=buffer_size, slides_manager=slides_manager, dataset_size=dataset_size)
         self._target = target
@@ -114,7 +117,7 @@ class SingleTargetValidationDataset(WSIDataset):
 # =================================================
 # SSLDataset Class
 # =================================================
-class SSLDataset(WSIDataset):
+class SSLDataset(WSIMultiProcessingDataset):
     _white_ratio_threshold = 0.5
     _white_intensity_threshold = 170
 
@@ -156,24 +159,3 @@ class SSLDataset(WSIDataset):
         if white_ratio > SSLDataset._white_ratio_threshold:
             return False
         return True
-
-
-
-# # =================================================
-# # DatasetArgumentsParser Class
-# # =================================================
-# class DatasetArgumentsParser(ABC, Tap):
-#     dataset_size: int
-#
-#
-# # =================================================
-# # SSLDatasetArgumentsParser Class
-# # =================================================
-# class SSLDatasetArgumentsParser(DatasetArgumentsParser, ArgumentsParser[SSLDataset]):
-#     inner_radius_mm: float
-#     negative_examples_count: int
-#
-#     def create(self) -> SSLDataset:
-#         metadata_manager_arguments_parser = MetadataManagerArgumentsParser()
-#         metadata_manager = metadata_manager_arguments_parser.create()
-#         return SSLDataset(metadata_manager=metadata_manager, dataset_size=self.dataset_size, inner_radius_mm=self.inner_radius_mm, negative_examples_count=self.negative_examples_count)

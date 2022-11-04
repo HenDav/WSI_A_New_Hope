@@ -33,13 +33,13 @@ import cv2
 from matplotlib import pyplot as plt
 
 # wsi
-from core.parallel_processing import ParallelProcessor, ParallelProcessorTask
+from core.parallel_processing import TaskParallelProcessor, ParallelProcessorTask
 from core import constants, utils
 from core.base import SeedableObject
 
 
 # =================================================
-# Targets Class
+# BioMarker Class
 # =================================================
 class BioMarker(Enum):
     ER = auto()
@@ -297,6 +297,10 @@ class TilesManager(ABC, SlideElement, SeedableObject):
     @property
     def tiles(self) -> List[Tile]:
         return self._tiles
+
+    @property
+    def has_interior_tiles(self) -> bool:
+        return len(self._interior_tiles) > 0
 
     def get_tiles_ratio(self, ratio: float) -> List[Tile]:
         modulo = int(1 / ratio)

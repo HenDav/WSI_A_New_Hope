@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import math
 import re
-from typing import List, Dict, Union, Optional, Callable
+from typing import List, Dict, Union, Optional, Callable, cast
 from pathlib import Path
 from abc import ABC, abstractmethod
 import json
@@ -34,7 +34,7 @@ from core.wsi import SlideContext, Slide, Tile
 from tap import Tap
 
 # gipmed
-from core.parallel_processing import ParallelProcessor, ParallelProcessorTask
+from core.parallel_processing import TaskParallelProcessor, ParallelProcessorTask
 
 
 # =================================================
@@ -692,7 +692,7 @@ class SlidesManagerTask(ParallelProcessorTask):
 # =================================================
 # SlidesManager Class
 # =================================================
-class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
+class SlidesManager(TaskParallelProcessor, SeedableObject, MetadataBase):
     def __init__(
             self,
             name: str,
@@ -703,13 +703,14 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
             metadata_file_path: Path,
             num_workers: int):
         self._metadata_file_path = metadata_file_path
-        super().__init__(name=name, output_dir_path=output_dir_path, datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification)
         self._slides = []
         self._current_slides = []
         self._slides_with_interior = []
         self._tile_to_slide_dict = self._create_tile_to_slide_dict()
+        super().__init__(name=name, output_dir_path=output_dir_path, datasets_base_dir_path=datasets_base_dir_path, tile_size=tile_size, desired_magnification=desired_magnification, num_workers=num_workers)
         self._current_df = self._df
-        self.process(num_workers=num_workers)
+        self.process()
+        self.join()
 
     @property
     def metadata(self) -> pandas.DataFrame:
@@ -755,9 +756,29 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
     def _load_metadata(self) -> pandas.DataFrame:
         return pandas.read_csv(filepath_or_buffer=self._metadata_file_path)
 
-    def _post_process(self):
+    def _post_join(self):
+        self._slides = self._collect_slides()
+        self._df = self._update_metadata()
+        # print(f'TASKS LEN {len(self._tasks)}')
+        # print(f'SLIDES LEN {len(self._slides)}')
         self._file_name_to_slide = self._create_file_name_to_slide_dict()
         self.filter_folds(folds=None)
+
+    def _update_metadata(self) -> pandas.DataFrame:
+        image_file_names = [slide.slide_context.image_file_name for slide in self._slides]
+        return self._df[self._df[constants.file_column_name].isin(image_file_names)]
+
+    def _collect_slides(self) -> List[Slide]:
+        completed_tasks = cast(List[SlidesManagerTask], self._completed_tasks)
+        return [task.slide for task in completed_tasks if task.slide is not None]
+
+        # slides = []
+        # for i, task in enumerate(self._completed_tasks):
+        #     task = cast(SlidesManagerTask, task)
+        #     if task.slide is not None:
+        #         slides.append(task.slide)
+        #
+        # return slides
 
     def _generate_tasks(self) -> List[ParallelProcessorTask]:
         tasks = []
@@ -781,7 +802,9 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
 
     def _create_file_name_to_slide_dict(self) -> Dict[str, Slide]:
         file_name_to_slide = {}
+        # print(f'slides len {len(self._slides)}')
         for slide in self._slides:
+            # print(slide.slide_context.image_file_name)
             file_name_to_slide[slide.slide_context.image_file_name] = slide
 
         return file_name_to_slide
@@ -795,6 +818,8 @@ class SlidesManager(ParallelProcessor, SeedableObject, MetadataBase):
         return tile_to_slide
 
     def _get_slides(self) -> List[Slide]:
+        # print(self._current_df[constants.file_column_name])
+        # print(self._file_name_to_slide)
         return [self._file_name_to_slide[x] for x in self._current_df[constants.file_column_name]]
 
     def _get_slides_with_interior_tiles(self) -> List[Slide]:

@@ -6,6 +6,8 @@ from pathlib import Path
 import time
 from abc import ABC, abstractmethod
 from typing import List, Union, Generic, TypeVar
+import traceback
+from enum import Enum, auto
 
 # numpy
 import numpy
@@ -22,8 +24,18 @@ class ParallelProcessorBase(ABC):
         self._num_workers = num_workers
         self._workers = []
         super(ParallelProcessorBase, self).__init__(**kw)
-    @abstractmethod
+
+    def __getstate__(self):
+        d = dict(self.__dict__)
+        del d['_workers']
+        return d
+
+    def __setstate__(self, d):
+        self.__dict__.update(d)
+
     def process(self):
+        num_workers_digits = len(str(self._num_workers))
+
         print('Running Pre-Process')
         self._pre_process()
 
@@ -32,9 +44,13 @@ class ParallelProcessorBase(ABC):
         print('')
         for i, worker in enumerate(self._workers):
             worker.start()
-            print(f'\rWorker Started {i+1} / {self._num_workers}', end='')
+            print(f'\rWorker Started {i+1:{" "}{"<"}{num_workers_digits}} / {self._num_workers:{" "}{">"}{num_workers_digits}}', end='')
         print('')
 
+        print('Running Post-Process')
+        self._post_process()
+
+    def join(self):
         print('Running Pre-Join')
         self._pre_join()
 
@@ -45,10 +61,12 @@ class ParallelProcessorBase(ABC):
         print('Running Post-Join')
         self._post_join()
 
-        print('Processing Done!')
-
     @abstractmethod
     def _pre_process(self):
+        pass
+
+    @abstractmethod
+    def _post_process(self):
         pass
 
     @abstractmethod
@@ -78,9 +96,9 @@ class ParallelProcessorTask(ABC):
 
 
 # =================================================
-# ParallelProcessor Class
+# TaskParallelProcessor Class
 # =================================================
-class ParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
+class TaskParallelProcessor(ParallelProcessorBase, OutputObject):
     def __init__(self, name: str, output_dir_path: Path, num_workers: int, **kw: object):
         super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, **kw)
         self._tasks_queue = Queue()
@@ -99,11 +117,17 @@ class ParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
         for _ in range(self._num_workers):
             self._tasks_queue.put(obj=None)
 
-    def _pre_join(self):
+    def _post_process(self):
         total_tasks_count = self.tasks_count + self._num_workers
+        last_remaining_tasks_count = numpy.inf
+        total_tasks_count_digits = len(str(total_tasks_count))
         while True:
             remaining_tasks_count = self._tasks_queue.qsize()
-            print(f'\rRemaining Tasks {remaining_tasks_count} / {total_tasks_count}', end='')
+            if last_remaining_tasks_count > remaining_tasks_count:
+
+                print(f'\rRemaining Tasks {remaining_tasks_count:{" "}{"<"}{total_tasks_count_digits}} / {total_tasks_count:{" "}{">"}{total_tasks_count_digits}}', end='')
+                last_remaining_tasks_count = remaining_tasks_count
+
             if remaining_tasks_count == 0:
                 break
 
@@ -120,6 +144,9 @@ class ParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
 
             if sentinels_count == self._num_workers:
                 break
+
+    def _pre_join(self):
+        pass
 
     def _post_join(self):
         pass
@@ -139,24 +166,24 @@ class ParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
                 task.process()
                 task.post_process()
             except:
-                pass
+                print()
+                traceback.print_exc()
 
             self._completed_tasks_queue.put(task)
 
 
 # =================================================
-# BufferedParallelProcessorTask Class
+# BioMarker Class
 # =================================================
-class BufferedParallelProcessorTask(ABC):
-    @abstractmethod
-    def process(self):
-        pass
+class GetItemPolicy(Enum):
+    Replace = auto()
+    TryReplace = auto()
 
 
 # =================================================
 # BufferedParallelProcessor Class
 # =================================================
-class BufferedParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
+class BufferedParallelProcessor(ParallelProcessorBase, OutputObject):
     def __init__(self, name: str, output_dir_path: Path, num_workers: int, queue_maxsize: int, buffer_size: int, **kw: object):
         super().__init__(name=name, output_dir_path=output_dir_path, num_workers=num_workers, **kw)
         self._queue_maxsize = queue_maxsize
@@ -169,14 +196,36 @@ class BufferedParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
         for worker_id in range(self._num_workers):
             self._sentinels_queue.put(obj=None)
 
+    def get_item(self, index: int, get_item_policy: GetItemPolicy) -> object:
+        mod_index = numpy.mod(index, self._buffer_size)
+        item = self._items_buffer[mod_index]
+
+        new_item = None
+        if get_item_policy == GetItemPolicy.TryReplace:
+            try:
+                new_item = self._items_queue.get_nowait()
+            except queue.Empty:
+                pass
+        elif get_item_policy == GetItemPolicy.Replace:
+            new_item = self._items_queue.get()
+
+        if new_item is not None:
+            rand_index = int(numpy.random.randint(self._buffer_size, size=1))
+            self._items_buffer[rand_index] = new_item
+
+        return item
+
     def _pre_process(self):
         pass
 
-    def _pre_join(self):
+    def _post_process(self):
         while len(self._items_buffer) < self._buffer_size:
             self._items_buffer.append(self._items_queue.get())
             print(f'\rBuffer Populated with {len(self._items_buffer)} Items', end='')
         print('')
+
+    def _pre_join(self):
+        pass
 
     def _post_join(self):
         pass
@@ -184,19 +233,6 @@ class BufferedParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
     @abstractmethod
     def _generate_item(self) -> object:
         pass
-
-    def get_item(self, index: int) -> object:
-        mod_index = numpy.mod(index, self._buffer_size)
-        item = self._buffer[mod_index]
-
-        try:
-            new_item = self._items_queue.get_nowait()
-            rand_index = int(numpy.random.randint(self._buffer_size, size=1))
-            self._buffer[rand_index] = new_item
-        except queue.Empty:
-            pass
-
-        return item
 
     def _worker_func(self, worker_id: int):
         while True:
@@ -210,4 +246,5 @@ class BufferedParallelProcessor(ABC, ParallelProcessorBase, OutputObject):
                 item = self._generate_item()
                 self._items_queue.put(obj=item)
             except:
-                pass
+                print()
+                traceback.print_exc()
