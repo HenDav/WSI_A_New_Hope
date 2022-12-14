@@ -177,10 +177,10 @@ class SlideContext:
             top_left_coords = top_left_pixel - local_coords
             
             ### empty tiles for failsafe in case we fall out of slide bounds
-            top_left_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
-            bottom_left_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
-            bottom_right_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
-            top_right_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
+            top_left_tile_image = np.zeros((self._tile_size, self._tile_size, self._color_channels))
+            bottom_left_tile_image = np.zeros((self._tile_size, self._tile_size, self._color_channels)
+            bottom_right_tile_image = np.zeros((self._tile_size, self._tile_size, self._color_channels)
+            top_right_tile_image = np.zeros((self._tile_size, self._tile_size, self._color_channels)
             took_empty = False
             
             try:
