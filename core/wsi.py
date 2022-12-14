@@ -162,6 +162,14 @@ class SlideContext:
     def locations_to_pixels(self, locations: numpy.ndarray) -> numpy.ndarray:
         return (locations * self._zero_level_tile_size).astype(numpy.int64)
     
+    def np_to_h5_key(self, coords: np.ndarray) -> str:
+        key = str((coords[0], coords[1]))
+        if key not in self.tile_keys:
+            raise ValueError(
+                            f"{key} does not match existing coordinates in {self.file_path}"
+                            )
+        return key
+    
     def read_region_around_pixel_h5(self, pixel: numpy.ndarray) -> Image:
         with h5py.File(self._image_file_path, "r") as file:
             tile_size = self._tile_size
@@ -205,7 +213,7 @@ class SlideContext:
         elif bio_marker is BioMarker.HER2:
             return self._her2
 
-    def _get_best_level_for_downsample(self, slide: openslide.OpenSlide):
+    def _get_best_level_for_downsample(self, slide: openslide.OpenSlide) -> tuple[int, int]:
         level = 0
         level_downsample = self._desired_downsample
         if self._desired_downsample > 1:
