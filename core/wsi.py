@@ -75,6 +75,7 @@ class SlideContext:
         self._er = self._row[constants.er_status_column_name].item()
         self._pr = self._row[constants.pr_status_column_name].item()
         self._her2 = self._row[constants.her2_status_column_name].item()
+        self._color_channels = 3
         if self._image_file_name.endswith(".h5"):
             self.read_region_around_pixel = self.read_region_around_pixel_h5
         else:
@@ -164,10 +165,6 @@ class SlideContext:
     
     def np_to_h5_key(self, coords: np.ndarray) -> str:
         key = str((coords[0], coords[1]))
-        if key not in self.tile_keys:
-            raise ValueError(
-                            f"{key} does not match existing coordinates in {self.file_path}"
-                            )
         return key
     
     def read_region_around_pixel_h5(self, pixel: numpy.ndarray) -> Image:
@@ -179,11 +176,32 @@ class SlideContext:
             local_coords = top_left_pixel % tile_size
             top_left_coords = top_left_pixel - local_coords
             
-            ### this part copied from h5manager.get_tile()
-            top_left_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords)]["array"][:]
-            bottom_left_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + y_offset)]["array"][:]
-            bottom_right_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + y_offset + x_offset)]["array"][:]
-            top_right_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + x_offset)]["array"][:]
+            ### empty tiles for failsafe in case we fall out of slide bounds
+            top_left_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
+            bottom_left_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
+            bottom_right_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
+            top_right_tile_image = np.zeros((self._color_channels, self._tile_size, self._tile_size))
+            took_empty = False
+            
+            try:
+                top_left_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords)]["array"][:]
+            except:
+                took_empty = True
+            try:
+                bottom_left_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + y_offset)]["array"][:]
+            except:
+                took_empty = True
+            try:
+                bottom_right_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + y_offset + x_offset)]["array"][:]
+            except:
+                took_empty = True
+            try:
+                top_right_tile_image = file["tiles"][self.np_to_h5_key(top_left_coords + x_offset)]["array"][:]
+            except:
+                took_empty = True
+            finally:
+                if took_empty:
+                    print("some of the patch requsted is out of slide bounds, filled empty area with zeros")
             
             top_of_tile = np.concatenate((top_left_tile_image[local_coords[0]:, local_coords[1]:, :], 
                                            top_right_tile_image[:local_coords[0], local_coords[1]:, :]), 
